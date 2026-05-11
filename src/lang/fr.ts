@@ -1060,6 +1060,9 @@ const frMessages = {
     errSaveFailed: "Échec de l'enregistrement : {error}",
     errDeleteFailed: "Échec de la suppression",
     confirmDelete: 'Supprimer la skill "{name}" ? Cela retire ~/mulmoclaude/.claude/skills/{name}/SKILL.md.',
+    categoryBuiltIn: "Intégrées",
+    categoryProject: "Projet",
+    categoryUser: "Utilisateur",
   },
   pluginManageRoles: {
     heading: "Rôles personnalisés",

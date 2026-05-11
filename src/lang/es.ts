@@ -1066,6 +1066,9 @@ const esMessages = {
     errSaveFailed: "Error al guardar: {error}",
     errDeleteFailed: "Error al eliminar",
     confirmDelete: '¿Eliminar la skill "{name}"? Esto borrará ~/mulmoclaude/.claude/skills/{name}/SKILL.md.',
+    categoryBuiltIn: "Integradas",
+    categoryProject: "Proyecto",
+    categoryUser: "Usuario",
   },
   pluginManageRoles: {
     heading: "Roles personalizados",

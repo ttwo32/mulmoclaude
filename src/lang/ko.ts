@@ -1055,6 +1055,9 @@ const koMessages = {
     errSaveFailed: "저장 실패: {error}",
     errDeleteFailed: "삭제 실패",
     confirmDelete: '스킬 "{name}" 을(를) 삭제할까요? ~/mulmoclaude/.claude/skills/{name}/SKILL.md 가 제거됩니다.',
+    categoryBuiltIn: "내장",
+    categoryProject: "프로젝트",
+    categoryUser: "사용자",
   },
   pluginManageRoles: {
     heading: "커스텀 역할",

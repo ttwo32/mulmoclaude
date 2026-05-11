@@ -1069,6 +1069,9 @@ const deMessages = {
     errSaveFailed: "Speichern fehlgeschlagen: {error}",
     errDeleteFailed: "Löschen fehlgeschlagen",
     confirmDelete: 'Skill "{name}" löschen? Dies entfernt ~/mulmoclaude/.claude/skills/{name}/SKILL.md.',
+    categoryBuiltIn: "Integriert",
+    categoryProject: "Projekt",
+    categoryUser: "Benutzer",
   },
   pluginManageRoles: {
     heading: "Benutzerdefinierte Rollen",

@@ -1047,6 +1047,9 @@ const zhMessages = {
     errSaveFailed: "保存失败: {error}",
     errDeleteFailed: "删除失败",
     confirmDelete: '要删除技能 "{name}" 吗?将会移除 ~/mulmoclaude/.claude/skills/{name}/SKILL.md。',
+    categoryBuiltIn: "内置",
+    categoryProject: "项目",
+    categoryUser: "用户",
   },
   pluginManageRoles: {
     heading: "自定义角色",

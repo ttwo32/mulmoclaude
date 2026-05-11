@@ -1054,6 +1054,9 @@ const enMessages = {
     errSaveFailed: "Save failed: {error}",
     errDeleteFailed: "Failed to delete",
     confirmDelete: 'Delete skill "{name}"? This removes ~/mulmoclaude/.claude/skills/{name}/SKILL.md.',
+    categoryBuiltIn: "Built-in",
+    categoryProject: "Project",
+    categoryUser: "User",
   },
   pluginManageRoles: {
     heading: "Custom Roles",

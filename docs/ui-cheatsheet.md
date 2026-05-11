@@ -366,18 +366,31 @@ The preview pane reuses plugin views — clicking a `config/scheduler/items.json
 
 ## /skills — workspace skills list
 
+Two-pane layout (`<ManageSkillsView>`): left sidebar groups skills by
+category, right pane renders the selected skill's `SKILL.md`. Only
+**Project (Yours)** skills expose Edit/Delete; the other categories
+are read-only (Run only). Collapse state per group is persisted to
+`localStorage` (`skills:groupCollapsed`); `builtin` is closed by
+default since users rarely need to inspect bundled skills.
+
 ```
-┌─[<SkillsManager>]──────────────────────────────────────────────────┐
-│ Add skill form (modal)                                             │
-│                                                                    │
-│ ┌─Skill row──────────────────────────────────────────────────────┐ │
-│ │  📜 daily-briefing-finance                                     │ │
-│ │      "Fetch top 3 articles, cluster, write briefing"           │ │
-│ │                                              ⏵ run  ✏ edit  ✕ │ │
-│ └────────────────────────────────────────────────────────────────┘ │
-│ ...                                                                │
+┌─[<ManageSkillsView>]───────────────────────────────────────────────┐
+│ Skills                              N available · click · Run = /…│
+│ ┌─Sidebar (w-64)──────────┬─Detail pane──────────────────────────┐ │
+│ │ ▶ BUILT-IN          12  │  <skill name>                         │ │
+│ │ ▼ PROJECT            3  │  description                          │ │
+│ │ ├ [skill-item-foo]      │                            ✏ Edit  ✕ ⏵│ │
+│ │ ├ [skill-item-bar]      │                                       │ │
+│ │ └ [skill-item-baz]      │  rendered SKILL.md (marked + sanitize)│ │
+│ │ ▼ USER               8  │                                       │ │
+│ │ ├ …                     │                                       │ │
+│ └─────────────────────────┴───────────────────────────────────────┘ │
 └────────────────────────────────────────────────────────────────────┘
 ```
+
+Testids: `skill-group-{key}` / `skill-group-toggle-{key}` /
+`skill-group-count-{key}` for the three category headers
+(`builtin` / `project` / `user`); `skill-item-{name}` per row.
 
 ## /roles — role configuration
 

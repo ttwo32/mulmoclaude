@@ -14,24 +14,42 @@
     </div>
 
     <div class="flex-1 min-h-0 flex overflow-hidden">
-      <!-- Left: skill list -->
+      <!-- Left: skill list, grouped by category (built-in / project / user) -->
       <div class="w-64 shrink-0 border-r border-gray-100 overflow-y-auto bg-gray-50">
-        <div
-          v-for="skill in skills"
-          :key="skill.name"
-          :data-testid="`skill-item-${skill.name}`"
-          class="cursor-pointer px-4 py-3 border-b border-gray-100 text-sm hover:bg-white transition-colors"
-          :class="selectedName === skill.name ? 'bg-white border-l-2 border-l-blue-500' : ''"
-          @click="selectedName = skill.name"
-        >
-          <div class="font-medium text-gray-800 truncate">{{ skill.name }}</div>
-          <div class="text-xs text-gray-500 truncate mt-0.5">
-            {{ skill.description }}
+        <template v-for="group in skillGroups" :key="group.key">
+          <div v-if="group.skills.length > 0" :data-testid="`skill-group-${group.key}`">
+            <button
+              type="button"
+              :data-testid="`skill-group-toggle-${group.key}`"
+              class="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide hover:bg-gray-100 border-b border-gray-100"
+              :aria-expanded="group.open"
+              @click="toggleGroup(group.key)"
+            >
+              <span class="flex items-center gap-1">
+                <span class="material-icons text-base">{{ group.open ? "expand_more" : "chevron_right" }}</span>
+                {{ t(group.labelKey) }}
+              </span>
+              <span :data-testid="`skill-group-count-${group.key}`" class="text-gray-400 font-normal normal-case">
+                {{ group.skills.length }}
+              </span>
+            </button>
+            <div v-if="group.open">
+              <div
+                v-for="skill in group.skills"
+                :key="skill.name"
+                :data-testid="`skill-item-${skill.name}`"
+                class="cursor-pointer px-4 py-3 border-b border-gray-100 text-sm hover:bg-white transition-colors"
+                :class="selectedName === skill.name ? 'bg-white border-l-2 border-l-blue-500' : ''"
+                @click="selectedName = skill.name"
+              >
+                <div class="font-medium text-gray-800 truncate">{{ skill.name }}</div>
+                <div class="text-xs text-gray-500 truncate mt-0.5">
+                  {{ skill.description }}
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="text-[10px] text-gray-400 uppercase mt-0.5">
-            {{ skill.source }}
-          </div>
-        </div>
+        </template>
         <i18n-t v-if="skills.length === 0" keypath="pluginManageSkills.emptyWithPath" tag="p" class="p-4 text-sm text-gray-400 italic">
           <template #path>
             <code class="text-[11px]">{{ t("pluginManageSkills.emptySkillPath") }}</code>
@@ -146,7 +164,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, shallowRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { marked } from "marked";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
@@ -169,6 +187,56 @@ interface SkillDetail {
   path: string;
 }
 
+// Skills fall into three categories that the user benefits from seeing
+// separately: bundled mc- prefix project skills, user-authored project
+// skills (the only editable ones), and global user skills under ~/.
+// The backend reports only `source`; the `mc-` split is name-based.
+const SKILL_CATEGORY_KEYS = ["builtin", "project", "user"] as const;
+type SkillCategoryKey = (typeof SKILL_CATEGORY_KEYS)[number];
+
+const MC_BUILTIN_PREFIX = "mc-";
+const COLLAPSED_GROUPS_STORAGE_KEY = "skills:groupCollapsed";
+const DEFAULT_CLOSED_CATEGORIES: readonly SkillCategoryKey[] = ["builtin"];
+
+const CATEGORY_LABEL_KEYS: Record<SkillCategoryKey, string> = {
+  builtin: "pluginManageSkills.categoryBuiltIn",
+  project: "pluginManageSkills.categoryProject",
+  user: "pluginManageSkills.categoryUser",
+};
+
+function categorizeSkill(skill: SkillSummary): SkillCategoryKey {
+  if (skill.source === "user") return "user";
+  if (skill.name.startsWith(MC_BUILTIN_PREFIX)) return "builtin";
+  return "project";
+}
+
+function isSkillCategoryKey(value: unknown): value is SkillCategoryKey {
+  return typeof value === "string" && (SKILL_CATEGORY_KEYS as readonly string[]).includes(value);
+}
+
+function loadCollapsedGroups(): Set<SkillCategoryKey> {
+  const defaults = new Set<SkillCategoryKey>(DEFAULT_CLOSED_CATEGORIES);
+  if (typeof window === "undefined") return defaults;
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_GROUPS_STORAGE_KEY);
+    if (raw === null) return defaults;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return defaults;
+    return new Set<SkillCategoryKey>(parsed.filter(isSkillCategoryKey));
+  } catch {
+    return defaults;
+  }
+}
+
+function persistCollapsedGroups(state: Set<SkillCategoryKey>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(COLLAPSED_GROUPS_STORAGE_KEY, JSON.stringify([...state]));
+  } catch {
+    // localStorage may be unavailable (private mode) — swallow silently.
+  }
+}
+
 const props = defineProps<{
   selectedResult?: ToolResultComplete<ManageSkillsData>;
 }>();
@@ -177,7 +245,52 @@ const props = defineProps<{
 // remove rows without waiting for a fresh tool_result push.
 // Re-seeded whenever the underlying tool result changes.
 const skills = ref<SkillSummary[]>(props.selectedResult?.data?.skills ?? []);
-const selectedName = ref<string | null>(skills.value[0]?.name ?? null);
+
+// Collapsed-group state for the sidebar. Persisted to localStorage so
+// each user's preference (typically: built-in collapsed) survives reloads.
+// shallowRef because we always replace the Set wholesale (toggleGroup
+// builds a fresh Set), avoiding the deep-proxy that ref() would create.
+const collapsedGroups = shallowRef<Set<SkillCategoryKey>>(loadCollapsedGroups());
+
+const skillGroups = computed(() =>
+  SKILL_CATEGORY_KEYS.map((key) => {
+    const groupSkills = skills.value
+      .filter((skill) => categorizeSkill(skill) === key)
+      .sort((leftSkill, rightSkill) => leftSkill.name.localeCompare(rightSkill.name));
+    return {
+      key,
+      labelKey: CATEGORY_LABEL_KEYS[key],
+      skills: groupSkills,
+      open: !collapsedGroups.value.has(key),
+    };
+  }),
+);
+
+function toggleGroup(key: SkillCategoryKey): void {
+  const next = new Set(collapsedGroups.value);
+  if (next.has(key)) {
+    next.delete(key);
+  } else {
+    next.add(key);
+  }
+  collapsedGroups.value = next;
+  persistCollapsedGroups(next);
+}
+
+// Pick the first skill whose category is currently open, so we never
+// auto-select a row hidden under a collapsed header. Falls back to the
+// very first skill if every group is collapsed.
+function pickInitialSelection(skillList: readonly SkillSummary[]): string | null {
+  if (skillList.length === 0) return null;
+  for (const key of SKILL_CATEGORY_KEYS) {
+    if (collapsedGroups.value.has(key)) continue;
+    const firstInCategory = skillList.find((skill) => categorizeSkill(skill) === key);
+    if (firstInCategory) return firstInCategory.name;
+  }
+  return skillList[0].name;
+}
+
+const selectedName = ref<string | null>(pickInitialSelection(skills.value));
 const detail = ref<SkillDetail | null>(null);
 const detailLoading = ref(false);
 const detailError = ref<string | null>(null);
@@ -201,7 +314,7 @@ watch(
   () => props.selectedResult?.uuid,
   () => {
     skills.value = props.selectedResult?.data?.skills ?? [];
-    selectedName.value = skills.value[0]?.name ?? null;
+    selectedName.value = pickInitialSelection(skills.value);
   },
 );
 
@@ -220,7 +333,7 @@ onMounted(async () => {
   }
   if (Array.isArray(response.data.skills)) {
     skills.value = response.data.skills;
-    selectedName.value = skills.value[0]?.name ?? null;
+    selectedName.value = pickInitialSelection(skills.value);
   }
 });
 
@@ -332,7 +445,7 @@ async function deleteSkill(): Promise<void> {
   if (idx >= 0) {
     skills.value.splice(idx, 1);
   }
-  selectedName.value = skills.value[0]?.name ?? null;
+  selectedName.value = pickInitialSelection(skills.value);
   detail.value = null;
 }
 </script>
