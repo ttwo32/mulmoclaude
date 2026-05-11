@@ -1072,6 +1072,7 @@ const deMessages = {
     categoryBuiltIn: "Integriert",
     categoryProject: "Projekt",
     categoryUser: "Benutzer",
+    categoryLegend: "Integriert: mitgeliefert (mc- Präfix) · Projekt: Ihre Skills (bearbeitbar) · Benutzer: ~/.claude/skills/ (global)",
   },
   pluginManageRoles: {
     heading: "Benutzerdefinierte Rollen",

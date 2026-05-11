@@ -1069,6 +1069,7 @@ const esMessages = {
     categoryBuiltIn: "Integradas",
     categoryProject: "Proyecto",
     categoryUser: "Usuario",
+    categoryLegend: "Integradas: incluidas (prefijo mc-) · Proyecto: tus skills (editables) · Usuario: ~/.claude/skills/ (globales)",
   },
   pluginManageRoles: {
     heading: "Roles personalizados",

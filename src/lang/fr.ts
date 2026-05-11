@@ -1063,6 +1063,7 @@ const frMessages = {
     categoryBuiltIn: "Intégrées",
     categoryProject: "Projet",
     categoryUser: "Utilisateur",
+    categoryLegend: "Intégrées : incluses (préfixe mc-) · Projet : les vôtres (modifiables) · Utilisateur : ~/.claude/skills/ (globales)",
   },
   pluginManageRoles: {
     heading: "Rôles personnalisés",

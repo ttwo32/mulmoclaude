@@ -1058,6 +1058,7 @@ const koMessages = {
     categoryBuiltIn: "내장",
     categoryProject: "프로젝트",
     categoryUser: "사용자",
+    categoryLegend: "내장: 동봉 (mc- 접두사) · 프로젝트: 사용자 작성 (편집 가능) · 사용자: ~/.claude/skills/ (전역)",
   },
   pluginManageRoles: {
     heading: "커스텀 역할",

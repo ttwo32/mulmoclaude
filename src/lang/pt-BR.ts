@@ -1058,6 +1058,7 @@ const ptBRMessages = {
     categoryBuiltIn: "Integradas",
     categoryProject: "Projeto",
     categoryUser: "Usuário",
+    categoryLegend: "Integradas: inclusas (prefixo mc-) · Projeto: suas skills (editáveis) · Usuário: ~/.claude/skills/ (globais)",
   },
   pluginManageRoles: {
     heading: "Papéis personalizados",

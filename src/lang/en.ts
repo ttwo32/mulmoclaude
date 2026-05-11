@@ -1057,6 +1057,7 @@ const enMessages = {
     categoryBuiltIn: "Built-in",
     categoryProject: "Project",
     categoryUser: "User",
+    categoryLegend: "Built-in: bundled (mc- prefix) · Project: your skills (editable) · User: ~/.claude/skills/ (global)",
   },
   pluginManageRoles: {
     heading: "Custom Roles",

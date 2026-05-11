@@ -5,6 +5,7 @@
       <div>
         <h2 class="text-lg font-semibold text-gray-800">{{ t("pluginManageSkills.heading") }}</h2>
         <p class="text-xs text-gray-400 mt-0.5">{{ t("pluginManageSkills.subheading", { count: skills.length }) }}</p>
+        <p class="text-xs text-gray-400 mt-0.5">{{ t("pluginManageSkills.categoryLegend") }}</p>
       </div>
     </div>
 

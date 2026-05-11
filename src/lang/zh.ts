@@ -1050,6 +1050,7 @@ const zhMessages = {
     categoryBuiltIn: "内置",
     categoryProject: "项目",
     categoryUser: "用户",
+    categoryLegend: "内置: 随附 (mc- 前缀) · 项目: 你的 skill (可编辑) · 用户: ~/.claude/skills/ (全局)",
   },
   pluginManageRoles: {
     heading: "自定义角色",
