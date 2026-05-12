@@ -11,7 +11,11 @@ describe("formatDate", () => {
 
   it("contains digits (some form of time/day)", () => {
     const out = formatDate("2026-04-10T07:21:39.125Z");
-    assert.match(out, /\d/);
+    // `\p{N}` matches any Unicode digit so this stays correct on
+    // hosts that emit non-ASCII numerals (Arabic-Indic `١`,
+    // Devanagari `१`, etc.). `\d` would be `[0-9]` only and
+    // false-fail there. (Codex review on #1338.)
+    assert.match(out, /\p{N}/u);
   });
 
   it("does not throw for an unparseable input", () => {
@@ -53,23 +57,42 @@ describe("formatDate", () => {
 const FIXED_INSTANT = new Date(Date.UTC(2026, 3, 10, 12, 0, 0));
 const FIXED_EPOCH = FIXED_INSTANT.getTime();
 
+// "10" rendered in whatever numerals the host's default locale uses.
+// `toLocaleString(undefined, ...)` inside the formatter pulls from
+// the same default, so `Intl.NumberFormat()` here produces the
+// matching glyphs — `"10"` on ASCII hosts, `"١٠"` on `ar-EG`,
+// `"१०"` on `hi-IN`, etc. The substring assertion below stays
+// correct under any default locale. `\b10\b` (the previous form)
+// was ASCII-only and would false-fail on non-Latin-numeral hosts
+// (Codex review on #1338).
+const TEN_IN_DEFAULT_LOCALE = new Intl.NumberFormat(undefined, { useGrouping: false }).format(10);
+
+// Locale-independent time-shape pattern: 1-2 Unicode digits, a
+// common time separator (`:` typical, some locales use `.` or
+// space), 2 more digits. `\p{N}` covers any numeric script so the
+// pattern matches `12:00`, `١٢:٠٠`, `१२.००`, etc.
+const TIME_PATTERN = /\p{N}{1,2}[:.\s]\p{N}{2}/u;
+
 describe("formatDateTime", () => {
   it("returns a non-empty string carrying the input's day-of-month", () => {
     const out = formatDateTime(FIXED_EPOCH);
     assert.equal(typeof out, "string");
     assert.ok(out.length > 0);
-    assert.match(out, /\b10\b/);
+    assert.ok(out.includes(TEN_IN_DEFAULT_LOCALE), `expected "${TEN_IN_DEFAULT_LOCALE}" in ${out}`);
   });
 });
 
 describe("formatTime", () => {
-  it("renders the hour from a fixed epoch", () => {
+  it("renders an hour:minute-shaped value from a fixed epoch", () => {
     const out = formatTime(FIXED_EPOCH);
     assert.equal(typeof out, "string");
-    // UTC 12:00 becomes the user's local clock hour; assert that
-    // SOME two-digit hour appears (locale-independent) and a digit
-    // pair separator that looks like time.
-    assert.match(out, /\d{1,2}/);
+    assert.ok(out.length > 0);
+    // Tightened from the original `/\d{1,2}/` which would pass for
+    // any string containing digits (e.g. a bare day number or just
+    // minutes). The locale-independent time-shape pattern asserts
+    // we got an actual HH:MM-style segment. (Codex + Sourcery
+    // reviews on #1338.)
+    assert.match(out, TIME_PATTERN);
   });
 });
 
@@ -77,7 +100,7 @@ describe("formatShortTime", () => {
   it("returns a short time from ISO string", () => {
     const out = formatShortTime("2026-04-10T07:21:39.125Z");
     assert.equal(typeof out, "string");
-    assert.match(out, /\d/);
+    assert.match(out, /\p{N}/u);
   });
 
   it("falls back to raw string on parse error", () => {
@@ -91,7 +114,7 @@ describe("formatShortDate", () => {
   it("renders a short date carrying the day-of-month from a fixed epoch", () => {
     const out = formatShortDate(FIXED_EPOCH);
     assert.equal(typeof out, "string");
-    assert.match(out, /\b10\b/);
+    assert.ok(out.includes(TEN_IN_DEFAULT_LOCALE), `expected "${TEN_IN_DEFAULT_LOCALE}" in ${out}`);
   });
 });
 
