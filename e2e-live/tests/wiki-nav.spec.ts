@@ -7,6 +7,7 @@ import { navigateToWikiIndex, navigateToWikiPage, placeWikiPage, removeWikiPage,
 
 const L14_TIMEOUT_MS = ONE_MINUTE_MS;
 const L15_TIMEOUT_MS = ONE_MINUTE_MS;
+const L15B_TIMEOUT_MS = ONE_MINUTE_MS;
 const L16_TIMEOUT_MS = ONE_MINUTE_MS;
 
 // L-14 / L-15 each seed their own pair of wiki pages and never
@@ -130,6 +131,68 @@ test.describe("wiki navigation (real workspace)", () => {
       await page.locator(`.wiki-link[data-page="${targetSlug}"]`).first().click();
       await expect(page).toHaveURL(new RegExp(`/wiki/pages/${encodedTargetSlug}$`));
       await expect(page.getByTestId("wiki-page-body")).toContainText(targetMarker);
+      await expect(page).not.toHaveURL(/\/chat/);
+    } finally {
+      await removeWikiPage(sourceSlug);
+      await removeWikiPage(targetSlug);
+    }
+  });
+
+  test("L-15b: 非 ASCII slug fuzzy resolve が衝突候補から正しい target を決定的に選ぶ (#1194)", async ({ page }, testInfo) => {
+    test.setTimeout(L15B_TIMEOUT_MS);
+    // End-to-end repro of the #1194 collision condition. L-15 keeps
+    // a `nonascii-target` token in the target slug as a redundancy
+    // belt; this spec strips that belt off and exercises the
+    // resolver under the exact shape the original bug needed:
+    //
+    //   target slug = `日本語タイトル-${projectSlug}-${nonce}`
+    //   source slug = `e2e-live-l15b-source-${projectSlug}-${nonce}`
+    //
+    // wikiSlugify(target) drops the Japanese chars → leaves a tail
+    // like `-${projectSlug}-${nonce}`. That tail is a substring of
+    // BOTH on-disk filenames, so the resolver's fuzzy fallback has
+    // two equally-includes-eligible candidates. Pre-#1319, the
+    // fuzzy loop returned whichever key Map iteration (= readdir
+    // order, = creation order) surfaced first — typically the
+    // source page, since we seed it first below — and the SPA
+    // silently rendered the wrong page. Post-#1319 `pickFuzzyMatch`
+    // scores `min/max` of slug-vs-key lengths; the target key (≈
+    // Japanese 7 chars + shared suffix) is closer in length to the
+    // slug than the source key (≈ "e2e-live-l15b-source-" 21 chars
+    // + shared suffix), so target wins deterministically regardless
+    // of seed order.
+    //
+    // The negative `not.toContainText(sourceMarker)` assertion is
+    // the load-bearing one: it fails loudly if the resolver ever
+    // returns the source page again, which is the exact regression
+    // shape we're protecting against.
+    const projectSlug = testInfo.project.name;
+    const nonce = `${Date.now()}-${randomUUID().slice(0, 6)}`;
+    const targetSlug = `日本語タイトル-${projectSlug}-${nonce}`;
+    const sourceSlug = `e2e-live-l15b-source-${projectSlug}-${nonce}`;
+    const targetMarker = `L-15b target body marker ${nonce}`;
+    const sourceMarker = `L-15b source body marker ${nonce}`;
+    const encodedTargetSlug = encodeURIComponent(targetSlug);
+    try {
+      // Seed source first — the original bug's repro relied on the
+      // source page being readdir-first when both keys partial-
+      // matched. The new resolver is order-independent, so this
+      // ordering is documentation, not a load-bearing setup step.
+      await placeWikiPage(sourceSlug, [`# L-15b source`, ``, sourceMarker, ``].join("\n"));
+      await placeWikiPage(targetSlug, [`# 日本語タイトル`, ``, targetMarker, ``].join("\n"));
+
+      await navigateToWikiPage(page, targetSlug);
+      await expect(page.getByTestId("wiki-page-body"), "target page body must render (positive assertion)").toContainText(targetMarker);
+      // Negative assertion = #1194 regression sentinel. If the
+      // fuzzy resolver ever silently picks the source page again,
+      // this is the line that fails.
+      await expect(
+        page.getByTestId("wiki-page-body"),
+        "source marker must NOT appear — would indicate #1194 regression (fuzzy resolver returned colliding page)",
+      ).not.toContainText(sourceMarker);
+      await expect(page).toHaveURL(new RegExp(`/wiki/pages/${encodedTargetSlug}$`));
+      // Negative guard mirroring L-14 / L-15 — catch-all router
+      // must not swallow non-ASCII page slugs (B-24 shape).
       await expect(page).not.toHaveURL(/\/chat/);
     } finally {
       await removeWikiPage(sourceSlug);
