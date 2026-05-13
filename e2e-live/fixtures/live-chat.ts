@@ -834,19 +834,21 @@ const THINKING_INDICATOR_VISIBLE_TIMEOUT_MS = 30 * ONE_SECOND_MS;
  */
 export async function waitForAssistantTurn(page: Page, timeoutMs: number = ONE_MINUTE_MS): Promise<void> {
   const indicator = page.getByTestId("thinking-indicator");
-  // Cap the visible-phase wait at the caller's overall budget so a
-  // short `timeoutMs` (e.g. a smoke test passing 5s) cannot still
-  // burn the full 30s on the first phase. Keep 30s as the upper
-  // bound for the common case where callers pass a generous total
-  // budget — indicator should always show within seconds, and a
-  // 30s ceiling is enough headroom for slow CI without tying the
-  // helper to the caller's per-turn budget. CodeRabbit review on
-  // PR #1345.
+  // Treat `timeoutMs` as the TOTAL budget across both phases:
+  // visible-phase wait is capped at `THINKING_INDICATOR_VISIBLE_TIMEOUT_MS`
+  // (or `timeoutMs` if it's smaller), and the hidden-phase wait
+  // gets whatever budget remains after the visible wait actually
+  // returns. Without this elapsed-tracking the helper could spend
+  // up to `visibleTimeoutMs + timeoutMs` worst-case, overshooting
+  // the caller's contract. CodeRabbit / Codex review on PR #1345.
+  const start = Date.now();
   const visibleTimeoutMs = Math.min(THINKING_INDICATOR_VISIBLE_TIMEOUT_MS, timeoutMs);
   await expect(indicator, "thinking-indicator must appear after sendChatMessage — proves the agent actually started").toBeVisible({
     timeout: visibleTimeoutMs,
   });
-  await expect(indicator, "thinking-indicator must hide when the assistant turn ends").toBeHidden({ timeout: timeoutMs });
+  const elapsedMs = Date.now() - start;
+  const hiddenTimeoutMs = Math.max(0, timeoutMs - elapsedMs);
+  await expect(indicator, "thinking-indicator must hide when the assistant turn ends").toBeHidden({ timeout: hiddenTimeoutMs });
 }
 
 /**
