@@ -7,7 +7,6 @@ import { navigateToWikiIndex, navigateToWikiPage, placeWikiPage, removeWikiPage,
 
 const L14_TIMEOUT_MS = ONE_MINUTE_MS;
 const L15_TIMEOUT_MS = ONE_MINUTE_MS;
-const L15B_TIMEOUT_MS = ONE_MINUTE_MS;
 const L16_TIMEOUT_MS = ONE_MINUTE_MS;
 
 // L-14 / L-15 each seed their own pair of wiki pages and never
@@ -139,7 +138,9 @@ test.describe("wiki navigation (real workspace)", () => {
   });
 
   test("L-15b: 非 ASCII slug fuzzy resolve が衝突候補から正しい target を決定的に選ぶ (#1194)", async ({ page }, testInfo) => {
-    test.setTimeout(L15B_TIMEOUT_MS);
+    // L-15 と同じ shape のテストなので timeout 定数も共用 (plan
+    // file の方針)。
+    test.setTimeout(L15_TIMEOUT_MS);
     // End-to-end repro of the #1194 collision condition. L-15 keeps
     // a `nonascii-target` token in the target slug as a redundancy
     // belt; this spec strips that belt off and exercises the
