@@ -1,0 +1,141 @@
+// Boot-time + per-agent-run preflight for external MCP servers
+// (#1352).
+//
+// Built-in MCP-only tools have always done this via
+// `isMcpToolEnabled` + `logMcpStatus` (server/index.ts:750) — when an
+// env var listed in `requiredEnv` is unset, the tool drops out of
+// the list and the operator sees an info log explaining why. External
+// MCP servers (the `mcp.json` ones — Notion / GitHub / Linear /…)
+// had no equivalent, so a half-configured catalog entry would still
+// spawn a subprocess and every tool call would fail silently with
+// 401. This module is the parity fix.
+//
+// The catalog (`src/config/mcpCatalog.ts`) declares which config
+// fields are `required: true`. The user's saved `mcp.json` holds
+// resolved values. Cross-referencing the two tells us which servers
+// are ready to boot and which should be excluded from the config
+// handed to Claude Code.
+
+import type { McpServerSpec } from "../system/config.js";
+import { findCatalogEntry, requiredKeysOf, type McpCatalogEntry } from "../../src/config/mcpCatalog.js";
+import { log } from "../system/logger/index.js";
+
+export interface McpPreflightResult {
+  /** Servers that passed preflight, keyed by the same id used in
+   *  the input. Safe to pass straight into `prepareUserServers` /
+   *  `buildMcpConfig`. */
+  ready: Record<string, McpServerSpec>;
+  /** Servers excluded by preflight, with the catalog field keys
+   *  whose values were unset / unresolved. */
+  skipped: { serverId: string; missing: string[] }[];
+}
+
+const PLACEHOLDER_PATTERN = /\$\{([A-Z0-9_]+)\}/g;
+const SINGLE_PLACEHOLDER = /^\$\{([A-Z0-9_]+)\}$/;
+
+/** Returns the catalog field keys whose values are unresolved in
+ *  the user's saved spec — `""`, missing, or still carrying a
+ *  `${KEY}` placeholder.
+ *
+ *  Mapping goes: catalog `configSchema[].key` → spec env key, via
+ *  the catalog template's env value. E.g. catalog template
+ *  `env: { NOTION_TOKEN: "${NOTION_API_KEY}" }` binds the field
+ *  `NOTION_API_KEY` to the env key `NOTION_TOKEN`. We then check
+ *  the user's saved spec's `env.NOTION_TOKEN`.
+ *
+ *  HTTP-type catalog entries currently have no required fields
+ *  (deepwiki is empty) — they fall through with `[]`. When a
+ *  required HTTP header lands in the catalog, extend this helper. */
+export function findMissingRequiredEnv(entry: McpCatalogEntry, spec: McpServerSpec): string[] {
+  if (entry.spec.type !== "stdio" || !entry.spec.env) return [];
+  const fieldToEnvKey = buildFieldToEnvKeyMap(entry.spec.env);
+  const userEnv = spec.type === "stdio" ? spec.env : undefined;
+  const required = requiredKeysOf(entry);
+  const missing: string[] = [];
+  for (const fieldKey of required) {
+    const envKey = fieldToEnvKey.get(fieldKey);
+    if (envKey === undefined) continue;
+    const value = userEnv?.[envKey];
+    if (!isResolved(value)) missing.push(fieldKey);
+  }
+  return missing;
+}
+
+function buildFieldToEnvKeyMap(templateEnv: Record<string, string>): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const [envKey, value] of Object.entries(templateEnv)) {
+    const match = SINGLE_PLACEHOLDER.exec(value);
+    if (match) out.set(match[1], envKey);
+  }
+  return out;
+}
+
+function isResolved(value: string | undefined): boolean {
+  if (typeof value !== "string") return false;
+  if (value.length === 0) return false;
+  PLACEHOLDER_PATTERN.lastIndex = 0;
+  return !PLACEHOLDER_PATTERN.test(value);
+}
+
+/** Filter user MCP servers by checking the catalog's required
+ *  fields. Servers without a catalog match (= user-added custom
+ *  servers) pass through — we have no metadata to validate them
+ *  against. */
+export function preflightUserServers(userServers: Record<string, McpServerSpec>): McpPreflightResult {
+  const ready: Record<string, McpServerSpec> = {};
+  const skipped: McpPreflightResult["skipped"] = [];
+  for (const [serverId, spec] of Object.entries(userServers)) {
+    const entry = findCatalogEntry(serverId);
+    if (entry === null) {
+      ready[serverId] = spec;
+      continue;
+    }
+    const missing = findMissingRequiredEnv(entry, spec);
+    if (missing.length > 0) {
+      skipped.push({ serverId, missing: missing.sort() });
+      continue;
+    }
+    ready[serverId] = spec;
+  }
+  return { ready, skipped };
+}
+
+// Dedup cache so per-agent-run logging doesn't repeat identical
+// state across chat turns. Boot-time logging bypasses the cache
+// (always logs once on startup).
+const loggedKeys = new Set<string>();
+
+function dedupKey(entry: { serverId: string; missing: string[] }): string {
+  return `${entry.serverId}:${entry.missing.join(",")}`;
+}
+
+/** Emit structured logs for the preflight outcome.
+ *  - `source: "boot"`  — runs once at startup; always logs.
+ *  - `source: "agent-run"` — runs per agent invocation; dedups
+ *    identical (server, missing-keys) tuples so a Settings UI
+ *    change shows once and stale state stays quiet. */
+export function logPreflightResult(result: McpPreflightResult, source: "boot" | "agent-run"): void {
+  const isBoot = source === "boot";
+  for (const entry of result.skipped) {
+    const key = dedupKey(entry);
+    if (!isBoot && loggedKeys.has(key)) continue;
+    loggedKeys.add(key);
+    log.warn("mcp", "preflight: skipping server — missing required config", {
+      source,
+      serverId: entry.serverId,
+      missing: entry.missing,
+    });
+  }
+  if (isBoot) {
+    log.info("mcp", "preflight summary", {
+      started: Object.keys(result.ready).length,
+      skipped: result.skipped.length,
+    });
+  }
+}
+
+/** Test seam — reset the dedup cache between tests so each case
+ *  sees a fresh logging state. */
+export function _resetPreflightLogCache(): void {
+  loggedKeys.clear();
+}
