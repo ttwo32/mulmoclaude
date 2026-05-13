@@ -53,7 +53,11 @@ export function loadCollapsedGroups(): Set<SkillCategoryKey> {
     if (raw === null) return defaults;
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return defaults;
-    return new Set<SkillCategoryKey>(parsed.filter(isSkillCategoryKey));
+    // Migrate the legacy "builtin" key to "system" so users who collapsed
+    // that group before the rename keep their preference instead of being
+    // silently reset on next load.
+    const migrated = parsed.map((value) => (value === "builtin" ? "system" : value));
+    return new Set<SkillCategoryKey>(migrated.filter(isSkillCategoryKey));
   } catch {
     return defaults;
   }

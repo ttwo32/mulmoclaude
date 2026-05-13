@@ -146,6 +146,22 @@ describe("manageSkills loadCollapsedGroups", () => {
     assert.deepEqual([...result].sort(), [...DEFAULT_CLOSED_CATEGORIES].sort());
   });
 
+  it("migrates the legacy 'builtin' key to 'system' (rename compat)", () => {
+    const { map, storage } = makeStorageShim();
+    map.set(COLLAPSED_GROUPS_STORAGE_KEY, JSON.stringify(["builtin"]));
+    globalRef.window = { localStorage: storage };
+    const result = loadCollapsedGroups();
+    assert.deepEqual([...result].sort(), ["system"]);
+  });
+
+  it("migrates 'builtin' alongside current keys without duplicating", () => {
+    const { map, storage } = makeStorageShim();
+    map.set(COLLAPSED_GROUPS_STORAGE_KEY, JSON.stringify(["builtin", "system", "user"]));
+    globalRef.window = { localStorage: storage };
+    const result = loadCollapsedGroups();
+    assert.deepEqual([...result].sort(), ["system", "user"]);
+  });
+
   it("falls back to defaults when the persisted JSON is not an array", () => {
     const { map, storage } = makeStorageShim();
     map.set(COLLAPSED_GROUPS_STORAGE_KEY, JSON.stringify({ system: true }));
