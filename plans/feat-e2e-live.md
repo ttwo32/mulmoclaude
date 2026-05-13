@@ -79,7 +79,7 @@ e2e-live/
 | `/e2e-live-media` | media.spec.ts | 5 | B-17, B-18, B-19, B-20, B-21, B-46 |
 | `/e2e-live-roles` | roles.spec.ts | 5 | B-15, B-41 |
 | `/e2e-live-session` | session.spec.ts | 3 | B-13, B-14, B-16 |
-| `/e2e-live-wiki` | wiki.spec.ts | 3 | B-23〜B-27 |
+| `/e2e-live-wiki` | wiki.spec.ts | 7 | B-23〜B-27, #1297 |
 | `/e2e-live-ui` | ui.spec.ts | 4 | B-30, B-31, B-34, B-50 |
 | `/e2e-live-skills` | skills.spec.ts | 2 | B-08, B-22, B-41 |
 | `/e2e-live-docker` | docker.spec.ts | 8 (うち 2 は L4) | B-01〜B-08 |
@@ -201,7 +201,7 @@ e2e-live/
 - 操作: bridge 接続中にサーバ再起動 → 再接続待機
 - 検証: 固定 token で再接続成功
 
-### wiki（3）
+### wiki（7）
 
 #### L-14: Wiki ページ生成 → 内部リンクを踏める
 
@@ -223,6 +223,34 @@ e2e-live/
 - 重要度: **B** / Docker: `both` / 画像: 不要
 - 操作: 複数ページ生成 → `/wiki` 直下の index を開く → 各リンクをクリック
 - 検証: すべて 404 にならず開ける
+
+#### L-WIKI-PIPE: `[[slug|alias]]` 形式リンクのクリック → URL に `|alias` が混入しない
+
+- カバー: issue #1297 / PR #1312
+- 重要度: **A** / Docker: `both` / 画像: 不要
+- 操作: source / target の 2 ページ seed → source 側に `[[<targetSlug>|<日本語表示>]]` を埋める → クリック
+- 検証: `data-page` が target slug のみ、 表示テキストが alias のみ、 クリック後 URL に `%7C` (`\|`) が含まれない、 target の body marker が表示される
+
+#### L-WIKI-LINT-PIPE-CLEAN: lint レポートで `[[slug|alias]]` が broken link に出ない
+
+- カバー: issue #1297 / PR #1312 (lint UI 側)
+- 重要度: **A** / Docker: `both` / 画像: 不要
+- 操作: source / target の 2 ページ seed → source 側に `[[<targetSlug>|<日本語表示>]]` を埋める → `/wiki/lint-report` を開く
+- 検証: lint 出力 `<li>` の中に source ページ名 + alias ASCII token + `not found` を全て含む行が 0 件 (pre-fix の false positive shape の sentinel)
+
+#### L-WIKI-LINT-EMPTY-TARGET: lint レポートで bare `[[Japanese]]` が "empty target" 診断に出る
+
+- カバー: PR #1312 で追加された新診断カテゴリ
+- 重要度: **B** / Docker: `both` / 画像: 不要
+- 操作: source ページ 1 件 seed (target 不在で resolver が解決不能にする) → `[[日本語のみのターゲット記号終端タイトル]]` (ASCII フリーの固定文字列、 nonce を入れない) を埋める → `/wiki/lint-report` を開く
+- 検証: lint 出力に source + bare Japanese target + `empty target` を含む `<li>` が 1 件、 同条件で `not found` を含む行は 0 件 (新診断と broken-link 診断が混ざらないこと)
+
+#### L-WIKI-LINT-BROKEN: lint レポートで `[[bogus-slug]]` が broken link 診断に出る
+
+- カバー: 既存 broken-link 診断の sanity (#1312 の周辺退化検出)
+- 重要度: **B** / Docker: `both` / 画像: 不要
+- 操作: source ページ 1 件 seed (bogus target は seed しない) → `[[<bogus-slug>]]` を埋める → `/wiki/lint-report` を開く
+- 検証: lint 出力に source + `<bogus-slug>.md not found` を含む `<li>` が 1 件 (一般的な broken-link diagnostic shape)
 
 ### ui（4）
 
@@ -350,6 +378,10 @@ e2e-live/
 | **L-14** wiki 内部リンク | ✅ 実装済 | wiki-nav.spec.ts、 fixture wiki page 2 件 seed → wikilink `[[slug]]` を click → `/wiki/pages/<target>` に遷移 (B-23/B-24/B-25)、 catch-all で `/chat` に飛ばないこと |
 | **L-15** 非 ASCII slug の wiki ページ | ✅ 実装済 | wiki-nav.spec.ts、 `日本語タイトル-nonascii-target-${project}-${nonce}` 型 slug の page を 2 件 seed → (A) URL 直叩き (`encodeURIComponent` round trip) と (B) `[[…]]` wikilink クリックの両経路で `wiki-page-body` に Japanese 本文が描画され `/chat` に飛ばないことを assert (B-26 / B-27)。 server `wikiSlugify` が Japanese を落として exact-key match が外れる前提で `resolvePagePath` の fuzzy `key.includes(slug)` 分岐に乗せる設計 (`data/wiki/index.md` 直接編集を避けるため)。 fuzzy が source page と target page の両方にマッチする落とし穴 (両 slug の ASCII tail が共通になる) を踏んだので、 target slug 側に `nonascii-target` という source 名に含まれない unique token を入れて衝突回避 |
 | **L-16** wiki index ナビゲーション | ✅ 実装済 | wiki-nav.spec.ts、 `replaceWikiIndex(content)` + `restoreWikiIndex(original)` helper で `data/wiki/index.md` を一時差し替え → `placeWikiPage` で 2 ページ seed → `/wiki` に直遷移 → `wiki-page-entry-${slug}` を 2 件 visible で確認 → 各エントリを click → `/wiki/pages/<slug>` に遷移 + body marker を assert (B-23/B-24)、 `/chat` フォールバック退行を否定 assertion で塞ぐ。 共有 index ファイルを書く唯一の test なので将来 index 系を増やすときは serial 化 or 別 spec ファイルに切り出す注意書きを describe 上に置いた |
+| **L-WIKI-PIPE** `[[slug\|alias]]` クリック後 URL 清浄性 | ✅ 実装済 | wiki-nav.spec.ts、 PR #1312 (issue #1297) で fix された `parseWikiLink` の `\|` split 退化を end-to-end で検出する net。 source ページに `[[<targetSlug>\|日本語表示+ASCII token]]` を埋め込んで seed → renderer assertion で `data-page` = targetSlug only / 表示テキスト = alias only / DOM 全体に `data-page*="\|"` が 0 件を確認 → click → URL が `/wiki/pages/<targetSlug>$` で終わり `%7C` (= `\|`) が含まれず `/chat` に飛ばないことを assert → target body marker visible。 lint 側の regression は `test/lib/wiki-page/test_lint.ts` の `findBrokenLinksInPage — [[slug\|alias]] regression` ユニット test がカバーするので spec はフロント挙動 (renderer/router) に絞り込み |
+| **L-WIKI-LINT-PIPE-CLEAN** lint レポート UI で `[[slug\|alias]]` が false positive にならない | ✅ 実装済 | wiki-nav.spec.ts、 PR #1312 (issue #1297) の lint 側を end-to-end で検証。 source / target の 2 ページ seed (`[[<slug>\|日本語+aliasAsciiToken]]`) → `/wiki/lint-report` 遷移 → 「Wiki Lint Report」 heading visible で hydrate 待機 → `<li>` に source slug + `not found` を含む行が 0 件 / alias ASCII token + `not found` を含む行も 0 件、 を 2 段の sentinel で確認。 pre-fix の false positive shape (`<slug>-<alias-ascii>.md not found`) を直接 negate する形 |
+| **L-WIKI-LINT-EMPTY-TARGET** lint レポート UI で bare `[[Japanese]]` が "empty target" 診断に出る | ✅ 実装済 | wiki-nav.spec.ts、 PR #1312 で新設された empty-target 診断 (slug 化結果が空文字列のケース) を end-to-end で検証。 source ページ 1 件 seed (target 不在) → `[[日本語のみのターゲット記号終端タイトル]]` (固定 ASCII フリー文字列) を埋める。 nonce を target に入れると ASCII suffix が wikiSlugify を生き残って empty-target 診断ではなく `<slug>.md not found` 扱いになる退化シナリオを踏んだ (iter 2 で発覚 → 修正)。 per-test 一意性は nonce 付き `sourceSlug` 側で確保、 target 文字列が parallel projects 間で固定でも `<li>:has-text(sourceSlug)` チェーンで scope 衝突なし → `/wiki/lint-report` 遷移 → `<li>` に source + bare Japanese target + `empty target` を全部含む行が 1 件 / 同条件で `not found` を含む行は 0 件 を assert (新診断と broken-link 診断が混ざらないこと) |
+| **L-WIKI-LINT-BROKEN** lint レポート UI で `[[bogus-slug]]` が broken link 診断に出る | ✅ 実装済 | wiki-nav.spec.ts、 既存 broken-link 診断の sanity (PR #1312 周辺退化の検出 net)。 source ページ 1 件 seed (bogus target は seed しない、 ASCII slug 想定) → `[[<bogus-slug>]]` を埋める → `/wiki/lint-report` 遷移 → `<li>` に source + `<bogus-slug>.md not found` を含む行が 1 件 を assert。 一般的な broken-link 診断 shape を確認 |
 | **L-18** presentForm i18n raw key | ✅ 実装済 | ui.spec.ts、 LLM に「nickname text field 1 個の presentForm を表示して」 と依頼 → `present-form-view` testid (`src/plugins/presentForm/View.vue` に追加) が visible になったら `not.toContainText("pluginPresentForm.")` で B-34 を locale 非依存にカバー。 raw i18n key 漏れは prefix 文字列が DOM の visible text に出ることが regression shape なので submit ボタンや progress カウンタ単体に縛らずに view 全体の textContent を見る設計。 form は submit せず assistant turn を drain して trace を保全 |
 | **L-21** chart deferred-tool dispatch | ✅ 実装済 | skills.spec.ts、 「`L-21 sales` の bar chart を chart tool で render して」 と prompt → `chart-card-0` + `chart-canvas-0` testid (`src/plugins/chart/View.vue` 既存) が visible になることを assert (B-41 canary)。 L-03 (presentMulmoScript) と異なる plugin で 2 本目の deferred dispatch canary を立て、 deferred mode で 1 plugin だけ schema 取りこぼす shear 退行を網羅。 LLM のばらつきを「`Do not narrate the result.`」 で抑え、 textResponse fallback を防ぐ |
 | **L-22** skill end-to-end 実行 (B-08) | ✅ 実装済 | skills.spec.ts、 合成 skill を `<workspace>/.claude/skills/<unique-slug>/SKILL.md` に seed (body には 「`/<slug>` で呼ばれたら `L22-OK-<nonce>` という marker を返答せよ」 の指示) → `/skills` 直叩き → 一覧に row 出現 → click で `skill-body-rendered` に marker が描画 → Run ボタン → `/chat/<id>` で agent ターン完走 → assistant 応答に同 marker が含まれることを assert。 discovery → list API → detail API → slash-command dispatch → skill body が agent context に乗る、 の 4 段全てが繋がっていないと marker が出ない設計。 nonce で他テストと衝突回避、 marker は ASCII の決定論的文字列で LLM 揺れ吸収 |
@@ -957,6 +989,7 @@ artifact name: `mulmoclaude-tarball`（10 MB 程度、`.tgz`）。
 - [x] ~~**Safari (webkit) project の追加**~~ → 反映済（`e2e-live/playwright.config.ts` に `webkit` project + `testMatch: "media.spec.ts"`）
 - [x] ~~**webkit で L-01 が `naturalWidth=0` で fail する件の調査と修正**~~ → #1015 close 済（real bug ではなく dev server stale だっただけ。 上の 「真の原因」 セクション参照。 dev 再起動後に webkit L-01 + L-02 pass 確認）
 - [x] ~~**L-05 (generateImage)** 実装時に #983 の path-in-message を活用~~ → 実装済（path 文字列キャプチャは不要だった: `[generate-image-view]` testid 経由で `<img>.src` を読めば `/artifacts/images/...` の prefix が取れるので tool message を parse する必要がない。 #983 で server message に path が乗るのは agent 側の hint として有用、 spec 側は DOM-only assertion で十分）
+- [ ] **wiki lint 残り 3 診断カテゴリの e2e 化** (本 PR #1297 関連スコープ外として保留): 本 PR で `broken link` (L-WIKI-LINT-BROKEN) と `empty target` (L-WIKI-LINT-EMPTY-TARGET) は e2e でカバー済。 残る `Orphan page` / `Missing file` / `Tag drift` の 3 種は unit test (`findOrphanPages` / `findMissingFiles` / `findTagDrift`) で論理側はカバー済だが UI 表示の e2e net がない。 いずれも `data/wiki/index.md` を mutate する必要があり L-16 と同じく `replaceWikiIndex` / `restoreWikiIndex` 経由で書き換えてから `/wiki/lint-report` で診断行を assert する形になる。 Orphan / Missing / Tag drift は L-16 と shared 状態 (index.md) を奪い合うので **L-16 と同じ describe.serial ブロックに集約** か、 **専用 spec ファイルに切り出して describe.serial で囲む** 必要あり。 PR #1312 (issue #1297) が触っていない既存診断なので別 PR (`/make-e2e-live` 再起動) で 1〜3 シナリオ追加が筋。 PR #1312 のオリジナル QA チェックリスト C-3 / C-4 / C-5 に対応
 
 ---
 
