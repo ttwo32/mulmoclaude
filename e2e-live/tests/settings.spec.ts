@@ -1,10 +1,38 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
 import { expect, test } from "@playwright/test";
 
-import { ONE_MINUTE_MS } from "../../server/utils/time.ts";
+import { ONE_MINUTE_MS, ONE_SECOND_MS } from "../../server/utils/time.ts";
 import { isRecord } from "../../server/utils/types.ts";
-import { placeWorkspaceFile, readWorkspaceFile, removeFromWorkspace } from "../fixtures/live-chat.ts";
+import {
+  deleteSession,
+  getCurrentSessionId,
+  placeWorkspaceFile,
+  readWorkspaceFile,
+  removeFromWorkspace,
+  sendChatMessage,
+  startNewSession,
+  waitForAssistantResponseComplete,
+} from "../fixtures/live-chat.ts";
+
+const execFileAsync = promisify(execFile);
 
 const L_SETTINGS_EFFORT_TIMEOUT_MS = 2 * ONE_MINUTE_MS;
+// The spawn-verification test fires one real LLM turn (a single-word
+// prompt) and races a `ps` poll against it. 3 minutes covers Claude
+// rate-limited cold starts without burning wall time on the happy
+// path (the inner poll exits as soon as the process appears).
+const L_SETTINGS_EFFORT_SPAWN_TIMEOUT_MS = 3 * ONE_MINUTE_MS;
+const PS_POLL_TIMEOUT_MS = 30 * ONE_SECOND_MS;
+const PS_POLL_INTERVALS_MS = [ONE_SECOND_MS / 2, ONE_SECOND_MS, 2 * ONE_SECOND_MS];
+
+// Distinctive substring that survives in `ps` output for every claude
+// process mulmoclaude spawns — `mcp__mulmoclaude` lands in the
+// `--allowedTools` argument and nowhere else on the host (a user's
+// own Claude Code CLI in a different terminal does not carry it).
+// Used to filter our spawn out of the global process list.
+const MULMOCLAUDE_CLAUDE_MARKER = "mcp__mulmoclaude";
 
 // `config/settings.json` is a single workspace-wide file shared by
 // every chat session, so two specs mutating it concurrently would
@@ -69,6 +97,20 @@ async function restoreSettings(original: string | null): Promise<void> {
     return;
   }
   await placeWorkspaceFile(SETTINGS_REL, original);
+}
+
+// Read the process table and return the full command line of every
+// claude subprocess mulmoclaude spawned. `-A` includes processes from
+// all users (we only care about the current user's, but cross-user
+// noise is filtered out by the mulmoclaude marker). `-ww` requests
+// non-truncated args on Linux; macOS ps already prints full args
+// when stdout is a pipe.
+async function findMulmoclaudeClaudeProcesses(): Promise<string[]> {
+  const { stdout } = await execFileAsync("ps", ["-A", "-ww", "-o", "command="]);
+  return stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && line.includes(MULMOCLAUDE_CLAUDE_MARKER));
 }
 
 test.describe("settings (real disk / static)", () => {
@@ -147,6 +189,63 @@ test.describe("settings (real disk / static)", () => {
       }
       expect(readEffortLevel(afterClear), "effortLevel key must be absent on disk after clear (null sentinel honoured)").toBeUndefined();
     } finally {
+      await restoreSettings(original);
+    }
+  });
+
+  test("L-SETTINGS-EFFORT-SPAWN — settings.json の effortLevel が spawn される claude 引数に乗る", async ({ page }) => {
+    test.setTimeout(L_SETTINGS_EFFORT_SPAWN_TIMEOUT_MS);
+    // Closes the last hop the sibling L-SETTINGS-EFFORT spec cannot
+    // see: even if the file holds the right value and the route
+    // round-trip is healthy, a regression that disconnects
+    // `loadSettings().effortLevel` from `buildCliArgs` (or drops
+    // the `--effort` push) would still ship green. We trigger a
+    // real spawn and inspect `ps` for the flag.
+    //
+    // The chat is intentionally a one-word echo so the LLM round-trip
+    // is short and cheap — we only need the spawn window open for a
+    // few seconds. The `ps` poll narrows to our own spawn via the
+    // `mcp__mulmoclaude` marker so any concurrent Claude Code CLI
+    // session the user runs in another terminal is filtered out.
+
+    const original = await readWorkspaceFile(SETTINGS_REL);
+    let sessionIdForCleanup: string | null = null;
+
+    try {
+      // Seed effortLevel="low" directly on disk. The save path is
+      // already proven by L-SETTINGS-EFFORT; here we only care about
+      // the load → spawn-arg chain, so a direct file write is the
+      // tightest harness.
+      await placeWorkspaceFile(SETTINGS_REL, seedWithEffort(original, "low"));
+
+      await startNewSession(page);
+      await sendChatMessage(page, "Reply with the single word: ok.");
+      // Capture the session id as soon as the URL flips — cleanup
+      // must work even if the assertion below fails.
+      await page.waitForURL(/\/chat\/[0-9a-f-]+/);
+      sessionIdForCleanup = getCurrentSessionId(page);
+
+      // Poll `ps` until our mulmoclaude-spawned claude process
+      // appears with `--effort low` in its args. The spawn happens
+      // synchronously on POST /api/agent and lives until the
+      // assistant turn ends, giving us a multi-second window even
+      // for a one-word reply.
+      await expect(async () => {
+        const procs = await findMulmoclaudeClaudeProcesses();
+        expect(procs, "mulmoclaude-spawned claude process must exist while the assistant is responding").not.toEqual([]);
+        // Every matching process must carry the effort flag — if
+        // the user happens to run multiple concurrent mulmoclaude
+        // sessions, all of them load the same on-disk settings.
+        for (const cmd of procs) {
+          expect(cmd, `claude process must carry --effort low in its args; saw: ${cmd}`).toMatch(/--effort\s+low(\s|$)/);
+        }
+      }).toPass({ timeout: PS_POLL_TIMEOUT_MS, intervals: PS_POLL_INTERVALS_MS });
+
+      // Drain the assistant turn so trace / video capture the full
+      // round-trip rather than cutting mid-stream.
+      await waitForAssistantResponseComplete(page);
+    } finally {
+      if (sessionIdForCleanup !== null) await deleteSession(page, sessionIdForCleanup);
       await restoreSettings(original);
     }
   });
