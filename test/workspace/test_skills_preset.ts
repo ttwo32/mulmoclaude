@@ -1,4 +1,12 @@
-// Tests for the boot-time preset-skill sync (#1210 PR-A).
+// Tests for the boot-time preset-skill sync.
+//
+// #1210 PR-A: introduced. Source: `server/workspace/skills-preset/`.
+// Destination: originally `<workspaceRoot>/.claude/skills/`.
+// #1335 PR-A: destination flipped to
+// `<workspaceRoot>/data/skills/catalog/preset/` (catalog half of the
+// catalog-vs-active split). The sync helper itself doesn't care
+// about the literal path — it works against whatever `destDir` the
+// caller passes — so these tests stay tmpdir-based.
 
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -222,10 +230,12 @@ describe("syncPresetSkills — source resilience", () => {
 
 describe("syncPresetSkills — destination resilience", () => {
   it("aborts the sync cleanly when the root dest itself is a regular file (regression: corruption-tolerant boot)", () => {
-    // Codex review iter-2: prior fix only protected per-slug
-    // mkdirSync; the root mkdirSync would still EEXIST-crash if
-    // `<workspace>/.claude/skills` itself was somehow a regular
-    // file. Now it logs warn + skips the whole sync.
+    // Codex review iter-2 (on the original `.claude/skills/` dest;
+    // same defence applies to the catalog destination after #1335
+    // PR-A): prior fix only protected per-slug mkdirSync; the root
+    // mkdirSync would still EEXIST-crash if the destination root
+    // itself was somehow a regular file. Now it logs warn + skips
+    // the whole sync.
     writePresetSource("mc-foo");
     writeFileSync(destDir, "stray file blocking the root skills dir");
 

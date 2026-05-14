@@ -262,7 +262,7 @@ schedule: "interval 168h"
 
 **Preset skills (launcher 同梱)**:
 
-リポジトリには **launcher が同梱して出荷するプリセット skill** が `server/workspace/skills-preset/<name>/SKILL.md` に置かれている。命名規約は `mc-` プレフィックス (= "MulmoClaude managed") — workspace 側でこの prefix を持つ skill は launcher 起動時に上書き同期されるので、ユーザがその場で編集しても次回 boot で元に戻る。リポジトリ側を編集して PR を出すのが正規ルート。
+リポジトリには **launcher が同梱して出荷するプリセット skill** が `server/workspace/skills-preset/<name>/SKILL.md` に置かれている。命名規約は `mc-` プレフィックス (= "MulmoClaude managed")。リポジトリ側を編集して PR を出すのが正規ルート。
 
 現在の preset (`mc-` prefix 持ち):
 
@@ -272,7 +272,17 @@ schedule: "interval 168h"
 | `mc-library` | 読書記録 — 読みたい本 / 読了の登録、感想を本人の言葉で記録、後から想起できるジャーナル |
 | `mc-cooking-coach` | レシピの保存・更新・削除と `data/cooking/recipes/README.md` 索引維持 |
 
-同期の実装は `server/workspace/skills-preset.ts` (`syncPresetSkills`)。起動時に `server/workspace/workspace.ts:44` から呼ばれ、`<launcher>/server/workspace/skills-preset/` → `<workspace>/.claude/skills/` へコピーされる。ユーザ作成 skill (`mc-` でない名前) は同期対象外なので影響を受けない。
+同期の実装は `server/workspace/skills-preset.ts` (`syncPresetSkills`)。起動時に `server/workspace/workspace.ts` から呼ばれる。
+
+**Catalog vs Active 分離 (#1335 PR-A)**:
+
+- **Source**: `<launcher>/server/workspace/skills-preset/<name>/SKILL.md`
+- **Sync 先 (catalog)**: `<workspace>/data/skills/catalog/preset/<name>/SKILL.md` — 起動毎に上書き、launcher-owned
+- **Active レイヤー**: `<workspace>/.claude/skills/<name>/SKILL.md` — Claude Code が discover、prompt に description が乗る
+
+Catalog にあるだけでは prompt に乗らない (Claude Code の resolver は `.claude/skills/` しか見ない)。preset を有効化するには catalog → `.claude/skills/` にコピーする必要がある。コピー UI (★ star) は #1335 PR-B、上流 Anthropic skills の git sync は PR-C で予定。PR-A の時点で catalog はファイル上は populated されるが、UI 経由の active 化はまだない (手動 `cp` でアクティブ化可能)。
+
+設計の動機: preset を増やしても勝手に system prompt が肥大化しないようにする。ユーザは catalog を眺める / 試す → 気に入ったものだけ ★ で恒常 active 化する 2 段モデル。
 
 **ソース実装**:
 

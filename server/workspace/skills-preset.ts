@@ -1,15 +1,21 @@
-// Preset skills bundled with mulmoclaude (#1210). Sibling to
-// `helps/`: this file owns the boot-time copy from
-// `server/workspace/skills-preset/<slug>/SKILL.md` (shipped with the
-// launcher tarball) into `<workspaceRoot>/.claude/skills/<slug>/SKILL.md`,
-// where Claude Code's slash-command resolver picks them up.
+// Preset skills bundled with mulmoclaude.
 //
-// The launcher overwrites preset entries unconditionally on every
-// boot — preset skills are "factory defaults", not user state. The
-// `mc-` slug prefix is the namespace boundary: anything under
-// `mc-*` belongs to the launcher and may be added / overwritten /
-// removed across releases. Anything WITHOUT the `mc-` prefix is
-// user-owned and never touched.
+// History: introduced in #1210 to ship launcher-managed "factory"
+// skills like `mc-library`. Originally synced straight into
+// `<workspaceRoot>/.claude/skills/<slug>/`, which made every preset
+// auto-active and inflated the Claude system prompt as new presets
+// landed.
+//
+// #1335 PR-A flipped the destination to the catalog
+// (`<workspaceRoot>/data/skills/catalog/preset/<slug>/`). Catalog
+// entries are visible to UI / tooling but NOT discovered by Claude
+// Code's slash-command resolver — they don't enter the system
+// prompt unless the user (or a later UI in PR-B) explicitly copies
+// one into `.claude/skills/`.
+//
+// The launcher overwrites catalog entries unconditionally on every
+// boot — they're factory defaults, not user state. Anything in
+// `.claude/skills/` (active layer) is left untouched.
 //
 // `syncPresetSkills(...)` is exported as a pure-ish helper (takes
 // paths + a logger sink, returns a summary) so tests can drive it
@@ -25,7 +31,10 @@ const SKILL_FILENAME = "SKILL.md";
 export interface SyncPresetSkillsOptions {
   /** Source directory: `<launcher>/server/workspace/skills-preset/`. */
   sourceDir: string;
-  /** Destination directory: `<workspaceRoot>/.claude/skills/`. */
+  /** Destination directory:
+   *  `<workspaceRoot>/data/skills/catalog/preset/`. The catalog
+   *  half of the catalog-vs-active split — entries here are visible
+   *  to UI but NOT to Claude Code's prompt-time skill resolver. */
   destDir: string;
   /** Logger callbacks — kept injectable so tests don't need to
    *  spin up the structured logger. The boot-side wrapper threads
@@ -142,11 +151,14 @@ function removeRetiredPresets(destDir: string, synced: ReadonlySet<string>, opts
   }
 }
 
-/** Copy every preset slug from `sourceDir` into `destDir`, then
- *  remove any `mc-*` entries in `destDir` that no longer have a
- *  source. Slugs without the `mc-` prefix are skipped (with a warn)
- *  on the source side and left untouched on the dest side — that's
- *  how user-authored skills coexist with launcher-managed presets. */
+/** Copy every preset slug from `sourceDir` into `destDir` (the
+ *  preset slot under the catalog root), then remove any `mc-*`
+ *  entries in `destDir` that no longer have a source. The catalog
+ *  preset subdir is fully launcher-owned, so the `mc-*` prefix
+ *  check at destination is defence-in-depth: a stray non-preset
+ *  slug landing in `catalog/preset/` is unexpected, and we'd
+ *  rather skip it than silently delete a directory we don't
+ *  recognise. */
 export function syncPresetSkills(opts: SyncPresetSkillsOptions): SyncPresetSkillsResult {
   const result: SyncPresetSkillsResult = { copied: [], removed: [], skipped: [] };
   if (!existsSync(opts.sourceDir)) {
