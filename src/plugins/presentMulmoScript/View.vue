@@ -682,7 +682,13 @@ function playBeat(index: number): void {
 }
 
 function scheduleSilentAdvance(index: number): void {
-  const seconds = effectiveBeat(index).duration ?? SILENT_BEAT_DEFAULT_SEC;
+  // Defensively narrow the script-supplied duration. A bad value
+  // (zero, negative, NaN, non-number) would otherwise collapse to
+  // an immediate timeout and the Play loop would race through every
+  // silent beat in a single tick (Codex review iter-5 on #1365).
+  // Falling back to the default keeps the presentation watchable.
+  const raw = effectiveBeat(index).duration;
+  const seconds = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : SILENT_BEAT_DEFAULT_SEC;
   const timer = setTimeout(() => {
     if (silentPlaybackTimer.value?.index !== index) return;
     silentPlaybackTimer.value = null;
