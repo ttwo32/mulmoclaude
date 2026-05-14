@@ -111,7 +111,7 @@ export async function* runAgent({
   const userServerAllowedTools = userServerAllowedToolNames(userServers, useDocker);
 
   // Boolean presence flags only — never write raw sessionId into long-lived log sinks.
-  const backend = getActiveBackend();
+  const backend = await getActiveBackend();
   const spawnLog: Record<string, unknown> = {
     backend: backend.id,
     roleId: role.id,

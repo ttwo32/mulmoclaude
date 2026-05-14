@@ -79,7 +79,9 @@ test.describe("ui (real LLM / static)", () => {
   });
 
   test("L-19: stack layout で 1 ターン後 reload しても stack-scroll が再描画される", async ({ page }) => {
-    test.skip(process.env.E2E_LIVE_NO_LLM === "1", "E2E_LIVE_NO_LLM=1 — needs a real chat turn to seed stack layout");
+    // Any completed turn (real Claude or fake-echo) seeds the stack;
+    // the assertion is on the reload-restore behavior, not on the
+    // LLM's reasoning.
     test.setTimeout(L19_TIMEOUT_MS);
     // Covers B-31: tool-call history used to drop on reload because
     // the stack view's `toolResults` was rebuilt from the in-memory

@@ -38,14 +38,18 @@ jobs:
       fail-fast: false
       matrix:
         spec:
-          # Specs that have at least one Claude-free test. The other
-          # 5 (media / mulmo-script-edit / roles / session / skills)
-          # are all-LLM, so they would 100% skip under
-          # E2E_LIVE_NO_LLM=1 — not worth a job slot.
+          # Specs that have at least one CI-eligible test. The dev
+          # server runs with `MULMOCLAUDE_FAKE_AGENT=1` so chat turns
+          # are served by the echo-stub backend; tests that need a
+          # real reasoning LLM (presentForm tool-call, session
+          # resume context recall, skills/media tool dispatch, etc.)
+          # still self-skip on `E2E_LIVE_NO_LLM=1`.
           - wiki                     # all 4 tests run
           - wiki-nav                 # 7/8 run (L-15b skipped, see TODO)
-          - workspace-link-routing   # L-24 runs (L-23 LLM-only, skipped)
-          - ui                       # L-20 runs (L-18 / L-19 LLM-only, skipped)
+          - workspace-link-routing   # L-23 / L-24 / linkify
+          - ui                       # L-19 / L-20 (L-18 skipped)
+          - roles                    # all 4 turns via fake-echo
+          - session                  # L-11 (L-12 skipped)
 
     steps:
       - uses: actions/checkout@v6
@@ -70,6 +74,10 @@ jobs:
       - name: Start mulmoclaude dev server (background)
         env:
           DISABLE_SANDBOX: "1"
+          # Swap the claude-code backend for the echo-stub
+          # (server/agent/backend/fake-echo.ts), lazy-loaded via
+          # dynamic import so production never touches this code.
+          MULMOCLAUDE_FAKE_AGENT: "1"
         run: |
           yarn dev > dev-server.log 2>&1 &
           echo $! > dev-server.pid
