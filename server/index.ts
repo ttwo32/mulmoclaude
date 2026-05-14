@@ -56,6 +56,8 @@ import { WORKSPACE_PATHS } from "./workspace/paths.js";
 import { serverError } from "./utils/httpError.js";
 import { makeUuid } from "./utils/id.js";
 import { mcpToolsRouter, mcpTools, isMcpToolEnabled } from "./agent/mcp-tools/index.js";
+import { preflightUserServers, logPreflightResult } from "./agent/mcpPreflight.js";
+import { loadMcpConfig } from "./system/config.js";
 import { initWorkspace, workspacePath } from "./workspace/workspace.js";
 import { runMemoryMigrationOnce } from "./workspace/memory/run.js";
 import { runTopicMigrationOnce } from "./workspace/memory/topic-run.js";
@@ -767,6 +769,29 @@ function logMcpStatus(): void {
   if (disabledMcpTools.length > 0) {
     const names = disabledMcpTools.map((toolDef) => `${toolDef.definition.name} (${(toolDef.requiredEnv ?? []).join(", ")})`).join(", ");
     log.info("mcp", "Unavailable (missing env)", { tools: names });
+  }
+  logExternalMcpPreflight();
+}
+
+// External MCP servers (the `mcp.json` ones — Notion / GitHub /…)
+// get a separate preflight pass that mirrors the built-in
+// `Available / Unavailable` summary above. Servers with catalog
+// entries whose `required: true` fields are unset are excluded from
+// the config handed to Claude Code (filtered inside
+// `prepareUserServers`); this boot-time log gives the operator one
+// clear startup signal (#1352).
+function logExternalMcpPreflight(): void {
+  try {
+    const userMcpRaw = loadMcpConfig().mcpServers;
+    const preflight = preflightUserServers(userMcpRaw);
+    logPreflightResult(preflight, "boot");
+  } catch (err) {
+    // Best-effort: a broken mcp.json shouldn't take down boot. The
+    // per-agent-run path will still attempt the preflight and surface
+    // any genuine issue when the user actually starts a chat.
+    log.warn("mcp", "preflight at boot failed; will retry per-agent-run", {
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 

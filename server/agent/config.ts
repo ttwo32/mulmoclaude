@@ -10,6 +10,7 @@ import type { Attachment } from "@mulmobridge/protocol";
 import { isImageMime, isNativeAttachmentMime } from "@mulmobridge/client";
 import { convertAttachment } from "./attachmentConverter.js";
 import { log } from "../system/logger/index.js";
+import { preflightUserServers, logPreflightResult } from "./mcpPreflight.js";
 
 export const CONTAINER_WORKSPACE_PATH = "/home/node/mulmoclaude";
 
@@ -73,8 +74,14 @@ function prepareUserStdioServer(spec: Extract<McpServerSpec, { type: "stdio" }>,
 }
 
 export function prepareUserServers(userServers: Record<string, McpServerSpec>, useDocker: boolean, hostWorkspacePath: string): Record<string, McpServerSpec> {
+  // Drop catalog-known entries that are missing required config (#1352).
+  // The dedup cache inside `logPreflightResult` keeps per-agent-run
+  // calls quiet so a Settings UI fix only logs once when it transitions
+  // missing → ok.
+  const preflight = preflightUserServers(userServers);
+  logPreflightResult(preflight, "agent-run");
   const out: Record<string, McpServerSpec> = {};
-  for (const [serverId, spec] of Object.entries(userServers)) {
+  for (const [serverId, spec] of Object.entries(preflight.ready)) {
     if (spec.enabled === false) continue;
     if (spec.type === "http") {
       out[serverId] = prepareUserHttpServer(spec, useDocker);
