@@ -482,6 +482,11 @@ interface Beat {
   id?: string;
   imagePrompt?: string;
   image?: { type: string; [key: string]: unknown };
+  /** Beat duration in seconds. The mulmocast schema notes this is
+   *  "Used only when the text is empty" — when there's no TTS audio
+   *  to drive playback, the Play loop uses this as the auto-advance
+   *  timer (#1073). */
+  duration?: number;
 }
 
 interface ImageEntry {
@@ -541,7 +546,19 @@ const beatAudios = reactive<Record<number, string>>({});
 const audioState = reactive<Record<number, "generating" | "done" | "error">>({});
 const audioErrors = reactive<Record<number, string>>({});
 const playingAudio = ref<{ index: number; audio: HTMLAudioElement } | null>(null);
+// Tracks the auto-advance timer running on a silent beat
+// (`beat.text === ""`). Beats without text generate no audio, so the
+// Play loop falls back to a `setTimeout(beat.duration)` for cues —
+// without this, Play would stall on the first silent beat (#1073).
+const silentPlaybackTimer = ref<{ index: number; timer: ReturnType<typeof setTimeout> } | null>(null);
 const audioProgress = ref(0);
+
+// Default duration (seconds) for a silent beat whose script doesn't
+// set `duration` either. Picked to roughly match the time it takes a
+// reader to scan a `textSlide` — long enough to read, short enough
+// not to feel stuck. The script's own `duration` always wins.
+const SILENT_BEAT_DEFAULT_SEC = 3;
+const MS_PER_SECOND = 1000;
 const beatListEl = ref<HTMLElement | null>(null);
 const lightbox = ref<{
   src: string;
@@ -591,10 +608,11 @@ function characterPrompt(key: string): string {
 }
 
 function stopPlayingAudio() {
-  if (!playingAudio.value) return;
-  playingAudio.value.audio.pause();
-  playingAudio.value = null;
-  audioProgress.value = 0;
+  // Single helper that clears both the audio path and the silent
+  // auto-advance timer — callers (lightbox open / arrow nav / Stop
+  // button) get consistent behaviour without remembering which
+  // playback mode the current beat was using (#1073).
+  stopAllPlayback();
 }
 
 function openLightbox(index: number) {
@@ -641,7 +659,76 @@ const isPlayReady = computed<boolean>(() => {
 function playPresentation() {
   if (!isPlayReady.value) return;
   openLightbox(0);
-  if (beatAudios[0]) playAudio(0);
+  playBeat(0);
+}
+
+// Stop whichever playback handle is active. Idempotent. Called by
+// openLightbox, manual stop / pause buttons, and by `playBeat`
+// before kicking off a new beat so we never double-schedule. (#1073)
+function stopAllPlayback(): void {
+  if (playingAudio.value) {
+    playingAudio.value.audio.pause();
+    playingAudio.value = null;
+    audioProgress.value = 0;
+  }
+  if (silentPlaybackTimer.value) {
+    clearTimeout(silentPlaybackTimer.value.timer);
+    silentPlaybackTimer.value = null;
+  }
+}
+
+// Single entry point for "start playback at beat <index>". Routes
+// on what the script DECLARED, not on what's currently hydrated:
+//
+//   - `text` empty  → silent path (`scheduleSilentAdvance`). The
+//     schema says no audio is generated for empty-text beats, so
+//     `duration` drives auto-advance.
+//   - `text` present + audio loaded → audio path. `audio.ended`
+//     chains via `advanceFromBeat`.
+//   - `text` present + audio NOT loaded → stop. The Play button's
+//     `isPlayReady` gate prevented this for beat 0, but mid-stream
+//     a transient fetch miss must not silently skip the narration
+//     by falling through to the silent timer (Codex review on
+//     #1073 — gating on `beatAudios[index]` would do exactly that).
+//
+// Either path chains to the next beat via `advanceFromBeat`, so a
+// run of silent beats — or audio / silent / audio sequences —
+// plays through without manual interaction.
+function playBeat(index: number): void {
+  stopAllPlayback();
+  const hasText = Boolean(effectiveBeat(index).text);
+  if (!hasText) {
+    scheduleSilentAdvance(index);
+    return;
+  }
+  if (beatAudios[index]) {
+    playAudio(index);
+  }
+  // Text beat with no audio yet → stop. The user can re-click Play
+  // once the audio finishes hydrating.
+}
+
+function scheduleSilentAdvance(index: number): void {
+  // Defensively narrow the script-supplied duration. A bad value
+  // (zero, negative, NaN, non-number) would otherwise collapse to
+  // an immediate timeout and the Play loop would race through every
+  // silent beat in a single tick (Codex review iter-5 on #1365).
+  // Falling back to the default keeps the presentation watchable.
+  const raw = effectiveBeat(index).duration;
+  const seconds = typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : SILENT_BEAT_DEFAULT_SEC;
+  const timer = setTimeout(() => {
+    if (silentPlaybackTimer.value?.index !== index) return;
+    silentPlaybackTimer.value = null;
+    if (lightbox.value?.index === index) advanceFromBeat(index);
+  }, seconds * MS_PER_SECOND);
+  silentPlaybackTimer.value = { index, timer };
+}
+
+function advanceFromBeat(fromIndex: number): void {
+  lightboxMove(1);
+  const nextIndex = lightbox.value?.index;
+  if (nextIndex === undefined || nextIndex === fromIndex) return;
+  playBeat(nextIndex);
 }
 
 const hasPrev = computed(() => {
@@ -664,11 +751,12 @@ function jumpToBeat(index: number) {
   if (!lightbox.value) return;
   if (index === lightbox.value.index) return;
   if (!renderedImages[index]) return;
-  const wasPlaying = playingAudio.value !== null;
+  // Carry the playback mode forward (audio OR silent timer) so a
+  // user clicking the beat-strip thumbnail mid-playback keeps the
+  // presentation rolling (#1073).
+  const wasPlaying = playingAudio.value !== null || silentPlaybackTimer.value !== null;
   openLightbox(index);
-  if (wasPlaying && beatAudios[index]) {
-    playAudio(index);
-  }
+  if (wasPlaying) playBeat(index);
 }
 
 function beatTooltip(index: number): string {
@@ -679,20 +767,19 @@ function beatTooltip(index: number): string {
 function lightboxMove(delta: number) {
   if (!lightbox.value) return;
   const total = beats.value.length;
-  // If audio was playing when the user clicked the arrow, carry the
-  // playback over to the next beat that has audio. openLightbox()
-  // unconditionally stops any active audio, so we capture the flag
-  // BEFORE that and replay AFTER. The on-ended auto-advance path
-  // already nulls playingAudio before calling lightboxMove, so this
-  // branch won't double-fire there.
-  const wasPlaying = playingAudio.value !== null;
+  // If a playback was in progress when the user clicked the arrow,
+  // carry it forward to whichever beat we land on — `playBeat`
+  // picks audio vs silent automatically. `openLightbox` stops the
+  // current playback, so capture the flag BEFORE that and chain
+  // AFTER. The on-ended / silent-advance paths already null their
+  // own state before calling `lightboxMove`, so this branch won't
+  // double-fire there.
+  const wasPlaying = playingAudio.value !== null || silentPlaybackTimer.value !== null;
   let i = lightbox.value.index + delta;
   while (i >= 0 && i < total) {
     if (renderedImages[i]) {
       openLightbox(i);
-      if (wasPlaying && beatAudios[i]) {
-        playAudio(i);
-      }
+      if (wasPlaying) playBeat(i);
       return;
     }
     i += delta;
@@ -938,13 +1025,7 @@ function playAudio(index: number) {
     if (playingAudio.value?.index !== index) return;
     playingAudio.value = null;
     audioProgress.value = 0;
-    if (lightbox.value?.index === index) {
-      lightboxMove(1);
-      const nextIndex = lightbox.value?.index;
-      if (nextIndex !== undefined && nextIndex !== index && beatAudios[nextIndex]) {
-        playAudio(nextIndex);
-      }
-    }
+    if (lightbox.value?.index === index) advanceFromBeat(index);
   });
   audio.play();
 }
@@ -1046,10 +1127,9 @@ async function onCharDrop(event: DragEvent, key: string) {
 }
 
 function openCharacterLightbox(key: string) {
-  if (playingAudio.value) {
-    playingAudio.value.audio.pause();
-    playingAudio.value = null;
-  }
+  // Stop both audio and silent timer — character lightbox is
+  // outside the play loop (#1073).
+  stopAllPlayback();
   lightbox.value = {
     src: charImages[key],
     text: key,
@@ -1162,6 +1242,15 @@ async function refreshScriptFromDisk(): Promise<void> {
 }
 
 async function initializeScript() {
+  // Stop any in-flight playback BEFORE we tear down per-script state
+  // — a pending `silentPlaybackTimer` or running audio from the
+  // previous script would otherwise fire `advanceFromBeat()` against
+  // the new script's lightbox / beat list and either crash or
+  // silently jump the new presentation forward. Also close any open
+  // lightbox so the user lands on the clean View for the new result
+  // (Codex review iter-4 on #1365).
+  stopAllPlayback();
+  lightbox.value = null;
   // Reset scroll position so new results start at the top
   if (beatListEl.value) beatListEl.value.scrollTop = 0;
   // Reset per-script state
