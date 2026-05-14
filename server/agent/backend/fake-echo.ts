@@ -226,10 +226,15 @@ async function dispatchToPlugin(call: FakeToolCall, port: number, chatSessionId:
         body: JSON.stringify({ ...envelope, toolName: call.toolName, uuid: makeUuid() }),
       });
       if (!pushRes.ok) {
+        // Fail loudly per codex review — a swallowed publish would
+        // leave the canvas blank while the chat reads "Done", which
+        // masks a real wiring break. Surface the failure as the
+        // tool result so the test fails loud instead of timing out
+        // on an absent View.
         const errBody = await pushRes.text();
-        // Don't fail the chat turn — log so the operator can diagnose.
-        // eslint-disable-next-line no-console
-        console.warn(`[fake-echo] tool-result push failed ${pushRes.status}: ${errBody.slice(0, 200)}`);
+        return JSON.stringify({
+          error: `tool-result push failed for ${call.toolName}: ${pushRes.status} ${errBody.slice(0, 200)}`,
+        });
       }
     }
     const text: string[] = [];
