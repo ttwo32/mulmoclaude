@@ -36,6 +36,8 @@ import { loadPresetPlugins } from "./plugins/preset-loader.js";
 import { registerRuntimePlugins } from "./plugins/runtime-registry.js";
 import { makePluginRuntime } from "./plugins/runtime.js";
 import { MCP_PLUGIN_NAMES } from "./agent/plugin-names.js";
+import { setActiveBackend } from "./agent/backend/index.js";
+import { fakeEchoBackend } from "./agent/backend/fake-echo.js";
 import { startMacosReminderAdapter } from "./notifier/macosReminderAdapter.js";
 import notifierRoutes from "./api/routes/notifier.js";
 import { initNotifier } from "./notifier/engine.js";
@@ -102,6 +104,47 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const debugMode = process.argv.includes("--debug");
+
+// Global crash diagnostics (#1364). These handlers log loudly so a
+// fatal failure is triagable, then EXIT — keeping the loop running
+// after an uncaught exception is process-unsafe per the Node docs
+// (invariants may already be broken). The launcher / supervisor
+// (Electron wrapper, systemd, etc.) is responsible for restart.
+//
+// The canonical failure this PR set out to fix — missing `claude`
+// on PATH crashing the server via spawn's `error` event — is now
+// caught at the local boundary in `server/agent/backend/claude-code.ts`
+// (an explicit `error` listener turns ENOENT into an AgentEvent).
+// These handlers are the BACKSTOP for anything we missed, not a
+// substitute for local error handling. (Codex review on #1364.)
+//
+// `process.exit(1)` is non-zero so supervisors that branch on exit
+// code treat the bounce as an error condition.
+const FATAL_EXIT_DELAY_MS = 100;
+process.on("uncaughtException", (err) => {
+  log.error("uncaughtException", err instanceof Error ? err.message : String(err), {
+    stack: err instanceof Error ? err.stack : undefined,
+  });
+  // Tiny grace so the log line flushes to disk before we exit.
+  setTimeout(() => process.exit(1), FATAL_EXIT_DELAY_MS);
+});
+process.on("unhandledRejection", (reason) => {
+  log.error("unhandledRejection", reason instanceof Error ? reason.message : String(reason), {
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
+  setTimeout(() => process.exit(1), FATAL_EXIT_DELAY_MS);
+});
+
+// Test-seam: CI runs without a Claude CLI / API key set the
+// MULMOCLAUDE_FAKE_AGENT env var, which swaps in an echo-stub
+// backend so the chat flow still completes. Decided once at boot;
+// the orchestrator reads the active backend with zero per-call
+// overhead. Production callers never trip this branch (no runtime
+// import-time cost beyond the small fake-echo module itself).
+if (process.env.MULMOCLAUDE_FAKE_AGENT === "1") {
+  setActiveBackend(fakeEchoBackend);
+  log.info("agent", "MULMOCLAUDE_FAKE_AGENT=1 — active backend = fake-echo");
+}
 
 initWorkspace();
 

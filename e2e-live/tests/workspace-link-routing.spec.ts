@@ -29,6 +29,10 @@ test.describe.configure({ mode: "parallel" });
 
 test.describe("workspace link routing (real workspace)", () => {
   test("L-23: マルチバイトファイル名を含む Markdown リンクが二重 percent-encode されず Files で開ける", async ({ page }, testInfo) => {
+    // L-23 needs an assistant turn whose body contains the seeded
+    // markdown link. Both real Claude and the fake-echo backend
+    // (`MULMOCLAUDE_FAKE_AGENT=1`) satisfy that contract since the
+    // user prompt itself contains the link.
     test.setTimeout(L23_TIMEOUT_MS);
     // Covers the regression behind plans/fix-workspace-link-double-encoding.md.
     //

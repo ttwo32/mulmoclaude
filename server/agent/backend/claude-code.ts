@@ -155,6 +155,33 @@ async function* runClaudeAgent(input: AgentInput): AsyncGenerator<AgentEvent> {
 
   const proc = spawnClaude(input.useDocker, input.workspacePath, cliArgs, input.sessionId);
 
+  // Wait for the kernel to confirm the spawn before piping anything
+  // into stdin. Without this guard, a missing `claude` (or `docker`)
+  // binary emits a delayed `error` event with no listener attached —
+  // Node treats it as uncaught and tears down the entire server
+  // process. Surfacing it as a regular AgentEvent keeps the server
+  // alive across CI runs and prod-misconfig recovery (#1364).
+  try {
+    await new Promise<void>((resolve, reject) => {
+      proc.once("spawn", () => resolve());
+      proc.once("error", (err) => reject(err));
+    });
+  } catch (err) {
+    const target = input.useDocker ? "docker" : "claude";
+    const message = err instanceof Error ? err.message : String(err);
+    log.error("agent", `failed to spawn ${target}`, { error: message });
+    yield {
+      type: EVENT_TYPES.error,
+      message: `Failed to spawn ${target}: ${message}`,
+    };
+    return;
+  }
+  // Best-effort stdin EPIPE guard — the process can die between
+  // `spawn` and the write below for unrelated reasons (OOM, kill
+  // -9), and we don't want a write-after-death to become another
+  // uncaught error.
+  proc.stdin.on("error", () => {});
+
   // stream-json input mode: stream the user turn as a single JSON
   // line to stdin, then close the pipe so the CLI knows no further
   // turns are coming. Writing before attaching the abort handler is
