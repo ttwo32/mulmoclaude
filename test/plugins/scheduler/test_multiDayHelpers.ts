@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { coversDay, eventRange, segmentPosition } from "../../../src/plugins/scheduler/multiDayHelpers.js";
+import { coversDay, eventColorClasses, eventRange, EVENT_PALETTE_SIZE, segmentPosition } from "../../../src/plugins/scheduler/multiDayHelpers.js";
 import type { ScheduledItem } from "../../../src/plugins/scheduler/index.js";
 
 function makeItem(props: ScheduledItem["props"]): ScheduledItem {
@@ -111,5 +111,37 @@ describe("segmentPosition", () => {
     const malformed = makeItem({ date: "2026-05-27", endDate: "2026-05-25" });
     assert.equal(segmentPosition(malformed, "2026-05-27"), "only");
     assert.equal(segmentPosition(malformed, "2026-05-26"), null);
+  });
+});
+
+describe("eventColorClasses", () => {
+  it("returns the same class string for the same id (stable hash)", () => {
+    const first = eventColorClasses("sched_123_abc");
+    const second = eventColorClasses("sched_123_abc");
+    assert.equal(first, second);
+  });
+
+  it("each result is a non-empty bg-/text-/hover: triplet", () => {
+    const cls = eventColorClasses("sched_xyz");
+    assert.match(cls, /bg-\w+-100/);
+    assert.match(cls, /text-\w+-900/);
+    assert.match(cls, /hover:bg-\w+-200/);
+  });
+
+  it("covers every palette slot across a range of ids", () => {
+    // Sample 200 random-ish ids; with 8 slots and a stable hash,
+    // every slot should be hit by ~25 ids — `Set.size === palette
+    // size` is a low-noise way to verify the distribution isn't
+    // collapsed onto one bucket.
+    const seen = new Set<string>();
+    for (let i = 0; i < 200; i++) {
+      seen.add(eventColorClasses(`sched_${i}_${(i * 31).toString(16)}`));
+    }
+    assert.equal(seen.size, EVENT_PALETTE_SIZE);
+  });
+
+  it("returns a value even for an empty id (defensive fallback)", () => {
+    const cls = eventColorClasses("");
+    assert.match(cls, /bg-\w+-100/);
   });
 });

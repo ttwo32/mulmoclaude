@@ -128,13 +128,11 @@
                 v-for="item in itemsForDay(day)"
                 :key="item.id"
                 class="text-xs px-1.5 py-0.5 cursor-pointer truncate"
-                :class="[segmentClasses(item, day), selectedId === item.id ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-800 hover:bg-blue-200']"
+                :class="[segmentClasses(item, day), selectedId === item.id ? 'bg-blue-500 text-white' : chipColorClasses(item)]"
                 :title="item.title"
                 @click="selectItem(item)"
               >
-                <span :class="{ invisible: isContinuationSegment(item, day) }">
-                  <span v-if="itemTime(item)" class="font-medium">{{ itemTime(item) }} </span>{{ item.title }}
-                </span>
+                <span v-if="itemTime(item)" class="font-medium">{{ itemTime(item) }} </span>{{ item.title }}
               </div>
             </div>
           </div>
@@ -176,11 +174,11 @@
                 v-for="item in itemsForDay(day).slice(0, MAX_MONTH_ITEMS)"
                 :key="item.id"
                 class="text-[10px] leading-tight px-1 py-0.5 cursor-pointer truncate"
-                :class="[segmentClasses(item, day), selectedId === item.id ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-800 hover:bg-blue-200']"
+                :class="[segmentClasses(item, day), selectedId === item.id ? 'bg-blue-500 text-white' : chipColorClasses(item)]"
                 :title="item.title"
                 @click="selectItem(item)"
               >
-                <span :class="{ invisible: isContinuationSegment(item, day) }">{{ item.title }}</span>
+                {{ item.title }}
               </div>
               <div v-if="itemsForDay(day).length > MAX_MONTH_ITEMS" class="text-[10px] text-gray-400 px-1">
                 {{ t("pluginScheduler.moreCount", { count: itemsForDay(day).length - MAX_MONTH_ITEMS }) }}
@@ -263,7 +261,7 @@ import TasksTab from "./TasksTab.vue";
 import { isToday, formatShortDate, formatMonthYear } from "../../utils/format/date";
 import { errorMessage } from "../../utils/errors";
 import { SCHEDULER_VIEW, SCHEDULER_VIEW_MODES as VIEW_MODES, SCHEDULER_TAB, type SchedulerViewMode as ViewMode, type SchedulerTab } from "./viewModes";
-import { coversDay, segmentPosition, type SegmentPosition } from "./multiDayHelpers";
+import { coversDay, eventColorClasses, segmentPosition, type SegmentPosition } from "./multiDayHelpers";
 
 const { t } = useI18n();
 
@@ -385,9 +383,8 @@ function segmentClasses(item: ScheduledItem, day: Date): string {
   return pos ? SEGMENT_BASE[pos] : "rounded";
 }
 
-function isContinuationSegment(item: ScheduledItem, day: Date): boolean {
-  const pos = segmentPosition(item, toDateString(day));
-  return pos === "middle" || pos === "end";
+function chipColorClasses(item: ScheduledItem): string {
+  return eventColorClasses(item.id);
 }
 
 const unscheduledItems = computed(() => items.value.filter((item) => !item.props.date));
