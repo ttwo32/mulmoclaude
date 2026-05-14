@@ -1094,6 +1094,11 @@ const deMessages = {
     errSaveFailed: "Speichern fehlgeschlagen: {error}",
     errDeleteFailed: "Löschen fehlgeschlagen",
     confirmDelete: 'Skill "{name}" löschen? Dies entfernt ~/mulmoclaude/.claude/skills/{name}/SKILL.md.',
+    catalogPresetHeading: "Preset-Katalog",
+    catalogStar: "☆ Markieren",
+    catalogStarred: "★ Markiert",
+    errCatalogListFailed: "Katalog konnte nicht geladen werden: {error}",
+    errCatalogStarFailed: "Skill konnte nicht markiert werden: {error}",
   },
   pluginManageRoles: {
     heading: "Benutzerdefinierte Rollen",

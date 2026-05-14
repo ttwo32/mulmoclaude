@@ -15,6 +15,7 @@
 import { Router, Request, Response } from "express";
 import { deleteProjectSkill, discoverSkills, saveProjectSkill, updateProjectSkill } from "../../workspace/skills/index.js";
 import type { Skill, SkillSummary } from "../../workspace/skills/index.js";
+import { isCatalogSource, listCatalogEntries, starCatalogEntry, type CatalogEntry } from "../../workspace/skills/catalog.js";
 import { workspacePath } from "../../workspace/workspace.js";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
 import { bindRoute } from "../../utils/router.js";
@@ -216,6 +217,63 @@ bindRoute(router, API_ROUTES.skills.remove, async (req: Request<{ name: string }
     log.warn("skills", "delete: not found", { name: result.name });
     notFound(res, `skill not found: ${result.name}`);
   }
+});
+
+// Catalog endpoints (#1335 PR-B). Reads from
+// `<workspace>/data/skills/catalog/<source>/<slug>/` (populated by
+// `syncPresetSkills`); the star endpoint copies catalog entries
+// into `.claude/skills/<slug>/` so Claude Code's discovery picks
+// them up. Catalog entries themselves are NOT in `.claude/skills/`
+// by design — that's the prompt-bloat fix from #1335.
+
+interface CatalogListResponse {
+  entries: CatalogEntry[];
+}
+
+interface StarBody {
+  source?: unknown;
+  slug?: unknown;
+}
+
+interface StarResponse {
+  starred: true;
+  slug: string;
+}
+
+bindRoute(router, API_ROUTES.skills.catalogList, async (_req: Request, res: Response<CatalogListResponse>) => {
+  const entries = await listCatalogEntries();
+  log.info("skills", "catalog list: ok", { count: entries.length });
+  res.json({ entries });
+});
+
+bindRoute(router, API_ROUTES.skills.catalogStar, async (req: Request<object, unknown, StarBody>, res: Response<StarResponse | ErrorResponse>) => {
+  const { source, slug } = req.body;
+  if (typeof slug !== "string" || slug.length === 0) {
+    badRequest(res, "slug is required");
+    return;
+  }
+  if (!isCatalogSource(source)) {
+    badRequest(res, "source must be a known catalog source");
+    return;
+  }
+  const result = await starCatalogEntry(source, slug);
+  if (result.kind === "starred") {
+    log.info("skills", "catalog star: ok", { source, slug });
+    res.json({ starred: true, slug: result.slug });
+    return;
+  }
+  if (result.kind === "already-active") {
+    log.info("skills", "catalog star: already-active", { source, slug });
+    conflict(res, `skill "${result.slug}" is already active`);
+    return;
+  }
+  if (result.kind === "not-found") {
+    log.warn("skills", "catalog star: not found", { source, slug });
+    notFound(res, `catalog entry not found: ${result.source}/${result.slug}`);
+    return;
+  }
+  log.warn("skills", "catalog star: invalid slug", { slug });
+  badRequest(res, `invalid slug: ${result.slug}`);
 });
 
 export default router;

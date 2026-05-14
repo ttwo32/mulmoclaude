@@ -1080,6 +1080,11 @@ const jaMessages = {
     errSaveFailed: "保存失敗: {error}",
     errDeleteFailed: "削除に失敗しました",
     confirmDelete: "スキル「{name}」を削除しますか? ~/mulmoclaude/.claude/skills/{name}/SKILL.md が削除されます。",
+    catalogPresetHeading: "プリセットカタログ",
+    catalogStar: "☆ Star",
+    catalogStarred: "★ Starred",
+    errCatalogListFailed: "カタログの読み込みに失敗しました: {error}",
+    errCatalogStarFailed: "スキルの star に失敗しました: {error}",
   },
   pluginManageRoles: {
     heading: "カスタムロール",

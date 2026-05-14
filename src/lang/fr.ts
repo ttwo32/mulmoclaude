@@ -1085,6 +1085,11 @@ const frMessages = {
     errSaveFailed: "Échec de l'enregistrement : {error}",
     errDeleteFailed: "Échec de la suppression",
     confirmDelete: 'Supprimer la skill "{name}" ? Cela retire ~/mulmoclaude/.claude/skills/{name}/SKILL.md.',
+    catalogPresetHeading: "Catalogue de préréglages",
+    catalogStar: "☆ Favori",
+    catalogStarred: "★ Favoris",
+    errCatalogListFailed: "Échec du chargement du catalogue : {error}",
+    errCatalogStarFailed: "Échec de l'ajout aux favoris : {error}",
   },
   pluginManageRoles: {
     heading: "Rôles personnalisés",

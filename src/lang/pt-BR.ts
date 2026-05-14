@@ -1080,6 +1080,11 @@ const ptBRMessages = {
     errSaveFailed: "Falha ao salvar: {error}",
     errDeleteFailed: "Falha ao excluir",
     confirmDelete: 'Excluir a skill "{name}"? Isso remove ~/mulmoclaude/.claude/skills/{name}/SKILL.md.',
+    catalogPresetHeading: "Catálogo de presets",
+    catalogStar: "☆ Favoritar",
+    catalogStarred: "★ Favoritada",
+    errCatalogListFailed: "Falha ao carregar o catálogo: {error}",
+    errCatalogStarFailed: "Falha ao favoritar a skill: {error}",
   },
   pluginManageRoles: {
     heading: "Papéis personalizados",

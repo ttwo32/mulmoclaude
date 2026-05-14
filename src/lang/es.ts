@@ -1091,6 +1091,11 @@ const esMessages = {
     errSaveFailed: "Error al guardar: {error}",
     errDeleteFailed: "Error al eliminar",
     confirmDelete: '¿Eliminar la skill "{name}"? Esto borrará ~/mulmoclaude/.claude/skills/{name}/SKILL.md.',
+    catalogPresetHeading: "Catálogo de preajustes",
+    catalogStar: "☆ Destacar",
+    catalogStarred: "★ Destacada",
+    errCatalogListFailed: "Error al cargar el catálogo: {error}",
+    errCatalogStarFailed: "Error al destacar la skill: {error}",
   },
   pluginManageRoles: {
     heading: "Roles personalizados",

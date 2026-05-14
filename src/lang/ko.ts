@@ -1080,6 +1080,11 @@ const koMessages = {
     errSaveFailed: "저장 실패: {error}",
     errDeleteFailed: "삭제 실패",
     confirmDelete: '스킬 "{name}" 을(를) 삭제할까요? ~/mulmoclaude/.claude/skills/{name}/SKILL.md 가 제거됩니다.',
+    catalogPresetHeading: "프리셋 카탈로그",
+    catalogStar: "☆ 별 표시",
+    catalogStarred: "★ 별 표시됨",
+    errCatalogListFailed: "카탈로그를 불러오지 못했습니다: {error}",
+    errCatalogStarFailed: "스킬에 별 표시를 추가하지 못했습니다: {error}",
   },
   pluginManageRoles: {
     heading: "커스텀 역할",

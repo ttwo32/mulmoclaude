@@ -1079,6 +1079,11 @@ const enMessages = {
     errSaveFailed: "Save failed: {error}",
     errDeleteFailed: "Failed to delete",
     confirmDelete: 'Delete skill "{name}"? This removes ~/mulmoclaude/.claude/skills/{name}/SKILL.md.',
+    catalogPresetHeading: "Preset catalog",
+    catalogStar: "☆ Star",
+    catalogStarred: "★ Starred",
+    errCatalogListFailed: "Failed to load catalog: {error}",
+    errCatalogStarFailed: "Failed to star skill: {error}",
   },
   pluginManageRoles: {
     heading: "Custom Roles",

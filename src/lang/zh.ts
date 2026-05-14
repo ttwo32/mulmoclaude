@@ -1072,6 +1072,11 @@ const zhMessages = {
     errSaveFailed: "保存失败: {error}",
     errDeleteFailed: "删除失败",
     confirmDelete: '要删除技能 "{name}" 吗?将会移除 ~/mulmoclaude/.claude/skills/{name}/SKILL.md。',
+    catalogPresetHeading: "预设目录",
+    catalogStar: "☆ 收藏",
+    catalogStarred: "★ 已收藏",
+    errCatalogListFailed: "加载目录失败: {error}",
+    errCatalogStarFailed: "收藏技能失败: {error}",
   },
   pluginManageRoles: {
     heading: "自定义角色",

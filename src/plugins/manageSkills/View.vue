@@ -37,6 +37,49 @@
             <code class="text-[11px]">{{ t("pluginManageSkills.emptySkillPath") }}</code>
           </template>
         </i18n-t>
+
+        <!-- Catalog: launcher-managed presets that haven't been
+             starred into `.claude/skills/` yet. #1335 PR-B. Rendered
+             below the Active list as a flat group; PR-C will add
+             Anthropic + community subsections. Each row is read-only
+             (Run once + Preview land in PR-B2) with a single ★ Star
+             action that copies the entry into the Active layer. -->
+        <div v-if="catalogPresets.length > 0" class="border-t border-gray-200 mt-2">
+          <div class="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500 font-semibold" data-testid="skill-catalog-section-heading">
+            {{ t("pluginManageSkills.catalogPresetHeading") }}
+          </div>
+          <div
+            v-for="entry in catalogPresets"
+            :key="`catalog-preset-${entry.slug}`"
+            :data-testid="`skill-catalog-item-${entry.slug}`"
+            class="px-4 py-2 border-b border-gray-100 text-sm flex items-start gap-2"
+          >
+            <div class="flex-1 min-w-0">
+              <div class="font-medium text-gray-700 truncate">{{ entry.name }}</div>
+              <div class="text-xs text-gray-500 truncate mt-0.5">{{ entry.description }}</div>
+            </div>
+            <button
+              v-if="entry.alreadyActive"
+              class="shrink-0 h-7 px-2 text-[11px] rounded text-gray-400 cursor-not-allowed"
+              :title="t('pluginManageSkills.catalogStarred')"
+              :data-testid="`skill-catalog-starred-${entry.slug}`"
+              disabled
+            >
+              {{ t("pluginManageSkills.catalogStarred") }}
+            </button>
+            <button
+              v-else
+              class="shrink-0 h-7 px-2 text-[11px] rounded border border-blue-300 text-blue-600 hover:bg-blue-50 disabled:opacity-40"
+              :disabled="starringSlug === entry.slug"
+              :title="t('pluginManageSkills.catalogStar')"
+              :data-testid="`skill-catalog-star-btn-${entry.slug}`"
+              @click="starCatalogEntry(entry)"
+            >
+              {{ t("pluginManageSkills.catalogStar") }}
+            </button>
+          </div>
+          <div v-if="catalogError" class="px-4 py-2 text-xs text-red-600">{{ catalogError }}</div>
+        </div>
       </div>
 
       <!-- Right: detail pane -->
@@ -152,7 +195,7 @@ import { marked } from "marked";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import type { ManageSkillsData, SkillSummary } from "./index";
 import { useAppApi } from "../../composables/useAppApi";
-import { apiGet, apiPut, apiDelete } from "../../utils/api";
+import { apiGet, apiPost, apiPut, apiDelete } from "../../utils/api";
 import { handleExternalLinkClick } from "../../utils/dom/externalLink";
 import { sanitizeMarkdownHtml } from "../../utils/markdown/sanitize";
 import { pluginEndpoints } from "../api";
@@ -209,9 +252,66 @@ const listError = ref<string | null>(null);
 
 const endpoints = pluginEndpoints<SkillsEndpoints>("skills");
 
+// Catalog state (#1335 PR-B). Loaded on mount + after a successful
+// star so the row updates from "★ Star" → "★ Starred". `starringSlug`
+// disables the button mid-request to prevent double-clicks.
+type CatalogSource = "preset";
+interface CatalogEntry {
+  slug: string;
+  name: string;
+  description: string;
+  source: CatalogSource;
+  alreadyActive: boolean;
+}
+const catalogPresets = ref<CatalogEntry[]>([]);
+const catalogError = ref<string | null>(null);
+const starringSlug = ref<string | null>(null);
+
+async function loadCatalog(): Promise<void> {
+  const response = await apiGet<{ entries: CatalogEntry[] }>(endpoints.catalogList.url);
+  if (!response.ok) {
+    catalogError.value = t("pluginManageSkills.errCatalogListFailed", { error: response.error });
+    return;
+  }
+  catalogError.value = null;
+  if (Array.isArray(response.data.entries)) {
+    catalogPresets.value = response.data.entries.filter((entry) => entry.source === "preset");
+  }
+}
+
+async function refreshActiveList(): Promise<void> {
+  // Mirrors the onMounted fetch so the left-column list reflects the
+  // newly-starred skill without waiting for the next manageSkills
+  // tool result. Errors here are non-fatal — the catalog state is
+  // the source of truth for the "Starred" badge.
+  const response = await apiGet<{ skills: SkillSummary[] }>(endpoints.list.url);
+  if (response.ok && Array.isArray(response.data.skills)) {
+    skills.value = response.data.skills;
+  }
+}
+
+async function starCatalogEntry(entry: CatalogEntry): Promise<void> {
+  if (entry.alreadyActive) return;
+  starringSlug.value = entry.slug;
+  const response = await apiPost<{ starred: true; slug: string }>(endpoints.catalogStar.url, { source: entry.source, slug: entry.slug });
+  starringSlug.value = null;
+  if (!response.ok) {
+    catalogError.value = t("pluginManageSkills.errCatalogStarFailed", { error: response.error });
+    return;
+  }
+  catalogError.value = null;
+  // Refresh both lists so the row flips to "Starred" and the new
+  // active entry shows up in the left column.
+  await Promise.all([loadCatalog(), refreshActiveList()]);
+}
+
 // Standalone mode: if no selectedResult was passed, fetch the skill
 // list from the API on mount so the view is populated.
 onMounted(async () => {
+  // Always load the catalog so the section appears even when the
+  // view was opened from a tool result (which only carries the
+  // active list).
+  await loadCatalog();
   if (props.selectedResult || skills.value.length > 0) return;
   const response = await apiGet<{ skills: SkillSummary[] }>(endpoints.list.url);
   if (!response.ok) {
