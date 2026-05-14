@@ -128,12 +128,6 @@ const HOST_API_ROUTES = {
     invoke: "/api/mcp-tools/:tool",
   },
 
-  notifications: {
-    // PoC endpoint for scheduled push fan-out (Web pub-sub + bridge).
-    // Scaffolding for #144 / #142 — see plans/done/feat-notification-push-scaffold.md.
-    test: "/api/notifications/test",
-  },
-
   /** Notifier dispatch — single endpoint, body carries `{ action,
    *  ... }`. Matches the `manage*` tool pattern used elsewhere
    *  (manageEncore / manageAccounting / manageSkills). */

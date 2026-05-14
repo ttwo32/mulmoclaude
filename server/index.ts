@@ -36,8 +36,7 @@ import { loadPresetPlugins } from "./plugins/preset-loader.js";
 import { registerRuntimePlugins } from "./plugins/runtime-registry.js";
 import { makePluginRuntime } from "./plugins/runtime.js";
 import { MCP_PLUGIN_NAMES } from "./agent/plugin-names.js";
-import { createNotificationsRouter } from "./api/routes/notifications.js";
-import { startLegacyAdapters } from "./notifier/legacy-adapters.js";
+import { startMacosReminderAdapter } from "./notifier/macosReminderAdapter.js";
 import notifierRoutes from "./api/routes/notifier.js";
 import { initNotifier } from "./notifier/engine.js";
 import { registerSaveAttachmentHook } from "./utils/files/attachment-store.js";
@@ -655,7 +654,6 @@ app.use(chatService.router);
 // `startRuntimeServices` has it. Calls that arrive before fill-in
 // (impossible in practice — the HTTP server isn't listening yet)
 // would no-op on publish but still queue the bridge push.
-app.use(createNotificationsRouter());
 app.use(notifierRoutes);
 app.use(createJournalRouter());
 app.use(createTranslationRouter());
@@ -832,11 +830,14 @@ async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, p
   // is forwarded in here so the rest of `startRuntimeServices` can
   // share the same instance.
 
-  // --- Legacy adapters (bridge + macOS Reminder push) ---
+  // --- macOS Reminder side-channel ---
   // Subscribe in-process to the engine so any `notifier.publish` —
-  // legacy wrapper or plugin-runtime — triggers the same fan-out the
-  // legacy `publishNotification()` did inline before PR 4.
-  startLegacyAdapters({ pushToBridge: chatService.pushToBridge });
+  // legacy wrapper or plugin-runtime — fires the Reminder push that
+  // used to live inline in `publishNotification()` pre PR 4. The
+  // adapter is a no-op outside darwin / when
+  // DISABLE_MACOS_REMINDER_NOTIFICATIONS=1, so unconditionally safe.
+  // (Bridge fan-out branch was dropped — no production caller.)
+  startMacosReminderAdapter();
 
   // --- Plugin META aggregator diagnostics ---
   // After the notifier engine is initialized so the wrapper has a
