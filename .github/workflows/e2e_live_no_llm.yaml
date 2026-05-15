@@ -53,6 +53,7 @@ jobs:
           - skills                   # L-21 (presentChart) / L-22 (slash-command)
           - mulmo-script-edit        # L-EDIT via plugin-dispatch
           - media                    # L-01 only (L-02..L-05 need real LLM / external tools)
+          - error-banner             # L-ERR: forced error event → [Error] card
 
     steps:
       - uses: actions/checkout@v6

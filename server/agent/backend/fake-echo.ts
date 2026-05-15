@@ -80,6 +80,15 @@ async function defaultResponse(input: AgentInput): Promise<FakeResponse> {
   // short-circuit to read the seeded body and apply the
   // "respond with this exact line" heuristic the e2e-live canaries
   // rely on. Falls through to default echo on no match.
+  // Prompt-driven error trigger for e2e-live. The in-process
+  // `setFakeResponse()` knob is unreachable from a browser-driven
+  // spec (separate process), so the error-banner UI canary opts in
+  // by sending a message containing this exact marker. Prod never
+  // reaches fake-echo (real Claude backend) so this is inert there.
+  if (input.message.includes("__FAKE_ERROR__")) {
+    return { error: "fake-echo forced error (__FAKE_ERROR__ marker)" };
+  }
+
   const slashMatch = input.message.trim().match(/^\/([a-z0-9][a-z0-9-]*)$/i);
   if (slashMatch) {
     const skillReply = await replyFromSeededSkill(input.workspacePath, slashMatch[1]);
