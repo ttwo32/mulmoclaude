@@ -374,7 +374,14 @@ const renderedBody = computed(() => {
   return sanitizeMarkdownHtml(marked(body) as string);
 });
 
-const isSelectedEditable = computed(() => detail.value !== null && categorizeSkill(detail.value) === "project");
+// Edit/Delete follows the backend writer contract (writer.ts rejects
+// only source === "user"), NOT the mc- name heuristic. Under #1335
+// PR-A the launcher syncs presets to data/skills/catalog/preset/ and
+// leaves .claude/skills/ untouched, so a ★-starred mc- preset is a
+// normal project-scope skill — gating it read-only by name would make
+// activation one-way (no un-star / edit from /skills). The mc- =
+// "system" classification survives only as the provenance badge.
+const isSelectedEditable = computed(() => detail.value?.source === "project");
 
 const listError = ref<string | null>(null);
 
@@ -684,7 +691,7 @@ function runSkill(): void {
 // when source !== "project". A native confirm() is enough for phase 1
 // since the action is reversible by re-saving via the conversation.
 async function deleteSkill(): Promise<void> {
-  if (!detail.value || categorizeSkill(detail.value) !== "project") return;
+  if (!detail.value || detail.value.source !== "project") return;
   const { name } = detail.value;
   if (!window.confirm(t("pluginManageSkills.confirmDelete", { name }))) {
     return;
