@@ -20,6 +20,10 @@ test.describe.configure({ mode: "parallel" });
 
 test.describe("ui (real LLM / static)", () => {
   test("L-18: presentForm の i18n キーが raw 文字列として DOM に漏れない", async ({ page }) => {
+    // fake-echo detects `presentForm` in the prompt + the `id='...'
+    // label='...'` shape, posts to /api/form (the same endpoint the
+    // MCP bridge uses for real Claude), and emits the result as the
+    // tool_call_result. The View mounts off the artifact.
     test.setTimeout(L18_TIMEOUT_MS);
     // Covers B-34: when presentForm was promoted from external
     // plugin to built-in, the i18n keys (pluginPresentForm.submit
@@ -78,6 +82,9 @@ test.describe("ui (real LLM / static)", () => {
   });
 
   test("L-19: stack layout で 1 ターン後 reload しても stack-scroll が再描画される", async ({ page }) => {
+    // Any completed turn (real Claude or fake-echo) seeds the stack;
+    // the assertion is on the reload-restore behavior, not on the
+    // LLM's reasoning.
     test.setTimeout(L19_TIMEOUT_MS);
     // Covers B-31: tool-call history used to drop on reload because
     // the stack view's `toolResults` was rebuilt from the in-memory

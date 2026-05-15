@@ -69,7 +69,7 @@ export type NotificationPriority = (typeof NOTIFICATION_PRIORITIES)[keyof typeof
 // router / page component needs to jump to a specific item. Omitting
 // the identifier lands on the feature's index view.
 export type NotificationTarget =
-  | { view: typeof NOTIFICATION_VIEWS.chat; sessionId: string; resultUuid?: string }
+  | { view: typeof NOTIFICATION_VIEWS.chat; sessionId: string }
   | { view: typeof NOTIFICATION_VIEWS.todos; itemId?: string }
   | { view: typeof NOTIFICATION_VIEWS.calendar }
   | { view: typeof NOTIFICATION_VIEWS.automations; taskId?: string }

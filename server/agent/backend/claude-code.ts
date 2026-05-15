@@ -15,6 +15,7 @@ import { buildCliArgs, buildDockerSpawnArgs, buildUserMessageLine } from "../con
 import { resolveSandboxAuth } from "../sandboxMounts.js";
 import { getCachedReferenceDirs, referenceDirMountArgs } from "../../workspace/reference-dirs.js";
 import { createStreamParser, type AgentEvent, type RawStreamEvent } from "../stream.js";
+import { createMcpFailureMonitor } from "../mcpFailureMonitor.js";
 import { log } from "../../system/logger/index.js";
 import { EVENT_TYPES } from "../../../src/types/events.js";
 import { env } from "../../system/env.js";
@@ -100,6 +101,11 @@ async function* readAgentEvents(proc: ClaudeProc): AsyncGenerator<AgentEvent> {
   const parser = createStreamParser();
 
   const mcpTracker = createMcpTracker();
+  // Runtime failure monitor (#1353). Lives next to mcpTracker
+  // because they share the same event stream — the tracker spots
+  // the "MCP never invoked" pattern, the monitor spots the
+  // "MCP invoked but consistently failing" pattern.
+  const mcpFailureMonitor = createMcpFailureMonitor();
 
   let buffer = "";
   for await (const chunk of proc.stdout) {
@@ -117,6 +123,7 @@ async function* readAgentEvents(proc: ClaudeProc): AsyncGenerator<AgentEvent> {
       }
       for (const agentEvent of parser.parse(event)) {
         mcpTracker.track(agentEvent);
+        mcpFailureMonitor.track(agentEvent);
         yield agentEvent;
       }
     }
@@ -143,9 +150,37 @@ async function* runClaudeAgent(input: AgentInput): AsyncGenerator<AgentEvent> {
     claudeSessionId: input.sessionToken,
     mcpConfigPath: input.mcpConfigPath,
     extraAllowedTools: input.extraAllowedTools,
+    effortLevel: input.effortLevel,
   });
 
   const proc = spawnClaude(input.useDocker, input.workspacePath, cliArgs, input.sessionId);
+
+  // Wait for the kernel to confirm the spawn before piping anything
+  // into stdin. Without this guard, a missing `claude` (or `docker`)
+  // binary emits a delayed `error` event with no listener attached —
+  // Node treats it as uncaught and tears down the entire server
+  // process. Surfacing it as a regular AgentEvent keeps the server
+  // alive across CI runs and prod-misconfig recovery (#1364).
+  try {
+    await new Promise<void>((resolve, reject) => {
+      proc.once("spawn", () => resolve());
+      proc.once("error", (err) => reject(err));
+    });
+  } catch (err) {
+    const target = input.useDocker ? "docker" : "claude";
+    const message = err instanceof Error ? err.message : String(err);
+    log.error("agent", `failed to spawn ${target}`, { error: message });
+    yield {
+      type: EVENT_TYPES.error,
+      message: `Failed to spawn ${target}: ${message}`,
+    };
+    return;
+  }
+  // Best-effort stdin EPIPE guard — the process can die between
+  // `spawn` and the write below for unrelated reasons (OOM, kill
+  // -9), and we don't want a write-after-death to become another
+  // uncaught error.
+  proc.stdin.on("error", () => {});
 
   // stream-json input mode: stream the user turn as a single JSON
   // line to stdin, then close the pipe so the CLI knows no further

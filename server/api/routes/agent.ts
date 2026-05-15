@@ -27,6 +27,7 @@ import { maybeIndexSession } from "../../workspace/chat-index/index.js";
 import { maybeAppendWikiBacklinks } from "../../workspace/wiki-backlinks/index.js";
 import { log } from "../../system/logger/index.js";
 import { logBackgroundError } from "../../utils/logBackgroundError.js";
+import { errorMessage } from "../../utils/errors.js";
 import { createArgsCache, recordToolEvent } from "../../workspace/tool-trace/index.js";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
 import { EVENT_TYPES } from "../../../src/types/events.js";
@@ -46,7 +47,6 @@ import { env } from "../../system/env.js";
 import type { Attachment } from "@mulmobridge/protocol";
 import { isImagePath, loadImageBase64 } from "../../utils/files/image-store.js";
 import { isAttachmentPath, loadAttachmentBase64, inferMimeFromExtension, saveAttachment } from "../../utils/files/attachment-store.js";
-import { errorMessage } from "../../utils/errors.js";
 
 const router = Router();
 const PORT = env.port;
@@ -810,7 +810,7 @@ async function resolveSkillMetadata(skillName: string): Promise<SkillMetadata> {
     // can still collapse it; just leave metadata empty.
     log.warn("agent", "skill metadata lookup failed — emitting entry without scope/path/description/body", {
       skillName,
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMessage(err),
     });
     return { scope: "unknown", path: null, description: null, body: null };
   }

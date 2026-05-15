@@ -36,6 +36,7 @@ import {
 import { aggregateBalances } from "./report.js";
 import { publishBookChange } from "./eventPublisher.js";
 import { log } from "../system/logger/index.js";
+import { errorMessage } from "../utils/errors.js";
 import { ACCOUNTING_BOOK_EVENT_KINDS } from "../../src/config/pubsubChannels.js";
 import type { AccountBalance, JournalEntry, MonthSnapshot } from "./types.js";
 
@@ -229,7 +230,7 @@ function startRebuild(bookId: string, fromPeriod: string, workspaceRoot: string 
     .catch((err) => {
       // A rebuild failure is logged but does not poison the queue —
       // the next `scheduleRebuild` call will start a fresh promise.
-      log.error("accounting", "snapshot rebuild failed", { bookId, fromPeriod, error: err instanceof Error ? err.message : String(err) });
+      log.error("accounting", "snapshot rebuild failed", { bookId, fromPeriod, error: errorMessage(err) });
     })
     .then(() => {
       // Drain any work that piled up while we were running.

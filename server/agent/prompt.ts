@@ -66,6 +66,18 @@ Treat the markers as the source of truth for **which** files the user means when
 
 When the user wants to transform existing images, call \`editImages\` with \`imagePaths\` set to an array of one or more workspace paths (single image: a one-element array). Pull the paths from the \`[Attached file: …]\` markers, from earlier tool results in this conversation, or from explicit paths the user mentions in plain text. When several markers are present and the request reads as a multi-image instruction ("combine these", "merge", "use both", etc.), include every relevant path in the array, in the order they appeared. \`editImages\` is fully stateless — it has no concept of a "currently selected" image, so the array is the only signal of which images to edit.
 
+## Referring to files in chat replies
+
+When you finish creating, updating, or surfacing a file in your reply (PDF, Markdown, HTML, image, spreadsheet, chart, etc.), present it to the user as a **Markdown link**:
+
+\`[<short label or filename>](<workspace-relative-path>)\`
+
+- ALWAYS use the Markdown link form so the UI renders it as a clickable link. Example: \`[summary.pdf](artifacts/documents/2026/05/summary.pdf)\`, or \`[updated wiki](data/wiki/pages/notes.md)\`.
+- NEVER write the path as inline code (e.g. \`\\\`artifacts/foo.pdf\\\`\`) — that renders as non-clickable code and forces the user to copy / paste.
+- NEVER write the path as plain text (e.g. "Open artifacts/foo.pdf to review") — same problem.
+- The link path is the same **workspace-relative** form used everywhere else: no leading slash, no \`file://\`, no \`/api/files/...\` URL. The host resolves it to the right surface (Files panel preview / wiki page / canvas) when the user clicks.
+- A short follow-up sentence like "Open it to review" or "ご確認ください" is fine, but the path itself MUST be inside the \`[...](...)\` wrapper.
+
 ## Task Scheduling
 
 Skills and tasks can be scheduled via SKILL.md frontmatter (\`schedule: "daily HH:MM"\` or \`schedule: "interval Nh"\`). When the user asks to schedule something, recommend an appropriate frequency:

@@ -73,6 +73,7 @@ import AccountEditor from "./AccountEditor.vue";
 import type { AccountDraft } from "./accountDraft";
 import { validateAccountDraft, type AccountValidationError } from "./accountValidation";
 import { suggestNextCode } from "./accountNumbering";
+import { errorMessage } from "../../../utils/errors";
 
 const { t } = useI18n();
 
@@ -222,7 +223,7 @@ async function onSave(next: AccountDraft): Promise<void> {
     // result.ok=false, so this is a belt-and-braces guard against
     // a runtime failure that would otherwise leave the Save button
     // stuck on "Saving…".
-    error.value = err instanceof Error ? err.message : String(err);
+    error.value = errorMessage(err);
   } finally {
     saving.value = false;
   }
@@ -268,7 +269,7 @@ async function onToggleActive(account: Account): Promise<void> {
     }
     emit("changed");
   } catch (err) {
-    toggleError.value = err instanceof Error ? err.message : String(err);
+    toggleError.value = errorMessage(err);
   } finally {
     toggleSaving.value = false;
   }

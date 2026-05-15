@@ -9,6 +9,7 @@
 
 import type { Attachment } from "@mulmobridge/protocol";
 import type { Role } from "../../../src/config/roles.js";
+import type { EffortLevel } from "../../system/config.js";
 import type { AgentEvent } from "../stream.js";
 
 /** Inputs the orchestrator passes to a backend for one user turn.
@@ -37,6 +38,8 @@ export interface AgentInput {
   mcpConfigPath?: string;
   /** Extra allowed-tool names from settings + user MCP servers. */
   extraAllowedTools: string[];
+  /** Reasoning effort from settings (#1323). Undefined → flag omitted. */
+  effortLevel?: EffortLevel;
   /** When fired, the backend must terminate any in-flight
    *  subprocess / connection. */
   abortSignal?: AbortSignal;

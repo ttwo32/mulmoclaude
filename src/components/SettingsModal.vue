@@ -1,7 +1,7 @@
 <template>
   <div v-if="open" class="fixed inset-0 z-50 bg-black/40 flex items-start justify-center pt-16" data-testid="settings-modal-backdrop" @click="close">
     <div
-      class="bg-white rounded-lg shadow-xl w-[36rem] max-h-[85vh] flex flex-col"
+      class="bg-white rounded-lg shadow-xl w-[52rem] max-w-[95vw] max-h-[85vh] flex flex-col"
       role="dialog"
       aria-modal="true"
       aria-labelledby="settings-modal-title"
@@ -15,146 +15,109 @@
         </button>
       </div>
 
-      <div class="flex border-b border-gray-200 px-5">
-        <button
-          v-if="!geminiAvailable"
-          class="px-3 py-2 text-sm border-b-2"
-          :class="activeTab === 'gemini' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'"
-          data-testid="settings-tab-gemini"
-          @click="activeTab = 'gemini'"
-        >
-          {{ t("settingsModal.tabs.gemini") }}
-        </button>
-        <button
-          class="px-3 py-2 text-sm border-b-2"
-          :class="activeTab === 'tools' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'"
-          data-testid="settings-tab-tools"
-          @click="activeTab = 'tools'"
-        >
-          {{ t("settingsModal.tabs.tools") }}
-        </button>
-        <button
-          class="px-3 py-2 text-sm border-b-2"
-          :class="activeTab === 'mcp' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'"
-          data-testid="settings-tab-mcp"
-          @click="activeTab = 'mcp'"
-        >
-          {{ t("settingsModal.tabs.mcp") }}
-        </button>
-        <button
-          class="px-3 py-2 text-sm border-b-2"
-          :class="activeTab === 'dirs' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'"
-          data-testid="settings-tab-dirs"
-          @click="activeTab = 'dirs'"
-        >
-          {{ t("settingsModal.tabs.dirs") }}
-        </button>
-        <button
-          class="px-3 py-2 text-sm border-b-2"
-          :class="activeTab === 'refs' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'"
-          data-testid="settings-tab-refs"
-          @click="activeTab = 'refs'"
-        >
-          {{ t("settingsModal.tabs.refs") }}
-        </button>
-        <button
-          class="px-3 py-2 text-sm border-b-2"
-          :class="activeTab === 'map' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'"
-          data-testid="settings-tab-map"
-          @click="activeTab = 'map'"
-        >
-          {{ t("settingsModal.tabs.map") }}
-        </button>
-        <button
-          class="px-3 py-2 text-sm border-b-2"
-          :class="activeTab === 'photos' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'"
-          data-testid="settings-tab-photos"
-          @click="activeTab = 'photos'"
-        >
-          {{ t("settingsModal.tabs.photos") }}
-        </button>
-      </div>
-
-      <div class="px-5 py-4 overflow-y-auto flex-1 space-y-4 text-gray-900">
-        <div v-if="loadError" class="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert" data-testid="settings-load-error">
-          ⚠ {{ loadError }}
-        </div>
-
-        <div v-if="activeTab === 'gemini'" class="space-y-3">
-          <div class="rounded border border-yellow-400 bg-yellow-50 p-3 text-sm text-yellow-800" data-testid="settings-gemini-warning">
-            <span class="material-icons text-sm align-middle mr-1">warning</span>
-            <i18n-t keypath="settingsModal.geminiRequired" tag="span">
-              <template #envKey><code class="font-mono">GEMINI_API_KEY</code></template>
-              <template #envFile><code class="font-mono">.env</code></template>
-            </i18n-t>
-          </div>
-          <button class="px-3 py-1.5 text-sm rounded bg-blue-500 text-white hover:bg-blue-600" data-testid="settings-gemini-ask-btn" @click="askAboutGemini">
-            {{ t("settingsModal.geminiAskButton") }}
-          </button>
-        </div>
-
-        <div v-else-if="activeTab === 'tools'" class="space-y-3">
-          <i18n-t keypath="settingsToolsTab.explanation" tag="p" class="text-xs text-gray-600 leading-relaxed">
-            <template #allowedTools><code class="bg-gray-100 px-1 rounded">--allowedTools</code></template>
-            <template #claudeMcp><code class="bg-gray-100 px-1 rounded">claude mcp</code></template>
-          </i18n-t>
-          <label class="block">
-            <span class="text-xs font-semibold text-gray-700">{{ t("settingsModal.toolNamesLabel") }}</span>
-            <textarea
-              v-model="toolsText"
-              class="mt-1 w-full h-48 px-2 py-1.5 text-sm font-mono border border-gray-300 rounded focus:outline-none focus:border-blue-400"
-              placeholder="mcp__claude_ai_Gmail&#10;mcp__claude_ai_Google_Calendar"
-              data-testid="settings-tools-textarea"
-              @keydown.stop
-            ></textarea>
-          </label>
-          <p v-if="invalidToolNames.length > 0" class="text-xs text-amber-700">
-            {{ t("settingsModal.invalidToolNamesPrefix") }}
-            <code class="bg-gray-100 px-1 rounded">mcp__</code>{{ t("settingsModal.invalidToolNamesSuffix") }}
-            {{ invalidToolNames.join(", ") }}
-          </p>
-          <div class="flex items-center gap-2">
+      <div class="flex flex-1 min-h-0">
+        <nav class="w-44 border-r border-gray-200 bg-gray-50 py-3 overflow-y-auto" :aria-label="t('settingsModal.navAriaLabel')" data-testid="settings-nav">
+          <div v-for="group in visibleGroups" :key="group.key" class="mb-3">
+            <div class="px-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              {{ t(`settingsModal.groups.${group.key}`) }}
+            </div>
             <button
-              class="px-3 py-1.5 text-sm rounded bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-              :disabled="toolsSaving || loading || !!loadError || !toolsDirty"
-              :title="loadError ? t('settingsModal.cannotSaveTooltip') : undefined"
-              data-testid="settings-tools-save-btn"
-              @click="saveTools"
+              v-for="tabId in group.items"
+              :key="tabId"
+              class="w-full text-left px-4 py-1.5 text-sm border-l-2"
+              :class="activeTab === tabId ? 'border-blue-500 bg-white text-blue-700 font-medium' : 'border-transparent text-gray-700 hover:bg-gray-100'"
+              :data-testid="`settings-tab-${tabId}`"
+              :aria-current="activeTab === tabId ? 'page' : undefined"
+              @click="activeTab = tabId"
             >
-              {{ toolsSaving ? t("settingsModal.saving") : t("common.save") }}
+              {{ t(`settingsModal.tabs.${tabId}`) }}
             </button>
-            <span v-if="toolsDirty" class="text-xs text-amber-600" data-testid="settings-tools-dirty">
-              {{ t("settingsModal.unsavedMarker") }}
-            </span>
           </div>
-        </div>
+        </nav>
 
-        <div v-else-if="activeTab === 'mcp'" class="space-y-3">
-          <div
-            v-if="mcpToolsError"
-            class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1"
-            role="alert"
-            data-testid="mcp-tools-error"
-          >
-            {{ t("settingsModal.mcpToolsError", { error: mcpToolsError }) }}
+        <div class="px-5 py-4 overflow-y-auto flex-1 space-y-4 text-gray-900">
+          <div v-if="loadError" class="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert" data-testid="settings-load-error">
+            ⚠ {{ loadError }}
           </div>
-          <SettingsMcpTab
-            ref="mcpTabRef"
-            :servers="mcpServers"
-            :docker-mode="dockerMode"
-            @add="addMcpServer"
-            @update="updateMcpServer"
-            @remove="removeMcpServer"
-          />
+
+          <div v-if="activeTab === 'gemini'" class="space-y-3">
+            <div class="rounded border border-yellow-400 bg-yellow-50 p-3 text-sm text-yellow-800" data-testid="settings-gemini-warning">
+              <span class="material-icons text-sm align-middle mr-1">warning</span>
+              <i18n-t keypath="settingsModal.geminiRequired" tag="span">
+                <template #envKey><code class="font-mono">GEMINI_API_KEY</code></template>
+                <template #envFile><code class="font-mono">.env</code></template>
+              </i18n-t>
+            </div>
+            <button class="px-3 py-1.5 text-sm rounded bg-blue-500 text-white hover:bg-blue-600" data-testid="settings-gemini-ask-btn" @click="askAboutGemini">
+              {{ t("settingsModal.geminiAskButton") }}
+            </button>
+          </div>
+
+          <div v-else-if="activeTab === 'tools'" class="space-y-3">
+            <i18n-t keypath="settingsToolsTab.explanation" tag="p" class="text-xs text-gray-600 leading-relaxed">
+              <template #allowedTools><code class="bg-gray-100 px-1 rounded">--allowedTools</code></template>
+              <template #claudeMcp><code class="bg-gray-100 px-1 rounded">claude mcp</code></template>
+            </i18n-t>
+            <label class="block">
+              <span class="text-xs font-semibold text-gray-700">{{ t("settingsModal.toolNamesLabel") }}</span>
+              <textarea
+                v-model="toolsText"
+                class="mt-1 w-full h-48 px-2 py-1.5 text-sm font-mono border border-gray-300 rounded focus:outline-none focus:border-blue-400"
+                placeholder="mcp__claude_ai_Gmail&#10;mcp__claude_ai_Google_Calendar"
+                data-testid="settings-tools-textarea"
+                @keydown.stop
+              ></textarea>
+            </label>
+            <p v-if="invalidToolNames.length > 0" class="text-xs text-amber-700">
+              {{ t("settingsModal.invalidToolNamesPrefix") }}
+              <code class="bg-gray-100 px-1 rounded">mcp__</code>{{ t("settingsModal.invalidToolNamesSuffix") }}
+              {{ invalidToolNames.join(", ") }}
+            </p>
+            <div class="flex items-center gap-2">
+              <button
+                class="px-3 py-1.5 text-sm rounded bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                :disabled="toolsSaving || loading || !!loadError || !toolsDirty"
+                :title="loadError ? t('settingsModal.cannotSaveTooltip') : undefined"
+                data-testid="settings-tools-save-btn"
+                @click="saveTools"
+              >
+                {{ toolsSaving ? t("settingsModal.saving") : t("common.save") }}
+              </button>
+              <span v-if="toolsDirty" class="text-xs text-amber-600" data-testid="settings-tools-dirty">
+                {{ t("settingsModal.unsavedMarker") }}
+              </span>
+            </div>
+          </div>
+
+          <div v-else-if="activeTab === 'mcp'" class="space-y-3">
+            <div
+              v-if="mcpToolsError"
+              class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1"
+              role="alert"
+              data-testid="mcp-tools-error"
+            >
+              {{ t("settingsModal.mcpToolsError", { error: mcpToolsError }) }}
+            </div>
+            <SettingsMcpTab
+              ref="mcpTabRef"
+              :servers="mcpServers"
+              :docker-mode="dockerMode"
+              @add="addMcpServer"
+              @update="updateMcpServer"
+              @remove="removeMcpServer"
+            />
+          </div>
+
+          <SettingsWorkspaceDirsTab v-else-if="activeTab === 'dirs'" />
+
+          <SettingsReferenceDirsTab v-else-if="activeTab === 'refs'" />
+
+          <SettingsMapTab v-else-if="activeTab === 'map'" :reload-token="mapReloadToken" @saved="onMapSaved" />
+
+          <SettingsPhotosTab v-else-if="activeTab === 'photos'" :reload-token="photosReloadToken" />
+
+          <SettingsModelTab v-else-if="activeTab === 'model'" :reload-token="modelReloadToken" @saved="emit('saved')" />
         </div>
-
-        <SettingsWorkspaceDirsTab v-else-if="activeTab === 'dirs'" />
-
-        <SettingsReferenceDirsTab v-else-if="activeTab === 'refs'" />
-
-        <SettingsMapTab v-else-if="activeTab === 'map'" :reload-token="mapReloadToken" @saved="onMapSaved" />
-
-        <SettingsPhotosTab v-else-if="activeTab === 'photos'" :reload-token="photosReloadToken" />
       </div>
 
       <!-- Footer: status strip only. MCP / Workspace Dirs / Reference
@@ -181,6 +144,7 @@ import SettingsWorkspaceDirsTab from "./SettingsWorkspaceDirsTab.vue";
 import SettingsReferenceDirsTab from "./SettingsReferenceDirsTab.vue";
 import SettingsMapTab from "./SettingsMapTab.vue";
 import SettingsPhotosTab from "./SettingsPhotosTab.vue";
+import SettingsModelTab from "./SettingsModelTab.vue";
 import type { McpServerEntry } from "./SettingsMcpTab.vue";
 import { apiGet, apiPut } from "../utils/api";
 import { API_ROUTES } from "../config/apiRoutes";
@@ -226,7 +190,27 @@ const emit = defineEmits<{
 // update / remove persist immediately).
 const mcpTabRef = ref<{ flushDraft: () => boolean; hasPendingDraft: () => boolean } | null>(null);
 
-const activeTab = ref<"gemini" | "tools" | "mcp" | "dirs" | "refs" | "map" | "photos">("tools");
+type TabId = "gemini" | "tools" | "mcp" | "dirs" | "refs" | "map" | "photos" | "model";
+
+const activeTab = ref<TabId>("tools");
+
+// Sidebar nav layout (#1333). Order within each group reflects expected
+// access frequency; order of groups reflects the same. The `gemini`
+// item is filtered out by `visibleGroups` when geminiAvailable === true
+// (env var present → user has nothing to configure).
+const GROUPS: readonly { key: string; items: readonly TabId[] }[] = [
+  { key: "llm", items: ["model", "tools", "gemini"] },
+  { key: "servers", items: ["mcp"] },
+  { key: "workspace", items: ["dirs", "refs"] },
+  { key: "plugins", items: ["map", "photos"] },
+];
+
+const visibleGroups = computed(() =>
+  GROUPS.map((group) => ({
+    key: group.key,
+    items: group.items.filter((item) => item !== "gemini" || !props.geminiAvailable),
+  })).filter((group) => group.items.length > 0),
+);
 
 // Forces SettingsMapTab to re-load when the modal opens or the user
 // confirms a save — ensures the input always reflects the latest
@@ -243,6 +227,7 @@ function onMapSaved(): void {
 // the Photos tab refetches the autoCapture flag (could have been
 // hand-edited in settings.json since the last visit).
 const photosReloadToken = ref(0);
+const modelReloadToken = ref(0);
 const toolsText = ref("");
 // Server truth for tools — updated on load and on a successful Save
 // from the Tools tab. `toolsDirty` compares this against `toolsText`
@@ -415,6 +400,7 @@ watch(
       loadConfig();
       mapReloadToken.value += 1;
       photosReloadToken.value += 1;
+      modelReloadToken.value += 1;
       statusMessage.value = "";
       statusError.value = false;
     }

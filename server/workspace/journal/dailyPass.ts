@@ -21,6 +21,7 @@ import { type Summarize, ClaudeCliNotFoundError } from "./archivist-cli.js";
 import { toIsoDate, slugify } from "./paths.js";
 import { findDirtySessions, applyProcessed, type SessionFileMeta } from "./diff.js";
 import { rewriteWorkspaceLinks } from "../../utils/markdown.js";
+import { truncate } from "../../utils/text.js";
 import { writeState, type JournalState } from "./state.js";
 import { log } from "../../system/logger/index.js";
 import { EVENT_TYPES } from "../../../src/types/events.js";
@@ -605,12 +606,6 @@ function isSafeWorkspacePath(candidatePath: string): boolean {
   if (candidatePath.startsWith("..")) return false;
   if (candidatePath.includes("://")) return false;
   return true;
-}
-
-function truncate(text: string, max: number): string {
-  if (max <= 0) return "";
-  if (text.length <= max) return text;
-  return `${text.slice(0, max - 1)}…`;
 }
 
 async function readAllTopics(workspaceRoot: string): Promise<ExistingTopicSnapshot[]> {

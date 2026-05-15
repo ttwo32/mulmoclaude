@@ -88,6 +88,10 @@ test.describe.configure({ mode: "parallel" });
 
 test.describe("media (real LLM)", () => {
   test("L-01: presentHtml の <img src='../../../images/...'> が /artifacts/html 経由で描画される", async ({ page }) => {
+    // fake-echo detects `presentHtml`, extracts the embedded HTML
+    // body from the prompt, wraps it as a self-contained document,
+    // and posts to /api/html. The handler saves the artifact and
+    // the iframe loads from the resulting slug.
     test.setTimeout(L01_TIMEOUT_MS);
     // Spec-unique flat path — see comment in seedL01Fixture.
     const workspaceImageRel = "artifacts/images/e2e-live-l01.png";
@@ -103,6 +107,10 @@ test.describe("media (real LLM)", () => {
   });
 
   test("L-02: 画像参照を含む Markdown 応答が PDF として DL できる", async ({ page }) => {
+    // Fake-echo's history-join echoes the entire user prompt as the
+    // assistant body, which the PDF generator stumbles on. Real
+    // Claude omits the preamble per instruction.
+    test.skip(process.env.E2E_LIVE_NO_LLM === "1", "E2E_LIVE_NO_LLM=1 — needs LLM-trimmed markdown body");
     test.setTimeout(L02_TIMEOUT_MS);
     // Seeding the image makes B-19 / B-20 actually exercisable —
     // without it, /api/pdf/markdown can return a "PDF with broken
@@ -120,6 +128,9 @@ test.describe("media (real LLM)", () => {
   });
 
   test("L-05: generateImage プラグインで実画像が描画される", async ({ page }) => {
+    // Needs a real GEMINI_API_KEY + image-generation tool dispatch.
+    // fake-echo can't synthesize the image bytes.
+    test.skip(process.env.E2E_LIVE_NO_LLM === "1", "E2E_LIVE_NO_LLM=1 — needs Gemini image generation");
     test.setTimeout(L05_TIMEOUT_MS);
     // Pure Gemini-side path — no fixture seeding needed. The server's
     // /api/image/generate-image route saves the result under
@@ -147,6 +158,8 @@ test.describe("media (real LLM)", () => {
   });
 
   test("L-04: animation:true の mulmoScript → 動画生成がエラーなく完走する", async ({ page }, testInfo) => {
+    // ffmpeg + Gemini both required. Out of scope for fake-echo.
+    test.skip(process.env.E2E_LIVE_NO_LLM === "1", "E2E_LIVE_NO_LLM=1 — needs ffmpeg + Gemini");
     test.setTimeout(L04_TIMEOUT_MS);
     // Same ffmpeg precondition as L-03 — mulmocast shells out to
     // system ffmpeg via fluent-ffmpeg for the per-frame compose
@@ -182,6 +195,8 @@ test.describe("media (real LLM)", () => {
   });
 
   test("L-03: 既存 mulmoScript → 動画生成 → 動画 DL が成功する", async ({ page }, testInfo) => {
+    // Needs system ffmpeg. Out of scope for fake-echo.
+    test.skip(process.env.E2E_LIVE_NO_LLM === "1", "E2E_LIVE_NO_LLM=1 — needs ffmpeg");
     test.setTimeout(L03_TIMEOUT_MS);
     // mulmocast spawns system ffmpeg via fluent-ffmpeg (not bundled).
     // Without it, movie compose fails silently and the test times

@@ -21,12 +21,12 @@ import { DEFAULT_ROLE_ID } from "../src/config/roles.js";
 import mulmoScriptRoutes from "./api/routes/mulmo-script.js";
 import wikiRoutes from "./api/routes/wiki.js";
 import wikiHistoryRoutes from "./api/routes/wiki/history.js";
-import { provisionWikiHistoryHook } from "./workspace/wiki-history/provision.js";
-import { provisionConfigRefreshHook } from "./workspace/config-refresh/provision.js";
+import { provisionDispatcherHook } from "./workspace/hooks/provision.js";
 import pdfRoutes from "./api/routes/pdf.js";
 import filesRoutes from "./api/routes/files.js";
 import configRoutes from "./api/routes/config.js";
 import configRefreshRoutes from "./api/routes/config-refresh.js";
+import hookLogRoutes from "./api/routes/hookLog.js";
 import skillsRoutes from "./api/routes/skills.js";
 import runtimePluginRoutes from "./api/routes/runtime-plugin.js";
 import { loadRuntimePlugins } from "./plugins/runtime-loader.js";
@@ -36,8 +36,9 @@ import { loadPresetPlugins } from "./plugins/preset-loader.js";
 import { registerRuntimePlugins } from "./plugins/runtime-registry.js";
 import { makePluginRuntime } from "./plugins/runtime.js";
 import { MCP_PLUGIN_NAMES } from "./agent/plugin-names.js";
-import { createNotificationsRouter } from "./api/routes/notifications.js";
-import { startLegacyAdapters } from "./notifier/legacy-adapters.js";
+import { setActiveBackend } from "./agent/backend/index.js";
+import { fakeEchoBackend } from "./agent/backend/fake-echo.js";
+import { startMacosReminderAdapter } from "./notifier/macosReminderAdapter.js";
 import notifierRoutes from "./api/routes/notifier.js";
 import { initNotifier } from "./notifier/engine.js";
 import { registerSaveAttachmentHook } from "./utils/files/attachment-store.js";
@@ -56,9 +57,12 @@ import { WORKSPACE_PATHS } from "./workspace/paths.js";
 import { serverError } from "./utils/httpError.js";
 import { makeUuid } from "./utils/id.js";
 import { mcpToolsRouter, mcpTools, isMcpToolEnabled } from "./agent/mcp-tools/index.js";
+import { preflightUserServers, logPreflightResult } from "./agent/mcpPreflight.js";
+import { loadMcpConfig } from "./system/config.js";
 import { initWorkspace, workspacePath } from "./workspace/workspace.js";
 import { runMemoryMigrationOnce } from "./workspace/memory/run.js";
 import { runTopicMigrationOnce } from "./workspace/memory/topic-run.js";
+import { migrateCookingRecipesFromPlugin } from "./workspace/cooking-recipes/migrate.js";
 import { env, isGeminiAvailable } from "./system/env.js";
 import { buildSandboxStatus } from "./api/sandboxStatus.js";
 import { existsSync, readFileSync } from "fs";
@@ -82,6 +86,7 @@ import { bearerAuth } from "./api/auth/bearerAuth.js";
 import { deleteTokenFile, generateAndWriteToken, getCurrentToken } from "./api/auth/token.js";
 import { log } from "./system/logger/index.js";
 import { logBackgroundError } from "./utils/logBackgroundError.js";
+import { errorMessage } from "./utils/errors.js";
 import { registerScheduledSkills } from "./workspace/skills/scheduler.js";
 import { registerUserTasks } from "./workspace/skills/user-tasks.js";
 import { API_ROUTES } from "../src/config/apiRoutes.js";
@@ -99,6 +104,47 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const debugMode = process.argv.includes("--debug");
+
+// Global crash diagnostics (#1364). These handlers log loudly so a
+// fatal failure is triagable, then EXIT — keeping the loop running
+// after an uncaught exception is process-unsafe per the Node docs
+// (invariants may already be broken). The launcher / supervisor
+// (Electron wrapper, systemd, etc.) is responsible for restart.
+//
+// The canonical failure this PR set out to fix — missing `claude`
+// on PATH crashing the server via spawn's `error` event — is now
+// caught at the local boundary in `server/agent/backend/claude-code.ts`
+// (an explicit `error` listener turns ENOENT into an AgentEvent).
+// These handlers are the BACKSTOP for anything we missed, not a
+// substitute for local error handling. (Codex review on #1364.)
+//
+// `process.exit(1)` is non-zero so supervisors that branch on exit
+// code treat the bounce as an error condition.
+const FATAL_EXIT_DELAY_MS = 100;
+process.on("uncaughtException", (err) => {
+  log.error("uncaughtException", err instanceof Error ? err.message : String(err), {
+    stack: err instanceof Error ? err.stack : undefined,
+  });
+  // Tiny grace so the log line flushes to disk before we exit.
+  setTimeout(() => process.exit(1), FATAL_EXIT_DELAY_MS);
+});
+process.on("unhandledRejection", (reason) => {
+  log.error("unhandledRejection", reason instanceof Error ? reason.message : String(reason), {
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
+  setTimeout(() => process.exit(1), FATAL_EXIT_DELAY_MS);
+});
+
+// Test-seam: CI runs without a Claude CLI / API key set the
+// MULMOCLAUDE_FAKE_AGENT env var, which swaps in an echo-stub
+// backend so the chat flow still completes. Decided once at boot;
+// the orchestrator reads the active backend with zero per-call
+// overhead. Production callers never trip this branch (no runtime
+// import-time cost beyond the small fake-echo module itself).
+if (process.env.MULMOCLAUDE_FAKE_AGENT === "1") {
+  setActiveBackend(fakeEchoBackend);
+  log.info("agent", "MULMOCLAUDE_FAKE_AGENT=1 — active backend = fake-echo");
+}
 
 initWorkspace();
 
@@ -132,6 +178,17 @@ const noop = (): void => {};
 runMemoryMigrationOnce(workspacePath)
   .then(() => runTopicMigrationOnce(workspacePath))
   .then(noop, noop);
+
+// Recipe-book plugin → `mc-cooking-coach` skill migration (#1286).
+// Boot-time idempotent copy from the plugin's `files.data` scope
+// (`data/plugins/<sanitised-pkg>/recipes/`) to the canonical
+// `data/cooking/recipes/` path the skill drives. Sentinel-gated so
+// every boot after the first is a no-op.
+migrateCookingRecipesFromPlugin().catch((err) => {
+  log.warn("cooking-recipes", "migration from plugin failed; falling back to original plugin path", {
+    error: errorMessage(err),
+  });
+});
 
 let sandboxEnabled = false;
 
@@ -197,7 +254,16 @@ app.use("/api", (req, res, next) => {
     next();
     return;
   }
-  if (req.method === "GET" && RUNTIME_PLUGIN_ASSET_PATH_RE.test(req.path)) {
+  if ((req.method === "GET" || req.method === "HEAD") && RUNTIME_PLUGIN_ASSET_PATH_RE.test(req.path)) {
+    // HEAD is bypassed for the same reason as GET: the frontend
+    // runtime-plugin loader HEAD-probes `dist/vue.js` to distinguish
+    // "no Vue bundle (404, server-only plugin)" from real load
+    // failures before `import()`-ing the asset (#1273 follow-up).
+    // That probe is a raw `fetch`, not the bearer-attaching `apiGet`,
+    // and the actual `import()` itself can't attach Authorization
+    // either — so the auth-bypass must cover both verbs or every
+    // runtime plugin's Vue View silently downgrades to a
+    // definition-only entry (401 → "unexpected status" → no view).
     next();
     return;
   }
@@ -553,6 +619,7 @@ app.use(pdfRoutes);
 app.use(filesRoutes);
 app.use(configRoutes);
 app.use(configRefreshRoutes);
+app.use(hookLogRoutes);
 app.use(skillsRoutes);
 app.use(runtimePluginRoutes);
 async function listSessionsForBridge(opts: { limit: number; offset: number }) {
@@ -630,7 +697,6 @@ app.use(chatService.router);
 // `startRuntimeServices` has it. Calls that arrive before fill-in
 // (impossible in practice — the HTTP server isn't listening yet)
 // would no-op on publish but still queue the bridge push.
-app.use(createNotificationsRouter());
 app.use(notifierRoutes);
 app.use(createJournalRouter());
 app.use(createTranslationRouter());
@@ -745,6 +811,29 @@ function logMcpStatus(): void {
     const names = disabledMcpTools.map((toolDef) => `${toolDef.definition.name} (${(toolDef.requiredEnv ?? []).join(", ")})`).join(", ");
     log.info("mcp", "Unavailable (missing env)", { tools: names });
   }
+  logExternalMcpPreflight();
+}
+
+// External MCP servers (the `mcp.json` ones — Notion / GitHub /…)
+// get a separate preflight pass that mirrors the built-in
+// `Available / Unavailable` summary above. Servers with catalog
+// entries whose `required: true` fields are unset are excluded from
+// the config handed to Claude Code (filtered inside
+// `prepareUserServers`); this boot-time log gives the operator one
+// clear startup signal (#1352).
+function logExternalMcpPreflight(): void {
+  try {
+    const userMcpRaw = loadMcpConfig().mcpServers;
+    const preflight = preflightUserServers(userMcpRaw);
+    logPreflightResult(preflight, "boot");
+  } catch (err) {
+    // Best-effort: a broken mcp.json shouldn't take down boot. The
+    // per-agent-run path will still attempt the preflight and surface
+    // any genuine issue when the user actually starts a chat.
+    log.warn("mcp", "preflight at boot failed; will retry per-agent-run", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 function maybeForceJournalRun(): void {
@@ -784,11 +873,9 @@ async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, p
   // is forwarded in here so the rest of `startRuntimeServices` can
   // share the same instance.
 
-  // --- Legacy adapters (bridge + macOS Reminder push) ---
-  // Subscribe in-process to the engine so any `notifier.publish` —
-  // legacy wrapper or plugin-runtime — triggers the same fan-out the
-  // legacy `publishNotification()` did inline before PR 4.
-  startLegacyAdapters({ pushToBridge: chatService.pushToBridge });
+  // macOS Reminder adapter wiring lives in the `app.listen` callback,
+  // alongside `initNotifier`, so it's subscribed before the first
+  // await opens a publish-can-fire-but-no-one's-listening window.
 
   // --- Plugin META aggregator diagnostics ---
   // After the notifier engine is initialized so the wrapper has a
@@ -1058,23 +1145,18 @@ process.on("SIGTERM", () => {
   sandboxEnabled = await setupSandbox();
   logMcpStatus();
 
-  // Provision the LLM-write hook in the workspace's
-  // `.claude/settings.json` (#763 PR 2). Idempotent — safe on every
-  // startup. Done BEFORE the agent ever spawns a claude CLI subprocess
-  // so the hook is in place from the first turn.
-  await provisionWikiHistoryHook().catch((err) => {
-    log.warn("wiki-history", "hook provisioning failed; LLM wiki edits will not be snapshotted this session", {
-      error: String(err),
-    });
-  });
-
-  // mc-settings auto-refresh hook (#1283). Installs a PostToolUse
-  // entry that fires POST /api/config/refresh after Write/Edit on
-  // SKILL.md or scheduler tasks.json so the `mc-settings` skill can
-  // drive workspace settings via plain file edits without leaving
-  // scheduled jobs stuck on the pre-edit definition.
-  await provisionConfigRefreshHook().catch((err) => {
-    log.warn("config-refresh", "hook provisioning failed; settings file edits will need a manual server restart this session", {
+  // Unified PostToolUse dispatcher (#763 PR 2, #1283, #1295). One
+  // entry in `<workspace>/.claude/settings.json` that fans out to:
+  //   - wiki-snapshot (page Writes → snapshot pipeline)
+  //   - config-refresh (SKILL.md / scheduler tasks.json / data/skills/*.md → POST /api/config/refresh)
+  //   - skill-bridge (data/skills/*.md ↔ .claude/skills/<slug>/SKILL.md)
+  //
+  // Done BEFORE the agent ever spawns a claude CLI subprocess so the
+  // hook is in place from the first turn. The provisioner also strips
+  // pre-unification entries (wikiHistory / configRefresh owner markers)
+  // so existing workspaces upgrade cleanly without double-firing.
+  await provisionDispatcherHook().catch((err) => {
+    log.warn("hooks", "dispatcher provisioning failed; PostToolUse side-effects (snapshots, refresh, skill bridge) will not run this session", {
       error: String(err),
     });
   });
@@ -1105,6 +1187,14 @@ process.on("SIGTERM", () => {
     initNotifier({
       publish: (channel, payload) => earlyPubsub.publish(channel, payload),
     });
+    // Subscribe the macOS Reminder side-channel BEFORE the first
+    // await below — `initNotifier` opens the engine to publishes,
+    // and any boot-time diagnostic that lands during the
+    // `.server-port` write / `startRuntimeServices` setup would
+    // otherwise miss the Reminder fan-out (CodeRabbit review on
+    // PR #1358). The adapter is sync + no-op outside darwin, so
+    // wiring it here costs nothing.
+    startMacosReminderAdapter();
 
     // Publish the actually-bound port so the hook script can
     // address us — the requested PORT may have walked forward

@@ -28,9 +28,17 @@ describe("isSafeWikiSlug", () => {
     assert.equal(isSafeWikiSlug("a\\b"), false);
   });
 
-  it("rejects the `..` path token even without a slash", () => {
+  it("rejects the exact `.` and `..` path tokens", () => {
+    // After #1297 the router slug check delegates to the shared
+    // `isSafeSlug` (`src/lib/wiki-page/slug.ts`), which rejects only
+    // the unambiguous traversal forms: literal `.` / `..`, paths
+    // containing separators, or NUL. Substrings like `a..b` are
+    // legitimate filenames (the server's wiki chokepoint accepts
+    // `data/wiki/pages/..foo.md` per codex iter-2 #883) and pass.
+    assert.equal(isSafeWikiSlug("."), false);
     assert.equal(isSafeWikiSlug(".."), false);
-    assert.equal(isSafeWikiSlug("a..b"), false);
+    assert.equal(isSafeWikiSlug("a..b"), true, "literal filename containing `..` is fine — no separator means no traversal");
+    assert.equal(isSafeWikiSlug("..foo"), true, "dot-prefixed names are accepted per shared isSafeSlug");
   });
 
   it("rejects non-string values", () => {

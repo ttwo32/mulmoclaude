@@ -25,12 +25,12 @@
     "@mulmobridge/client": "^0.1.4",
     "@mulmobridge/protocol": "^0.1.4",
     "@slack/socket-mode": "^2.0.7",
-    "@slack/web-api": "^7.15.2",
+    "@slack/web-api": "^7.16.0",
     "dotenv": "^17.0.0"
   },
   "devDependencies": {
-    "@types/node": "^25.6.2",
-    "tsx": "^4.21.0",
+    "@types/node": "^25.8.0",
+    "tsx": "^4.22.0",
     "typescript": "^6.0.3"
   }
 }

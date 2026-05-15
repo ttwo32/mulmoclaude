@@ -11,6 +11,8 @@ import { useI18n } from "vue-i18n";
 import { apiPost } from "../../utils/api";
 import { pluginEndpoints } from "../api";
 import type { ResolvedRoute } from "../meta-types";
+import { errorMessage as toErrorMessage } from "../../utils/errors";
+import { formatDate } from "../../utils/format/date";
 
 interface Sidecar {
   version: 1;
@@ -57,7 +59,7 @@ async function refresh(): Promise<void> {
     if (!result.ok) throw new Error(result.error);
     locations.value = result.data.data?.locations ?? [];
   } catch (err) {
-    errorMessage.value = err instanceof Error ? err.message : String(err);
+    errorMessage.value = toErrorMessage(err);
   } finally {
     loading.value = false;
   }
@@ -83,7 +85,7 @@ function fmtAltitude(value: unknown): string | null {
 
 function fmtDate(iso: string | undefined): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString();
+  return formatDate(iso);
 }
 
 function hasFiniteCoords(exif: { lat?: unknown; lng?: unknown }): boolean {

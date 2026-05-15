@@ -10,6 +10,74 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ---
 
+## [0.6.2] - 2026-05-13
+
+Three-day patch focused on **Settings UX**, **agent control surface**, and **bridge security hardening**. The Settings modal is now a grouped sidebar (4 categories) and exposes a new **Model** tab for tuning Claude's reasoning effort. New built-in plugins (`presentSVG`, `edgar`) and an **Investor** role land alongside a re-shaped preset-skill system (`mc-settings`, `mc-cooking-coach`). All 6 webhook bridges grow rate limiting + trust-proxy hardening, and several reflected-XSS paths are closed.
+
+### Highlights
+
+#### Configurable reasoning effort (#1320 / #1323)
+- New **Model** tab in Settings exposes the `claude --effort` level (`low` / `medium` / `high` / `xhigh` / `max`). Persisted under `<workspace>/config/settings.json`; unset → Claude's default. Settings reload per-run, so the change applies on the next message without restart.
+
+#### Settings menu reorganised (#1333)
+- The horizontal tab strip is now a **grouped left sidebar** (LLM / Servers / Workspace / Plugins). Modal grows from 36rem to 52rem but caps at 95vw on smaller viewports. Existing `data-testid` selectors preserved — no e2e breakage. Active item carries `aria-current="page"`; nav label is fully translated.
+
+#### File drop on the chat panel (#1289)
+- Drag-and-drop now lights up the entire chat panel (was: just the input), with a clear visual affordance. The window default guard prevents the browser from navigating away when the drop lands outside the panel.
+
+#### EDGAR + SEC built-in plugin
+- New `edgar` plugin (server-only — no Views) gives the agent direct access to SEC EDGAR filings. Bundled into a new **Investor** role alongside Yahoo Finance instructions.
+
+#### presentSVG plugin
+- New built-in plugin renders generated SVGs as inline canvas surfaces. Roles can opt in via `availablePlugins`.
+
+#### Preset skills replace fixed roles
+- `cookingCoach` role → `mc-cooking-coach` preset skill (#1286). `settings` role → `mc-settings` preset skill (#1283), then split into 3 focused skills. Preset skills are user-editable and version-controllable; fixed roles aren't.
+
+#### Agent permission scaffolding
+- Workspace-scoped allow rules are now provisioned at server startup, so first-run permission prompts no longer block routine tool invocations.
+
+### Added
+- `effortLevel` field in app settings + `--effort` CLI plumbing (#1323).
+- Settings **Model** + **Sidebar** UI; nav `aria-label` localised across all 8 locales.
+- `presentSVG` and `edgar` built-in plugins.
+- `Investor` role with EDGAR + Yahoo Finance instructions.
+- Preset skills: `mc-settings` (3 focused subskills) and `mc-cooking-coach`.
+- Workspace-scoped agent permission provisioning at startup.
+- File-drop visual affordance + chat-panel-wide drop target (#1289 Step 1 + Step 2).
+- `docs/shared-utils.md` catalog + CLAUDE.md guardrail (#1304).
+- Stdio-MCP-under-Docker warning surfaced in the MCP settings UI (#1334).
+
+### Changed
+- Settings modal: top tabs → sidebar with 4 groups (#1333).
+- Accounting amount formatting consolidated into one helper (#1308).
+- Date formatting in plugin Views routed through `src/utils/format/date.ts` (#1307).
+- `truncate()` callsites consolidated into `server/utils/text.ts` (#1306).
+- Inline error normalisation migrated to `errorMessage()` helper (#1305).
+- New shared `formatBytes()` helper (#1309).
+- Wiki bullet `[[slug|display]]` rows now share the same parser as inline wiki links.
+- DOM-pure wiki-page helpers relocated under `src/lib/wiki-page/` (#1297).
+- `uuid` bumped to 14.0.0.
+
+### Fixed
+- pdf.ts: switched to `waitUntil: "load"` for Puppeteer 24 type compatibility.
+- wiki: score-based fuzzy resolve replaces iteration-order matching (#1194).
+- chat: generated-file references in LLM replies now linkify reliably (#1300).
+- pdf responses: skip Content-Security-Policy header (#1299).
+- chatinput: drop overlay clears on window-boundary `dragleave` (#1327 follow-up).
+- Docker sandbox: stdio MCP entries are dropped (they can't run inside the minimal image — #1334).
+- runtime-plugin: HEAD probes on plugin assets bypass bearer auth.
+- hooks: atomic mirror write + API_ROUTES constant in tests.
+- Codex/Sourcery follow-ups across #1316, #1318, #1325, #1326, #1328, #1331.
+
+### Security
+- All 6 webhook bridges: express-rate-limit added on POST + `env`-driven trust-proxy.
+- Bridges: `hub.challenge` echoed as `text/plain` with whitelisted shape (CodeQL `js/reflected-xss`).
+- wiki: HTML-escape target + display in `renderWikiLinks` (XSS).
+- `keyGenerator` routed through `ipKeyGenerator` for IPv6-safe rate-limit keys.
+
+---
+
 ## [0.6.1] - 2026-05-10
 
 Two-day patch with several visible additions: a **wiki-syntax embed** family (`[[amazon:...]]`, `[[isbn:...]]`, `[[youtube:...]]`) usable across every markdown surface, **photo location capture** that pulls lat/lng from EXIF on every saved/forwarded image, and the **Map plugin** wired up to `@gui-chat-plugin/google-map`. Notifications fired by the `notify` MCP tool inside a chat now carry a click target back to the source session.

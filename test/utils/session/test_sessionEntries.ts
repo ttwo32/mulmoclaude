@@ -193,85 +193,25 @@ function makeResult(uuid: string, toolName: string): ToolResultComplete {
   return { uuid, toolName } as unknown as ToolResultComplete;
 }
 
-describe("resolveSelectedUuid — empty list", () => {
-  it("returns null for empty list regardless of urlResult", () => {
-    assert.equal(resolveSelectedUuid([], null), null);
-    assert.equal(resolveSelectedUuid([], "any"), null);
-  });
-});
-
-describe("resolveSelectedUuid — URL override", () => {
-  it("honours url-specified uuid when it exists in the list", () => {
-    const results = [makeResult("a", "text-response"), makeResult("b", "generateImage"), makeResult("c", "text-response")];
-    assert.equal(resolveSelectedUuid(results, "a"), "a");
-    assert.equal(resolveSelectedUuid(results, "b"), "b");
-    assert.equal(resolveSelectedUuid(results, "c"), "c");
-  });
-
-  it("ignores url uuid when it doesn't exist in the list", () => {
-    const results = [makeResult("a", "generateImage")];
-    assert.equal(resolveSelectedUuid(results, "missing"), "a");
-  });
-
-  it("ignores url uuid when null", () => {
-    const results = [makeResult("a", "generateImage")];
-    assert.equal(resolveSelectedUuid(results, null), "a");
-  });
-});
-
-describe("resolveSelectedUuid — heuristic (last non-text)", () => {
-  it("picks the last non-text result when no url override", () => {
-    const results = [
-      makeResult("text-1", "text-response"),
-      makeResult("img-1", "generateImage"),
-      makeResult("text-2", "text-response"),
-      makeResult("img-2", "generateImage"),
-      makeResult("text-3", "text-response"),
-    ];
-    // The last non-text is img-2
-    assert.equal(resolveSelectedUuid(results, null), "img-2");
-  });
-
-  it("picks a non-text result even at the end of the list", () => {
-    const results = [makeResult("text-1", "text-response"), makeResult("img-1", "generateImage")];
-    assert.equal(resolveSelectedUuid(results, null), "img-1");
-  });
-
-  it("falls back to the last text result when all results are text", () => {
-    const results = [makeResult("text-1", "text-response"), makeResult("text-2", "text-response")];
-    assert.equal(resolveSelectedUuid(results, null), "text-2");
+describe("resolveSelectedUuid", () => {
+  it("returns null for empty list", () => {
+    assert.equal(resolveSelectedUuid([]), null);
   });
 
   it("returns the only result regardless of type", () => {
-    assert.equal(resolveSelectedUuid([makeResult("only", "text-response")], null), "only");
-  });
-});
-
-// #1218 — skill envelopes are text-like for selection (Codex
-// iter-3 fixed live-run behaviour; iter-4 surfaced the same
-// mismatch on reload). After a `Skill → body-split → assistant
-// reply` turn, reload should land on the reply, NOT re-pick the
-// skill card. Pinning the contract here so regression to the
-// old `toolName !== "text-response"` rule shows up immediately.
-describe("resolveSelectedUuid — skill envelopes count as text-like", () => {
-  it("falls back to the last result when only a skill card is present", () => {
-    const results = [makeResult("skill-1", "skill")];
-    assert.equal(resolveSelectedUuid(results, null), "skill-1");
+    assert.equal(resolveSelectedUuid([makeResult("only", "text-response")]), "only");
+    assert.equal(resolveSelectedUuid([makeResult("only", "generateImage")]), "only");
   });
 
-  it("picks the trailing reply text-response over a preceding skill card (the body-split case)", () => {
-    const results = [makeResult("user-1", "text-response"), makeResult("skill-1", "skill"), makeResult("reply-1", "text-response")];
-    assert.equal(resolveSelectedUuid(results, null), "reply-1");
-  });
+  it("returns the last result, whether tool or text", () => {
+    const trailingText = [makeResult("img-1", "generateImage"), makeResult("text-1", "text-response")];
+    assert.equal(resolveSelectedUuid(trailingText), "text-1");
 
-  it("picks a real plugin result over both skill and text-response", () => {
-    const results = [
-      makeResult("text-1", "text-response"),
-      makeResult("skill-1", "skill"),
-      makeResult("img-1", "generateImage"),
-      makeResult("reply-1", "text-response"),
-    ];
-    assert.equal(resolveSelectedUuid(results, null), "img-1");
+    const trailingTool = [makeResult("text-1", "text-response"), makeResult("img-1", "generateImage")];
+    assert.equal(resolveSelectedUuid(trailingTool), "img-1");
+
+    const trailingSkill = [makeResult("text-1", "text-response"), makeResult("skill-1", "skill")];
+    assert.equal(resolveSelectedUuid(trailingSkill), "skill-1");
   });
 });
 

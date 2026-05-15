@@ -85,9 +85,10 @@ const HOST_API_ROUTES = {
     // re-registers user-defined scheduler tasks so changes to
     // `<workspace>/.claude/skills/<slug>/SKILL.md` or
     // `<workspace>/config/scheduler/tasks.json` activate without
-    // a server restart. Called by the `mc-settings` PostToolUse hook
-    // after Write/Edit (#1283). Safe to call ad-hoc — pure side
-    // effect, no body.
+    // a server restart. Called by the config-refresh PostToolUse hook
+    // after Write/Edit (#1283); serves the `mc-manage-skills` +
+    // `mc-manage-automations` preset skills (split out in #1295).
+    // Safe to call ad-hoc — pure side effect, no body.
     refresh: "/api/config/refresh",
   },
 
@@ -125,12 +126,6 @@ const HOST_API_ROUTES = {
   mcpTools: {
     list: "/api/mcp-tools",
     invoke: "/api/mcp-tools/:tool",
-  },
-
-  notifications: {
-    // PoC endpoint for scheduled push fan-out (Web pub-sub + bridge).
-    // Scaffolding for #144 / #142 — see plans/done/feat-notification-push-scaffold.md.
-    test: "/api/notifications/test",
   },
 
   /** Notifier dispatch — single endpoint, body carries `{ action,
@@ -247,6 +242,19 @@ const HOST_API_ROUTES = {
   // calls into it via `runtime.dispatch({kind: ...})` from
   // `useTodos` (`@mulmoclaude/todo-plugin/composables`); no
   // host-managed routes remain.
+
+  hooks: {
+    /** Internal endpoint hit by the PostToolUse dispatcher
+     *  (`<workspace>/.claude/hooks/mulmoclaude-dispatcher.mjs`) to
+     *  forward debug / status lines into the server's structured
+     *  logger. Without this, hook handlers (skill-bridge mirror copy
+     *  etc.) silently succeed and a user trying to verify a copy
+     *  ran has no signal to look at. POST body:
+     *    { namespace: string; message: string;
+     *      level?: "info" | "warn" | "error"; data?: object }
+     *  Never called by the Vue client. */
+    log: "/api/hooks/log",
+  },
 
   wiki: {
     base: "/api/wiki",

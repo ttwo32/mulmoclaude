@@ -305,9 +305,9 @@ export function parseRange(header: string, size: number): ByteRange | null {
   return { start, end };
 }
 
-// Security headers applied to every `/files/raw` response. Exported
-// so a regression test can pin the exact strings down — a silent
-// regression here reopens a real XSS surface (see plans/
+// Security headers applied to `/files/raw` responses. Exported so a
+// regression test can pin the exact strings down — a silent
+// regression here reopens a real XSS surface (see plans/done/
 // fix-files-raw-csp-sandbox.md for the full threat model).
 //
 // `sandbox` (no allow-flags) creates an opaque origin for the
@@ -315,8 +315,7 @@ export function parseRange(header: string, size: number): ByteRange | null {
 // gets loaded as a top-level document or inside an iframe, its
 // scripts can't access the localhost:3001 origin's cookies,
 // session storage, or hit the `/api/*` endpoints. Frames rendering
-// the response become sandboxed too — PDFs still work because
-// they don't rely on same-origin access to the parent.
+// the response become sandboxed too.
 //
 // `nosniff` stops Chrome / Firefox from re-guessing Content-Type
 // on files the server declared but the browser might want to
@@ -326,8 +325,27 @@ export const RAW_SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "X-Content-Type-Options": "nosniff",
 };
 
-function applyRawSecurityHeaders(res: Response): void {
-  for (const [name, value] of Object.entries(RAW_SECURITY_HEADERS)) {
+// PDF responses skip `Content-Security-Policy: sandbox`. Issue
+// #1299: WebKit refuses to render `sandbox`-opaque PDFs and forces
+// a download, breaking the Files preview iframe on Safari. The
+// PDF viewer (PDFium on Chromium, the WebKit PDF renderer, pdf.js
+// on Firefox) runs embedded AcroJS inside its own sandbox; the
+// response-level CSP was never the layer enforcing PDF script
+// isolation. `nosniff` is kept so the response can't be
+// re-interpreted as HTML.
+export const RAW_SECURITY_HEADERS_PDF: Readonly<Record<string, string>> = {
+  "X-Content-Type-Options": "nosniff",
+};
+
+/** Pick the header set for a given MIME. PDF is the only special
+ *  case today — every other MIME (`image/*`, `text/*`,
+ *  `application/octet-stream`, …) keeps the sandbox CSP. */
+export function rawSecurityHeadersForMime(mime: string): Readonly<Record<string, string>> {
+  return mime === "application/pdf" ? RAW_SECURITY_HEADERS_PDF : RAW_SECURITY_HEADERS;
+}
+
+function applyRawSecurityHeaders(res: Response, mime: string): void {
+  for (const [name, value] of Object.entries(rawSecurityHeadersForMime(mime))) {
     res.setHeader(name, value);
   }
 }
@@ -863,11 +881,13 @@ router.get(API_ROUTES.files.raw, (req: Request<object, unknown, unknown, PathQue
   const mime = MIME_BY_EXT[ext] ?? "application/octet-stream";
   res.setHeader("Accept-Ranges", "bytes");
   res.setHeader("Content-Type", mime);
-  // Sandbox the response so an `.svg` / `.html` / `.pdf` with
-  // embedded JavaScript can't escape into the localhost:3001
-  // origin via direct navigation or <iframe>. See
-  // plans/done/fix-files-raw-csp-sandbox.md for the threat model.
-  applyRawSecurityHeaders(res);
+  // Sandbox the response so an `.svg` / `.html` with embedded
+  // JavaScript can't escape into the localhost:3001 origin via
+  // direct navigation or <iframe>. PDFs get a narrower header set
+  // (no sandbox CSP) because Safari/WebKit refuses to render
+  // sandbox-opaque PDFs (#1299). See plans/done/
+  // fix-files-raw-csp-sandbox.md for the full threat model.
+  applyRawSecurityHeaders(res, mime);
 
   // Range support is required for `<video>` playback (Safari refuses
   // to play media without 206 responses) and for seek-past-buffered

@@ -9,6 +9,7 @@
 
 import { accountingBookChannel, PUBSUB_CHANNELS, type AccountingBookChannelPayload } from "../../src/config/pubsubChannels.js";
 import { log } from "../system/logger/index.js";
+import { errorMessage } from "../utils/errors.js";
 import type { IPubSub } from "../events/pub-sub/index.js";
 
 let pubsub: IPubSub | null = null;
@@ -26,7 +27,7 @@ function safePublish(channel: string, payload: unknown): void {
     // dropping one event is better than crashing the server.
     log.warn("accounting", "publish failed; subscribers will miss this event", {
       channel,
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMessage(err),
     });
   }
 }

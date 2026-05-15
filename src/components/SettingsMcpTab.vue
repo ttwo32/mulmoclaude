@@ -201,12 +201,17 @@
               {{ ((entry.spec as StdioSpec).args ?? []).join(" ") }}
             </code>
           </div>
-          <div
-            v-if="dockerMode && stdioHasNonWorkspaceArg((entry.spec as StdioSpec).args)"
-            class="text-red-600"
-            :data-testid="'mcp-docker-warning-' + entry.id"
-          >
-            {{ t("settingsMcpTab.dockerNonWorkspaceWarning") }}
+          <!-- Sandbox-incompatible warning (#1334). When Docker mode
+               is on, stdio MCP entries are dropped server-side before
+               the per-session MCP config is written — the sandbox
+               image is intentionally minimal and can't host the
+               arbitrary runtimes (npx / python / …) most stdio MCPs
+               need. See docs/mcp-sandbox.md for the full rationale. -->
+          <div v-if="dockerMode" class="flex items-baseline gap-2 text-amber-700" :data-testid="'mcp-docker-warning-' + entry.id">
+            <span>{{ t("settingsMcpTab.dockerStdioUnsupported") }}</span>
+            <a :href="MCP_SANDBOX_DOC_URL" target="_blank" rel="noopener noreferrer" class="underline whitespace-nowrap">
+              {{ t("settingsMcpTab.learnMore") }}
+            </a>
           </div>
         </div>
       </li>
@@ -652,8 +657,8 @@ function wouldRewriteLocalhost(url: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1)(?=[:/]|$)/.test(url);
 }
 
-function stdioHasNonWorkspaceArg(args?: string[]): boolean {
-  if (!args) return false;
-  return args.some((arg) => /^\//.test(arg) && arg !== "/workspace" && !arg.startsWith("/workspace/"));
-}
+// External (GitHub-rendered) doc explaining why stdio MCPs don't run
+// under the Docker sandbox. Linked from the per-entry warning above.
+// Opening in a new tab so the settings modal isn't lost. (#1334)
+const MCP_SANDBOX_DOC_URL = "https://github.com/receptron/mulmoclaude/blob/main/docs/mcp-sandbox.md";
 </script>

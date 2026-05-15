@@ -15,6 +15,14 @@
 import { Router, Request, Response } from "express";
 import { deleteProjectSkill, discoverSkills, saveProjectSkill, updateProjectSkill } from "../../workspace/skills/index.js";
 import type { Skill, SkillSummary } from "../../workspace/skills/index.js";
+import {
+  isCatalogSource,
+  listCatalogEntries,
+  readCatalogEntryDetail,
+  starCatalogEntry,
+  type CatalogEntry,
+  type CatalogEntryDetail,
+} from "../../workspace/skills/catalog.js";
 import { workspacePath } from "../../workspace/workspace.js";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
 import { bindRoute } from "../../utils/router.js";
@@ -63,6 +71,108 @@ bindRoute(router, API_ROUTES.skills.list, async (_req: Request, res: Response<Sk
       source: skill.source,
     })),
   });
+});
+
+// Catalog endpoints (#1335 PR-B). Reads from
+// `<workspace>/data/skills/catalog/<source>/<slug>/` (populated by
+// `syncPresetSkills`); the star endpoint copies catalog entries
+// into `.claude/skills/<slug>/` so Claude Code's discovery picks
+// them up. Catalog entries themselves are NOT in `.claude/skills/`
+// by design — that's the prompt-bloat fix from #1335.
+//
+// Route ordering matters: these `/catalog*` routes register
+// BEFORE `GET /:name` below because Express matches in
+// registration order. A request for `/catalog` would otherwise
+// land in the detail handler with `req.params.name = "catalog"`
+// and 404. Keep all `/catalog*` specifics ahead of any `:name`
+// parameter route in this file.
+
+interface CatalogListResponse {
+  entries: CatalogEntry[];
+}
+
+interface StarBody {
+  source?: unknown;
+  slug?: unknown;
+}
+
+interface StarResponse {
+  starred: true;
+  slug: string;
+}
+
+bindRoute(router, API_ROUTES.skills.catalogList, async (_req: Request, res: Response<CatalogListResponse>) => {
+  const entries = await listCatalogEntries();
+  log.info("skills", "catalog list: ok", { count: entries.length });
+  res.json({ entries });
+});
+
+interface CatalogPreviewQuery {
+  source?: unknown;
+  slug?: unknown;
+}
+
+interface CatalogPreviewResponse {
+  detail: CatalogEntryDetail;
+}
+
+bindRoute(
+  router,
+  API_ROUTES.skills.catalogPreview,
+  async (req: Request<object, unknown, unknown, CatalogPreviewQuery>, res: Response<CatalogPreviewResponse | ErrorResponse>) => {
+    const { source, slug } = req.query;
+    if (typeof slug !== "string" || slug.length === 0) {
+      badRequest(res, "slug is required");
+      return;
+    }
+    if (!isCatalogSource(source)) {
+      badRequest(res, "source must be a known catalog source");
+      return;
+    }
+    const result = await readCatalogEntryDetail(source, slug);
+    if (result.kind === "ok") {
+      log.info("skills", "catalog preview: ok", { source, slug: result.detail.slug });
+      res.json({ detail: result.detail });
+      return;
+    }
+    if (result.kind === "not-found") {
+      log.warn("skills", "catalog preview: not found", { source, slug });
+      notFound(res, `catalog entry not found: ${result.source}/${result.slug}`);
+      return;
+    }
+    log.warn("skills", "catalog preview: invalid slug", { slug });
+    badRequest(res, `invalid slug: ${result.slug}`);
+  },
+);
+
+bindRoute(router, API_ROUTES.skills.catalogStar, async (req: Request<object, unknown, StarBody>, res: Response<StarResponse | ErrorResponse>) => {
+  const { source, slug } = req.body;
+  if (typeof slug !== "string" || slug.length === 0) {
+    badRequest(res, "slug is required");
+    return;
+  }
+  if (!isCatalogSource(source)) {
+    badRequest(res, "source must be a known catalog source");
+    return;
+  }
+  const result = await starCatalogEntry(source, slug);
+  if (result.kind === "starred") {
+    log.info("skills", "catalog star: ok", { source, slug });
+    res.json({ starred: true, slug: result.slug });
+    return;
+  }
+  if (result.kind === "already-active") {
+    log.info("skills", "catalog star: already-active", { source, slug });
+    conflict(res, `skill "${result.slug}" is already active`);
+    return;
+  }
+  if (result.kind === "not-found") {
+    log.warn("skills", "catalog star: not found", { source, slug });
+    notFound(res, `catalog entry not found: ${result.source}/${result.slug}`);
+    return;
+  }
+  log.warn("skills", "catalog star: invalid slug", { slug });
+  badRequest(res, `invalid slug: ${result.slug}`);
 });
 
 bindRoute(router, API_ROUTES.skills.detail, async (req: Request<{ name: string }>, res: Response<SkillDetailResponse | ErrorResponse>) => {

@@ -16,7 +16,9 @@
 import "dotenv/config";
 import crypto from "crypto";
 import express, { type Request, type Response } from "express";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createBridgeClient } from "@mulmobridge/client";
+import { narrowChallenge } from "./verify.js";
 
 const TRANSPORT_ID = "whatsapp";
 const PORT = Number(process.env.WHATSAPP_BRIDGE_PORT) || 3003;
@@ -141,25 +143,87 @@ function extractTextMessages(body: unknown): WhatsAppTextMessage[] {
 
 const app = express();
 app.disable("x-powered-by");
+
+// Honour an explicit `trust proxy` setting so `req.ip` (the
+// rate-limit key below) reflects the real client IP rather than
+// the load balancer's. Default `false` for safety; operators
+// behind a known LB choose from:
+//   - hop count:  BRIDGE_TRUST_PROXY=1
+//   - boolean:    BRIDGE_TRUST_PROXY=true / false
+//   - preset:     BRIDGE_TRUST_PROXY=loopback
+//   - CIDR list:  BRIDGE_TRUST_PROXY=10.0.0.0/8,192.168.0.0/16
+// Without this every webhook looks like it comes from one IP and
+// the limiter degrades into a global throttle. The boolean branch
+// is required because Express does NOT auto-convert string
+// "true"/"false" — without this, `BRIDGE_TRUST_PROXY=true` is read
+// as a (never-matching) CIDR rule (Codex reviews on #1326).
+const trustProxyEnv = process.env.BRIDGE_TRUST_PROXY;
+if (trustProxyEnv) {
+  const lower = trustProxyEnv.toLowerCase();
+  const numeric = Number(trustProxyEnv);
+  const value: boolean | number | string =
+    lower === "true" ? true : lower === "false" ? false : Number.isInteger(numeric) && numeric >= 0 ? numeric : trustProxyEnv;
+  app.set("trust proxy", value);
+}
+
 // Parse as raw text so we can verify the HMAC before JSON parsing
 app.use(express.text({ type: "application/json" }));
 
-// Webhook verification (GET)
-app.get("/webhook", (req: Request, res: Response) => {
+// Per-IP throttle on the webhook endpoint. CodeQL's
+// `js/missing-rate-limiting` rule recognises `express-rate-limit`
+// specifically, and Meta's platform sends well under 120 req/min/IP
+// during normal use, so the cap exists to bound a flood / stuck
+// retry loop. The verification GET shares the limiter since a
+// flood of bogus `hub.challenge` probes would otherwise hammer
+// us just as effectively.
+const webhookRateLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 120,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  // Explicit keyGenerator routed through `ipKeyGenerator(...)`. The
+  // raw `req.ip` reading isn't safe on its own — IPv6 clients can
+  // rotate addresses within a /56 prefix and evade per-client limits.
+  // `express-rate-limit`'s `ipKeyGenerator` normalises both IPv4
+  // and IPv6 (folding IPv6 to its /56 subnet by default), which is
+  // what `req.ip` alone misses. The `app.set("trust proxy", ...)`
+  // block above is what makes `req.ip` reflect the real client
+  // rather than the LB. Together: explicit + IPv6-safe + proxy-
+  // aware (Codex reviews iter-1 + iter-2 on #1326).
+  keyGenerator: (req) => ipKeyGenerator(req.ip ?? "", 56),
+});
+
+// Webhook verification (GET).
+//
+// Meta sends `hub.mode=subscribe` + the shared `hub.verify_token`
+// + a one-time `hub.challenge` ASCII nonce that we must echo back.
+// Three layered defences against `js/reflected-xss` — full
+// rationale + compatibility notes live in `./verify.ts` next to
+// the unit-tested `narrowChallenge` helper.
+//
+//   1. **Shape whitelist** on `hub.challenge` (`narrowChallenge`)
+//      — required to clear CodeQL's data-flow analyser (we tried
+//      `text/plain` alone and the alert stayed open).
+//   2. **`text/plain` content-type** — neutralises browser HTML
+//      execution even if a future regression widened the whitelist.
+//   3. **String-narrowing** — `narrowChallenge` rejects non-string
+//      query values so `?hub.challenge[]=…` array forms can't
+//      bypass the regex via toString().
+app.get("/webhook", webhookRateLimit, (req: Request, res: Response) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
+  const challenge = narrowChallenge(req.query["hub.challenge"]);
 
-  if (mode === "subscribe" && token === verifyToken) {
+  if (mode === "subscribe" && token === verifyToken && challenge !== null) {
     console.log("[whatsapp] webhook verified");
-    res.status(200).send(challenge);
+    res.type("text/plain").status(200).send(challenge);
   } else {
-    res.status(403).send("Forbidden");
+    res.status(403).type("text/plain").send("Forbidden");
   }
 });
 
-// Webhook events (POST) — signature-verified
-app.post("/webhook", async (req: Request, res: Response) => {
+// Webhook events (POST) — signature-verified + rate-limited
+app.post("/webhook", webhookRateLimit, async (req: Request, res: Response) => {
   const signature = req.headers["x-hub-signature-256"] as string;
   const rawBody = req.body as string;
 

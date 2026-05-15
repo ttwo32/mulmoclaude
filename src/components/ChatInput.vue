@@ -1,5 +1,10 @@
 <template>
-  <div class="border-t border-gray-200" @dragover.prevent @drop="onDropFile">
+  <!-- File drop is handled at the chat panel level (#1289 Step 2)
+       so the user can drop anywhere over the panel + messages, not
+       just over the input box. ChatInput still owns `readFile` for
+       the dropped file — App.vue calls it via the exposed method
+       once the panel-wide drop fires. -->
+  <div class="border-t border-gray-200">
     <SuggestionsPanel
       v-model:expanded="suggestionsExpanded"
       :queries="queries"
@@ -178,12 +183,6 @@ function onPasteFile(event: ClipboardEvent): void {
   }
 }
 
-function onDropFile(event: DragEvent): void {
-  event.preventDefault();
-  const file = event.dataTransfer?.files[0];
-  if (file) readAttachmentFile(file);
-}
-
 function openFilePicker(): void {
   fileInput.value?.click();
 }
@@ -215,5 +214,5 @@ function collapseSuggestions(): void {
   suggestionsExpanded.value = false;
 }
 
-defineExpose({ focus, collapseSuggestions });
+defineExpose({ focus, collapseSuggestions, readFile: readAttachmentFile });
 </script>

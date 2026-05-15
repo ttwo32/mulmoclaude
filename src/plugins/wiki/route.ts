@@ -11,6 +11,8 @@
 // (#633): one file owns the URL ↔ domain mapping, so the literals don't
 // drift across the router definition, guards, views, and tests.
 
+import { isSafeSlug } from "../../lib/wiki-page/slug";
+
 // URL segment used in `/wiki/:section/...`. Closed enum — the router
 // regex `(pages|log|lint-report)` rejects anything else.
 export const WIKI_ROUTE_SECTION = {
@@ -44,18 +46,17 @@ export type WikiTarget = { kind: "index" } | { kind: "page"; slug: string } | { 
 // with a different page. Vue Router decodes `%2F` back to `/` in
 // `route.params.slug`, so `/wiki/pages/..%2Fsecrets` lands here as
 // `slug === "../secrets"` — this check is the last line of defence
-// before the slug is passed to the server's page resolver
-// (`wikiSlugify` strips `..` but would still match a page literally
-// named `secrets` via its fuzzy fallback). Non-ASCII characters
-// (e.g. Japanese page titles) are allowed; only separators and `..`
-// are blocked.
+// before the slug is passed to the server's page resolver. Non-
+// ASCII characters (e.g. Japanese page titles) are allowed; only
+// separators and the literal `.` / `..` are blocked.
+//
+// Delegates the actual rule to `isSafeSlug` in
+// `src/lib/wiki-page/slug.ts` (imported at the top of this file)
+// so server and frontend share one implementation (#1297). The
+// wrapper adds the type-guard / non-string-input handling the
+// router needs.
 export function isSafeWikiSlug(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  if (value.length === 0) return false;
-  if (value.includes("/")) return false;
-  if (value.includes("\\")) return false;
-  if (value.includes("..")) return false;
-  return true;
+  return typeof value === "string" && isSafeSlug(value);
 }
 
 // Read `route.params` from the wiki route and normalise to a

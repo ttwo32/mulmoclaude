@@ -40,13 +40,29 @@
                 v-for="skill in group.skills"
                 :key="skill.name"
                 :data-testid="`skill-item-${skill.name}`"
-                class="cursor-pointer px-4 py-3 border-b border-gray-100 text-sm hover:bg-white transition-colors"
-                :class="selectedName === skill.name ? 'bg-white border-l-2 border-l-blue-500' : ''"
-                @click="selectedName = skill.name"
+                class="cursor-pointer px-4 py-3 border-b border-gray-100 text-sm hover:bg-white transition-colors focus:outline-none focus:bg-white focus:border-l-2 focus:border-l-blue-400"
+                :class="selectedName === skill.name && !selectedCatalog ? 'bg-white border-l-2 border-l-blue-500' : ''"
+                role="button"
+                tabindex="0"
+                :aria-pressed="selectedName === skill.name && !selectedCatalog"
+                @click="selectActiveSkill(skill.name)"
+                @keydown.enter.prevent="selectActiveSkill(skill.name)"
+                @keydown.space.prevent="selectActiveSkill(skill.name)"
               >
-                <div class="font-medium text-gray-800 truncate">{{ skill.name }}</div>
-                <div class="text-xs text-gray-500 truncate mt-0.5">
-                  {{ skill.description }}
+                <div class="flex items-center gap-2">
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium text-gray-800 truncate">{{ skill.name }}</div>
+                    <div class="text-xs text-gray-500 truncate mt-0.5">
+                      {{ skill.description }}
+                    </div>
+                  </div>
+                  <span
+                    class="shrink-0 material-icons text-sm"
+                    :class="sourceMeta(skill.source).colour"
+                    :title="sourceMeta(skill.source).title"
+                    aria-hidden="true"
+                    >{{ sourceMeta(skill.source).icon }}</span
+                  >
                 </div>
               </div>
             </div>
@@ -57,11 +73,114 @@
             <code class="text-[11px]">{{ t("pluginManageSkills.emptySkillPath") }}</code>
           </template>
         </i18n-t>
+
+        <!-- Catalog: launcher-managed presets. Rows behave like the
+             active list above — click selects an entry, which loads
+             its detail (description + body) into the right pane
+             along with ★ Star / ▶ Run once actions. Inline icon
+             buttons were removed; the right pane is now the single
+             place to read + act on a catalog entry. (#1335 PR-B2
+             follow-up.) -->
+        <div v-if="catalogPresets.length > 0" class="border-t border-gray-200 mt-2">
+          <div class="px-4 py-2 text-[11px] uppercase tracking-wide text-gray-500 font-semibold" data-testid="skill-catalog-section-heading">
+            {{ t("pluginManageSkills.catalogPresetHeading") }}
+          </div>
+          <div
+            v-for="entry in catalogPresets"
+            :key="`catalog-preset-${entry.slug}`"
+            :data-testid="`skill-catalog-item-${entry.slug}`"
+            class="cursor-pointer px-4 py-3 border-b border-gray-100 text-sm hover:bg-white transition-colors focus:outline-none focus:bg-white focus:border-l-2 focus:border-l-blue-400"
+            :class="selectedCatalog?.slug === entry.slug ? 'bg-white border-l-2 border-l-blue-500' : ''"
+            role="button"
+            tabindex="0"
+            :aria-pressed="selectedCatalog?.slug === entry.slug"
+            @click="selectCatalogEntry(entry)"
+            @keydown.enter.prevent="selectCatalogEntry(entry)"
+            @keydown.space.prevent="selectCatalogEntry(entry)"
+          >
+            <div class="flex items-center gap-2">
+              <div class="flex-1 min-w-0">
+                <div class="font-medium text-gray-700 truncate">{{ entry.name }}</div>
+                <div class="text-xs text-gray-500 truncate mt-0.5">{{ entry.description }}</div>
+              </div>
+              <span
+                v-if="entry.alreadyActive"
+                class="shrink-0 material-icons text-sm text-yellow-500"
+                :title="t('pluginManageSkills.catalogStarred')"
+                :data-testid="`skill-catalog-starred-indicator-${entry.slug}`"
+                aria-hidden="true"
+                >star</span
+              >
+              <span class="shrink-0 material-icons text-sm" :class="presetSourceMeta.colour" :title="presetSourceMeta.title" aria-hidden="true">{{
+                presetSourceMeta.icon
+              }}</span>
+            </div>
+          </div>
+          <div v-if="catalogError" class="px-4 py-2 text-xs text-red-600">{{ catalogError }}</div>
+        </div>
       </div>
 
       <!-- Right: detail pane -->
       <div class="flex-1 min-w-0 overflow-y-auto">
-        <div v-if="!selected" class="p-6 text-sm text-gray-400 italic">{{ t("pluginManageSkills.selectHint") }}</div>
+        <!-- Catalog (preset) detail. Selecting a row from the
+             "Preset catalog" section in the left column routes
+             here. Shows description + body + Star / Run once
+             actions. (#1335 PR-B2 follow-up — replaces the inline
+             buttons and the Preview modal with a single right-pane
+             that mirrors the active-skill view.) -->
+        <div v-if="selectedCatalog" class="p-6" data-testid="skill-catalog-detail-pane">
+          <div class="flex items-start justify-between gap-4 mb-4">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="material-icons text-sm" :class="presetSourceMeta.colour" :title="presetSourceMeta.title" aria-hidden="true">{{
+                  presetSourceMeta.icon
+                }}</span>
+                <h3 class="text-xl font-semibold text-gray-800 truncate">{{ selectedCatalog.name }}</h3>
+              </div>
+              <p class="text-sm text-gray-600 mt-1">{{ selectedCatalog.description }}</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <button
+                v-if="!selectedCatalog.alreadyActive"
+                class="h-8 px-2.5 flex items-center gap-1 text-sm rounded border border-yellow-400 text-yellow-600 hover:bg-yellow-50 disabled:opacity-40"
+                :disabled="catalogActioningSlug === selectedCatalog.slug"
+                :title="t('pluginManageSkills.catalogStar')"
+                data-testid="skill-catalog-detail-star-btn"
+                @click="starCatalogEntry(selectedCatalog)"
+              >
+                <span class="material-icons text-sm" aria-hidden="true">star_border</span>
+                {{ t("pluginManageSkills.catalogStar") }}
+              </button>
+              <button
+                v-else
+                class="h-8 px-2.5 flex items-center gap-1 text-sm rounded text-yellow-500 cursor-not-allowed"
+                :title="t('pluginManageSkills.catalogStarred')"
+                data-testid="skill-catalog-detail-starred"
+                disabled
+              >
+                <span class="material-icons text-sm" aria-hidden="true">star</span>
+                {{ t("pluginManageSkills.catalogStarred") }}
+              </button>
+              <button
+                class="h-8 px-2.5 flex items-center gap-1 text-sm rounded bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40"
+                :disabled="catalogActioningSlug === selectedCatalog.slug || !catalogDetail"
+                :title="t('pluginManageSkills.catalogRunOnce')"
+                data-testid="skill-catalog-detail-run-btn"
+                @click="runOnceCatalogEntry(selectedCatalog)"
+              >
+                <span class="material-icons text-sm" aria-hidden="true">play_arrow</span>
+                {{ t("pluginManageSkills.catalogRunOnce") }}
+              </button>
+            </div>
+          </div>
+          <div v-if="catalogDetailLoading" class="text-sm text-gray-400 italic">{{ t("pluginManageSkills.loading") }}</div>
+          <div v-else-if="catalogError" class="text-sm text-red-600">{{ catalogError }}</div>
+          <!-- eslint-disable vue/no-v-html -- markdown sanitized via sanitizeMarkdownHtml; same trust chain as the active-skill body below -->
+          <div v-else-if="catalogDetail" class="markdown-content text-gray-700" v-html="catalogRenderedBody"></div>
+          <!-- eslint-enable vue/no-v-html -->
+        </div>
+
+        <div v-else-if="!selected" class="p-6 text-sm text-gray-400 italic">{{ t("pluginManageSkills.selectHint") }}</div>
         <div v-else class="p-6">
           <div class="flex items-start justify-between gap-4 mb-4">
             <div class="min-w-0">
@@ -172,7 +291,7 @@ import { marked } from "marked";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import type { ManageSkillsData, SkillSummary } from "./index";
 import { useAppApi } from "../../composables/useAppApi";
-import { apiGet, apiPut, apiDelete } from "../../utils/api";
+import { apiGet, apiPost, apiPut, apiDelete } from "../../utils/api";
 import { handleExternalLinkClick } from "../../utils/dom/externalLink";
 import { sanitizeMarkdownHtml } from "../../utils/markdown/sanitize";
 import { pluginEndpoints } from "../api";
@@ -256,28 +375,206 @@ const renderedBody = computed(() => {
   return sanitizeMarkdownHtml(marked(body) as string);
 });
 
-// Edit/Delete gate. System (`mc-` prefix) project skills are read-only
-// because they ship with the app — editing them would mask a future
-// upstream update. Only user-authored project skills are mutable.
 const isSelectedEditable = computed(() => detail.value !== null && categorizeSkill(detail.value) === "project");
-
-// Reset the selection when the tool result is replaced (e.g. the
-// user opens a newer `manageSkills` invocation from the sidebar).
-watch(
-  () => props.selectedResult?.uuid,
-  () => {
-    skills.value = props.selectedResult?.data?.skills ?? [];
-    selectedName.value = pickInitialSelection(skills.value, collapsedGroups.value);
-  },
-);
 
 const listError = ref<string | null>(null);
 
 const endpoints = pluginEndpoints<SkillsEndpoints>("skills");
 
+// Catalog state (#1335 PR-B). Loaded on mount + after a successful
+// star so the row updates from "★ Star" → "★ Starred". `starringSlug`
+// disables the button mid-request to prevent double-clicks.
+type CatalogSource = "preset";
+interface CatalogEntry {
+  slug: string;
+  name: string;
+  description: string;
+  source: CatalogSource;
+  alreadyActive: boolean;
+}
+interface CatalogDetail {
+  slug: string;
+  source: CatalogSource;
+  description: string;
+  body: string;
+}
+const catalogPresets = ref<CatalogEntry[]>([]);
+const catalogError = ref<string | null>(null);
+// Single in-flight gate covers Star / Run once on the selected
+// entry so a slow request doesn't let the user fire a second
+// action mid-flight.
+const catalogActioningSlug = ref<string | null>(null);
+// Right-pane selection for a catalog entry (mutually exclusive
+// with `selectedName` — picking one clears the other).
+const selectedCatalog = ref<CatalogEntry | null>(null);
+const catalogDetail = ref<CatalogDetail | null>(null);
+const catalogDetailLoading = ref(false);
+// `appApi` is also referenced lower down by the existing `runSkill`
+// (slash-command invocation for active skills); hoisting one
+// declaration so the catalog handlers don't need their own lookup.
+const catalogAppApi = useAppApi();
+
+const catalogRenderedBody = computed(() => {
+  const body = catalogDetail.value?.body;
+  if (!body) return "";
+  return sanitizeMarkdownHtml(marked(body) as string);
+});
+
+// Visual key for the "scope" badge that appears in every row +
+// the right-pane header. Three scopes today:
+//   - user    `~/.claude/skills/`           — global across workspaces
+//   - project `<workspace>/.claude/skills/` — this workspace only
+//   - preset  catalog (not yet ★ Starred)   — launcher-managed
+// Icons + colours are deliberately monochromatic except for the
+// preset case where we hint "library / shelf" with the inventory
+// glyph. The yellow ★ for "starred" is rendered separately so the
+// scope badge stays semantically about provenance, not state.
+interface SourceMeta {
+  icon: string;
+  title: string;
+  colour: string;
+}
+
+function sourceMeta(source: "user" | "project"): SourceMeta {
+  if (source === "user") {
+    return { icon: "home", title: t("pluginManageSkills.sourceUserTitle"), colour: "text-blue-500" };
+  }
+  return { icon: "folder", title: t("pluginManageSkills.sourceProjectTitle"), colour: "text-green-600" };
+}
+
+const presetSourceMeta = computed<SourceMeta>(() => ({
+  icon: "inventory_2",
+  title: t("pluginManageSkills.sourcePresetTitle"),
+  colour: "text-gray-400",
+}));
+
+// Reset the selection when the tool result is replaced (e.g. the
+// user opens a newer `manageSkills` invocation from the sidebar).
+// Lives after the catalog refs so source-order use-before-define
+// is satisfied — the closure runs at watch-fire time, not at
+// module-eval time, but the lint rule is structural.
+watch(
+  () => props.selectedResult?.uuid,
+  () => {
+    skills.value = props.selectedResult?.data?.skills ?? [];
+    selectedName.value = pickInitialSelection(skills.value, collapsedGroups.value);
+    selectedCatalog.value = null;
+    catalogDetail.value = null;
+    catalogDetailLoading.value = false;
+    catalogActioningSlug.value = null;
+    catalogError.value = null;
+  },
+);
+
+async function loadCatalog(): Promise<void> {
+  const response = await apiGet<{ entries: CatalogEntry[] }>(endpoints.catalogList.url);
+  if (!response.ok) {
+    catalogError.value = t("pluginManageSkills.errCatalogListFailed", { error: response.error });
+    return;
+  }
+  catalogError.value = null;
+  if (Array.isArray(response.data.entries)) {
+    catalogPresets.value = response.data.entries.filter((entry) => entry.source === "preset");
+  }
+}
+
+async function refreshActiveList(): Promise<void> {
+  // Mirrors the onMounted fetch so the left-column list reflects the
+  // newly-starred skill without waiting for the next manageSkills
+  // tool result. Errors here are non-fatal — the catalog state is
+  // the source of truth for the "Starred" badge.
+  const response = await apiGet<{ skills: SkillSummary[] }>(endpoints.list.url);
+  if (response.ok && Array.isArray(response.data.skills)) {
+    skills.value = response.data.skills;
+  }
+}
+
+async function starCatalogEntry(entry: CatalogEntry): Promise<void> {
+  if (entry.alreadyActive) return;
+  catalogActioningSlug.value = entry.slug;
+  const response = await apiPost<{ starred: true; slug: string }>(endpoints.catalogStar.url, { source: entry.source, slug: entry.slug });
+  catalogActioningSlug.value = null;
+  if (!response.ok) {
+    catalogError.value = t("pluginManageSkills.errCatalogStarFailed", { error: response.error });
+    return;
+  }
+  catalogError.value = null;
+  // Refresh both lists so the row flips to "Starred" and the new
+  // active entry shows up in the left column.
+  await Promise.all([loadCatalog(), refreshActiveList()]);
+  // Reconcile the right-pane selection with the refreshed list so
+  // its `alreadyActive` flag reflects reality without forcing the
+  // user to re-click.
+  if (selectedCatalog.value?.slug === entry.slug) {
+    const updated = catalogPresets.value.find((candidate) => candidate.slug === entry.slug);
+    if (updated) selectedCatalog.value = updated;
+  }
+}
+
+async function fetchCatalogDetail(entry: CatalogEntry): Promise<CatalogDetail | null> {
+  const response = await apiGet<{ detail: CatalogDetail }>(endpoints.catalogPreview.url, { source: entry.source, slug: entry.slug });
+  if (!response.ok) {
+    catalogError.value = t("pluginManageSkills.errCatalogPreviewFailed", { error: response.error });
+    return null;
+  }
+  catalogError.value = null;
+  return response.data.detail;
+}
+
+function selectActiveSkill(name: string): void {
+  // Active and catalog selections are mutually exclusive — picking
+  // one clears the other so the right pane has a single source of
+  // truth.
+  selectedCatalog.value = null;
+  catalogDetail.value = null;
+  selectedName.value = name;
+}
+
+async function selectCatalogEntry(entry: CatalogEntry): Promise<void> {
+  selectedName.value = null;
+  selectedCatalog.value = entry;
+  catalogDetail.value = null;
+  catalogDetailLoading.value = true;
+  const slugAtRequest = entry.slug;
+  const fetched = await fetchCatalogDetail(entry);
+  // Selection may have changed while the request was in flight —
+  // drop the response if so (same race-condition guard the active-
+  // skill detail watcher uses).
+  if (selectedCatalog.value?.slug !== slugAtRequest) return;
+  catalogDetailLoading.value = false;
+  if (fetched !== null) catalogDetail.value = fetched;
+}
+
+async function runOnceCatalogEntry(entry: CatalogEntry): Promise<void> {
+  // Use the already-fetched detail when the entry is the current
+  // right-pane selection (the common case — user reads body, then
+  // clicks Run once). Falls back to a fresh fetch when the click
+  // somehow lands without a prior selection (defensive — the right
+  // pane is the only place Run once is exposed today).
+  //
+  // The shared in-flight gate is held for the whole flow so a
+  // rapid double-click can't enqueue two `startNewChat` calls
+  // and spawn duplicate sessions. (Codex review on PR #1374.)
+  catalogActioningSlug.value = entry.slug;
+  try {
+    const body = catalogDetail.value?.slug === entry.slug && catalogDetail.value !== null ? catalogDetail.value.body : (await fetchCatalogDetail(entry))?.body;
+    if (!body || !body.trim()) {
+      catalogError.value = t("pluginManageSkills.errCatalogRunOnceEmpty");
+      return;
+    }
+    catalogAppApi.startNewChat(body);
+  } finally {
+    catalogActioningSlug.value = null;
+  }
+}
+
 // Standalone mode: if no selectedResult was passed, fetch the skill
 // list from the API on mount so the view is populated.
 onMounted(async () => {
+  // Always load the catalog so the section appears even when the
+  // view was opened from a tool result (which only carries the
+  // active list).
+  await loadCatalog();
   if (props.selectedResult || skills.value.length > 0) return;
   const response = await apiGet<{ skills: SkillSummary[] }>(endpoints.list.url);
   if (!response.ok) {
@@ -400,5 +697,14 @@ async function deleteSkill(): Promise<void> {
   }
   selectedName.value = pickInitialSelection(skills.value, collapsedGroups.value);
   detail.value = null;
+  // Refresh the catalog so a deleted star reverts to ☆ Star.
+  // `alreadyActive` is computed from disk at list time — without
+  // this call the badge + right-pane state would lag until the
+  // next mount. (#1335 PR-B2 follow-up.)
+  await loadCatalog();
+  if (selectedCatalog.value?.slug === name) {
+    const refreshed = catalogPresets.value.find((candidate) => candidate.slug === name);
+    if (refreshed) selectedCatalog.value = refreshed;
+  }
 }
 </script>

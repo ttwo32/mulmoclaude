@@ -27,14 +27,30 @@ function stripTags(input: string): string {
   return out.join("");
 }
 
+// Single-pass entity decoder. Doing this as a chain of independent
+// `.replace()` calls produces a double-unescape bug when the source
+// contains a literal escaped entity like `&amp;lt;`:
+//
+//   chain order  &amp; → &   then  &lt; → <
+//   result       `&amp;lt;` ends up as `<`, but the author meant
+//                the literal string `&lt;`
+//
+// Walking the input once with a single regex + lookup table makes
+// `&amp;lt;` decode to `&lt;` (only the `&amp;` is unescaped, the
+// following `&lt;` is then left as plain text). CodeQL flags the
+// chained form as `js/double-escaping`.
+const ENTITY_REPLACEMENTS: Readonly<Record<string, string>> = {
+  "&nbsp;": " ",
+  "&amp;": "&",
+  "&lt;": "<",
+  "&gt;": ">",
+  "&quot;": '"',
+  "&#39;": "'",
+};
+const ENTITY_RE = /&(?:nbsp|amp|lt|gt|quot|#39);/g;
+
 function decodeEntities(input: string): string {
-  return input
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+  return input.replace(ENTITY_RE, (match) => ENTITY_REPLACEMENTS[match] ?? match);
 }
 
 export function htmlToText(html: string): string {

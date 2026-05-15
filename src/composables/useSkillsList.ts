@@ -1,6 +1,7 @@
 import { readonly, ref, type Ref, type DeepReadonly } from "vue";
 import { apiGet } from "../utils/api";
 import { API_ROUTES } from "../config/apiRoutes";
+import { errorMessage } from "../utils/errors";
 
 export interface SkillSummary {
   name: string;
@@ -32,7 +33,7 @@ async function refresh(): Promise<void> {
       console.warn("[useSkillsList] refresh failed:", message);
     } catch (err) {
       // Runtime throw must not become an unhandled rejection — the bootstrap call site is `void refresh()`.
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       error.value = message;
       console.warn("[useSkillsList] refresh threw:", err);
     } finally {

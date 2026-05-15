@@ -8,7 +8,8 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { isSafeSlug, wikiSlugFromAbsPath } from "../../../src/lib/wiki-page/slug.js";
+import { isSafeSlug } from "../../../src/lib/wiki-page/slug.js";
+import { wikiSlugFromAbsPath } from "../../../src/lib/wiki-page/paths.js";
 
 describe("isSafeSlug", () => {
   it("accepts ordinary slugs", () => {

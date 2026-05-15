@@ -94,9 +94,11 @@ export function extractText(jsonlContent: string): string {
   return parts.join("\n\n");
 }
 
-// Long sessions are truncated to first ~3000 + last ~5000 chars so
+// Long sessions are clipped to first ~3000 + last ~5000 chars so
 // claude sees both the original topic and the most recent state.
-export function truncate(text: string): string {
+// Distinct from the simple-tail `truncate()` in `server/utils/text.ts`
+// — the summarizer needs context from both ends, not just the head.
+export function truncateMiddle(text: string): string {
   if (text.length <= MAX_INPUT_CHARS) return text;
   const head = text.slice(0, HEAD_CHARS);
   const tail = text.slice(-TAIL_CHARS);
@@ -165,7 +167,7 @@ export function validateSummaryResult(obj: unknown): SummaryResult {
 export async function loadJsonlInput(jsonlPath: string): Promise<string> {
   try {
     const content = await readFile(jsonlPath, "utf-8");
-    return truncate(extractText(content));
+    return truncateMiddle(extractText(content));
   } catch {
     return "";
   }

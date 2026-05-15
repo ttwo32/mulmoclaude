@@ -17,6 +17,7 @@ import { fileChannel, toPosixWorkspacePath, type FileChannelPayload } from "../.
 import { workspacePath } from "../workspace/workspace.js";
 import { maybeRegenerateTopicIndex, TOPIC_INDEX_RELATIVE_PATH } from "../workspace/memory/topic-index-hook.js";
 import { log } from "../system/logger/index.js";
+import { errorMessage } from "../utils/errors.js";
 
 let pubsub: IPubSub | null = null;
 
@@ -42,7 +43,7 @@ export async function publishFileChange(relativePath: string): Promise<void> {
   } catch (err) {
     log.warn("file-change", "stat failed; falling back to Date.now()", {
       pathPreview: relativePath,
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMessage(err),
     });
     mtimeMs = Date.now();
   }
@@ -59,7 +60,7 @@ export async function publishFileChange(relativePath: string): Promise<void> {
   } catch (err) {
     log.warn("file-change", "publish failed; subscribers will miss this event", {
       pathPreview: posixPath,
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMessage(err),
     });
   }
   // Side-effect hook: keep the topic-format MEMORY.md index in sync

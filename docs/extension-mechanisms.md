@@ -236,9 +236,17 @@ const hasMcp = activePlugins.length > 0 || hasUserServers;
 **何**: markdown で書かれた手順書。LLM の **tool ではない** — frontmatter + 本文を持ち、
 Claude Code SDK が「使うべき場面」を判断して system prompt の一部として LLM に提示する。
 
-**置き場**:
-- `~/.claude/skills/<name>/SKILL.md` — user scope (read-only from MulmoClaude)
-- `<workspace>/.claude/skills/<name>/SKILL.md` — project scope (writable via `manageSkills`)
+**置き場 (Claude Code SDK の制約)**:
+
+Claude Code SDK が skill を読みに行くパスは **2 つだけ**で、CLI オプションで第三のパスを指定する方法はない:
+
+- `~/.claude/skills/<name>/SKILL.md` — user scope (どこからでも読まれる)
+- `<cwd>/.claude/skills/<name>/SKILL.md` — project scope (実行時 cwd の直下)
+
+この制約のため、MulmoClaude では:
+
+- **MulmoClaude エンドユーザ向け**: `<workspace>/.claude/skills/` (デフォルト `~/mulmoclaude/.claude/skills/`) — agent 起動時 cwd を workspace に固定しているので、ここが project scope として効く
+- **リポジトリ直下の `.claude/skills/`**: 開発者が monorepo で `cwd=<repo>` で作業するとき用。**MulmoClaude を「アプリ」として使うユーザからは見えない** — 同梱したくないなら repo `.claude/` に置けば自然に区切られる
 
 **Frontmatter 例**:
 
@@ -252,6 +260,30 @@ schedule: "interval 168h"
 
 **`schedule:` を持つ skill** は scheduler が自動実行する (`server/api/routes/scheduler.ts`)。
 
+**Preset skills (launcher 同梱)**:
+
+リポジトリには **launcher が同梱して出荷するプリセット skill** が `server/workspace/skills-preset/<name>/SKILL.md` に置かれている。命名規約は `mc-` プレフィックス (= "MulmoClaude managed")。リポジトリ側を編集して PR を出すのが正規ルート。
+
+現在の preset (`mc-` prefix 持ち):
+
+| Preset | 用途 |
+|---|---|
+| `mc-settings` | 設定 (roles / mcp.json / sources / skills / automations) の編集手順 |
+| `mc-library` | 読書記録 — 読みたい本 / 読了の登録、感想を本人の言葉で記録、後から想起できるジャーナル |
+| `mc-cooking-coach` | レシピの保存・更新・削除と `data/cooking/recipes/README.md` 索引維持 |
+
+同期の実装は `server/workspace/skills-preset.ts` (`syncPresetSkills`)。起動時に `server/workspace/workspace.ts` から呼ばれる。
+
+**Catalog vs Active 分離 (#1335 PR-A)**:
+
+- **Source**: `<launcher>/server/workspace/skills-preset/<name>/SKILL.md`
+- **Sync 先 (catalog)**: `<workspace>/data/skills/catalog/preset/<name>/SKILL.md` — 起動毎に上書き、launcher-owned
+- **Active レイヤー**: `<workspace>/.claude/skills/<name>/SKILL.md` — Claude Code が discover、prompt に description が乗る
+
+Catalog にあるだけでは prompt に乗らない (Claude Code の resolver は `.claude/skills/` しか見ない)。preset を有効化するには catalog → `.claude/skills/` にコピーする必要がある。コピー UI (★ star) は #1335 PR-B、上流 Anthropic skills の git sync は PR-C で予定。PR-A の時点で catalog はファイル上は populated されるが、UI 経由の active 化はまだない (手動 `cp` でアクティブ化可能)。
+
+設計の動機: preset を増やしても勝手に system prompt が肥大化しないようにする。ユーザは catalog を眺める / 試す → 気に入ったものだけ ★ で恒常 active 化する 2 段モデル。
+
 **ソース実装**:
 
 - Discovery: `server/workspace/skills/index.ts` の `discoverSkills` — user + project を merge、project 優先
@@ -263,6 +295,16 @@ schedule: "interval 168h"
 // server/api/routes/skills.ts:57
 const skills = await discoverSkills({ workspaceRoot: workspacePath });
 ```
+
+**ドキュメント系操作の典型パターン: skill + hook**:
+
+`presentDocument` / `presentSpreadsheet` / `manageWiki` といったドキュメント系の更新は、独自 endpoint を増やさず **skill が規約を教える → LLM が Read/Write/Edit で直接ファイル操作 → 必要な後処理は Claude Code SDK の hook で受ける**、という設計に寄せている:
+
+1. skill が markdown / YAML / JSON の **保存先と書式規約**を LLM に教える
+2. LLM が `Read` / `Write` / `Edit` で `<workspace>/data/<type>/<slug>.md` 等を**直接**更新する (plugin API を介さない)
+3. **後処理が必要**な書き込みは Claude Code SDK の **PostToolUse hook** で受ける — `<workspace>/.claude/settings.json` で `hooks.PostToolUse[]` に `matcher: "Write"` を宣言し、hook スクリプトが `tool_input.file_path` を見て **ファイルパスで処理を分岐**する (例: wiki ページ書き込み → インデックス再計算 / `<img>` ref 補修、accounting JSON 書き込み → 集計キャッシュ無効化)
+
+これにより、LLM 視点は「ファイルを書くだけ」のシンプルな世界のまま、サーバ側でドキュメント整合性を担保できる。endpoint を切らないので plugin 用テスト・ドキュメント・MCP 露出も不要。
 
 **重要**:
 - skill は **tool ではない**ので、プログラム連携 (`tools/call` で他 plugin から呼ぶ) には使えない
@@ -387,7 +429,79 @@ session 開始時の処理 (`server/agent/index.ts:39-99`):
 
 ---
 
-## 6. 関連ドキュメント
+## 6. 設計指針
+
+新しい機能をどの機構で実装するか迷ったら、**できる限り skill で実現する**ことを基本姿勢とし、以下の順番で検討する。
+
+### 6.1 まず skill で実現できないか考える
+
+新機能の第一候補は **skill (§3.5) + ファイル規約**。LLM は `Read` / `Write` / `Edit` / `Glob` / `Bash` を最初から持っているので:
+
+- データ保存・更新・取得は skill が「どこに、どの形式で置くか」を教えるだけで成立する
+- ユーザは markdown / YAML / JSON を直接編集でき、ファイル自体が source of truth
+- skill 同士で規約を共有でき、別 Role から流用しやすい
+
+これで済むなら **plugin endpoint・API・テスト・MCP 露出を一切書かなくていい**。reading list、bookmarks、recipe、travel log といった「データを置く・読む・更新する」系は全部このパターンで実装できる。
+
+### 6.2 プログラム的処理が必要なら、まず hook との組み合わせを検討
+
+skill だけだと足りない (= LLM がファイルを書いた後にサーバ側で何か計算したい / 整合性を取りたい) ケースが出てきたら、**plugin を作る前に Claude Code SDK の hook と組み合わせる**:
+
+- LLM は skill の規約どおりに `Write` でファイルを書く
+- `<workspace>/.claude/settings.json` の `hooks.PostToolUse[]` (matcher: `"Write"`) が発火
+- hook スクリプトが `tool_input.file_path` を見て、該当パスならインデックス更新 / cache 無効化 / 通知発火 / 整合性チェック等を行う
+
+これでも足りない (= LLM が呼び出せる handler が必要) なら、次の選択肢は **skill から外部コマンド / 既存 endpoint を叩く**:
+
+- skill の指示で `Bash` ツール経由でスクリプトを実行する
+- 既存の MCP tool (`notify` 等) や built-in plugin endpoint を skill から呼ぶよう促す
+- カスタム CLI を `<workspace>/bin/` に置いて skill から呼ばせる
+
+ここまでで済むなら、**plugin を増やさずに新機能が完結する**。
+
+### 6.3 やむを得ない場合のみ plugin を増やす
+
+skill + hook + 外部呼び出しでは表現できない場合に限り plugin を作る。具体的には:
+
+- **複雑なビジネスロジック・不変条件**: accounting (借方/貸方バランス、税計算、月次決算) のように LLM が JSON を直書きすると整合性が壊れるケース → サーバ側 validator + plugin endpoint が必要
+- **専用 canvas UI**: chart / spreadsheet / map / canvas drawing 等、markdown レンダリングだけでは不十分で固有 Vue コンポーネントが要るケース
+- **リアルタイム / マルチタブ同期**: 複数のタブ・複数の家族端末で同じ状態を共有したいケース (pubsub channel)
+
+**plugin と role は極力増やさない**。判断基準:
+
+- LLM が任意のテキストを書いても問題ないか → **skill** (§3.5)
+- 後処理だけ必要か → **skill + hook** (§6.2)
+- 「整合した状態」と「壊れた状態」が事後に判別できるか・専用 UI が要るか → **plugin** (§3.1)
+
+### 6.4 Role の追加にも慎重に
+
+現在 built-in Role は 10 種。**これ以上は積極的に増やさない方針**。Role が増えると新規ユーザの「最初に何を選べばいいか」迷いが増え、機能間の境界がぼやける。
+
+Role を増やしたくなったら、まず以下で代替できないか検討する:
+
+- **skill で代替**: ペルソナの違いが軽い (口調・粒度) なら skill の方が軽量、複数 skill が並列に効ける
+- **既存 Role の prompt 拡張**: 既存 Role の延長線上にあるなら、その Role の prompt にセクションを足す (`config/helps/*.md` への分割も検討)
+- **user-defined role**: 1 ユーザの専用需要なら `manageRoles` でユーザに作ってもらう (built-in に押し込まない)
+
+Role を増やすのが正解になるのは:
+
+- 「会話の最初に明示的に切り替えるべき」レベルの**大きなペルソナの差** (cookingCoach のような専門領域 = 別アプリのつもりで開く)
+- `availablePlugins` のセットが他 Role と明確に違う (e.g. office は presentation 系、accounting は仕訳系)
+- `queries` で示す代表的なユースケースが他 Role と被らない
+
+### 6.5 システム側で便利な skill を多めに同梱する
+
+skill は markdown 1 枚で、追加コストが小さい。MulmoClaude 側があらかじめ **便利な skill をプリセットとして複数同梱**しておくと、ユーザが skill を 1 つも書かなくても多くの機能が手に入る。これが「plugin / role を増やさず機能を増やす」基本戦略になる。
+
+同梱 skill を考えるときのポイント:
+
+- LLM がそれを実行する場面はどんなトリガで来るか (会話の流れで自然に出てくる? `schedule:` で定期実行?)
+- skill 内で参照する規約ファイル (`config/helps/*.md`) と分離するか統合するか
+- 似た役割の skill を分けるか統合するか — 細かすぎると LLM が「使うべき場面」を判断しにくくなる
+
+---
+
+## 7. 関連ドキュメント
 
 - [`developer.md`](developer.md) — アーキ全体、ディレクトリ構造、開発フロー
 - [`plugin-runtime.md`](plugin-runtime.md) — runtime plugin の API 契約 (#3)

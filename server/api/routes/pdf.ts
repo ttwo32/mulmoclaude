@@ -139,7 +139,7 @@ function loadImageAsDataUri(abs: string): string | null {
 // only thing the user actually sees in a PDF anyway. The `<video
 // src>` / `<source src>` (in a `<video>`) / `<audio src>` URL is
 // left as the original relative path; puppeteer's fetch will fail
-// quickly and `networkidle0` still resolves.
+// quickly and the page's `load` event still fires.
 //
 // Anchored at end-of-pathname (callers strip query / fragment first
 // via `urlPathname` below) so a query-string-only mention of the
@@ -232,7 +232,7 @@ async function renderPdf(fullHtml: string, format: "Letter" | "A4" = "Letter"): 
   const browser = await puppeteer.launch({ headless: true });
   try {
     const page = await browser.newPage();
-    await page.setContent(fullHtml, { waitUntil: "networkidle0" });
+    await page.setContent(fullHtml, { waitUntil: "load" });
     const pdfBuffer = await page.pdf({
       format,
       margin: { top: "16mm", bottom: "16mm", left: "16mm", right: "16mm" },

@@ -28,6 +28,34 @@ export type SchedulerActionResult =
       jsonData: Record<string, unknown>;
     };
 
+// Coerces the untrusted `props` payload into a safe-to-store
+// object. Two responsibilities:
+//
+// 1. Non-object input (a number / string / array / null from
+//    untrusted JSON) becomes an empty props object — `"endDate"
+//    in 1` would otherwise throw a TypeError and surface as a
+//    500 via the asyncHandler.
+// 2. Non-string `endDate` (number / array / object) is dropped —
+//    downstream comparisons (`end < start`) only make sense for
+//    strings, and a stray number triggers a coercion bug.
+//
+// Notably we DO preserve malformed `endDate` STRINGS (e.g. "next
+// Friday", "2026-05-25" before a start of "2026-05-27"). The view
+// surfaces those as a "broken range" chip so the user/LLM gets
+// visible feedback instead of having the bad data silently erased.
+export function sanitizeProps(props: unknown): ScheduledItem["props"] {
+  if (typeof props !== "object" || props === null || Array.isArray(props)) {
+    return {};
+  }
+  const record = props as ScheduledItem["props"];
+  if (!("endDate" in record)) return record;
+  if (typeof record.endDate === "string") return record;
+  if (record.endDate === null) return record;
+  const next = { ...record };
+  Reflect.deleteProperty(next, "endDate");
+  return next;
+}
+
 export function sortItems(items: ScheduledItem[]): ScheduledItem[] {
   return [...items].sort((left, right) => {
     const leftDate = typeof left.props.date === "string" ? left.props.date : null;
@@ -57,7 +85,7 @@ export function handleAdd(items: ScheduledItem[], input: SchedulerActionInput): 
     id: makeId("sched"),
     title: input.title,
     createdAt: Date.now(),
-    props: input.props ?? {},
+    props: sanitizeProps(input.props ?? {}),
   };
   const next = sortItems([...items, item]);
   return {
@@ -107,10 +135,11 @@ export function handleUpdate(items: ScheduledItem[], input: SchedulerActionInput
       jsonData: {},
     };
   }
+  const mergedProps = input.props !== undefined ? applyPropPatch(target.props, input.props) : target.props;
   const updated: ScheduledItem = {
     ...target,
     title: input.title !== undefined ? input.title : target.title,
-    props: input.props !== undefined ? applyPropPatch(target.props, input.props) : target.props,
+    props: sanitizeProps(mergedProps),
   };
   const next = sortItems(items.map((i) => (i.id === input.id ? updated : i)));
   return {
@@ -121,16 +150,35 @@ export function handleUpdate(items: ScheduledItem[], input: SchedulerActionInput
   };
 }
 
+// `replace` accepts an arbitrary array from untrusted JSON, so
+// every item needs the same shape narrowing the in-memory store
+// guarantees: a non-empty string `id` (the dispatch primary key
+// AND the input to the per-event colour-hash, both of which crash
+// or misbehave on non-strings), a string `title`, a numeric
+// `createdAt`, and a sanitised `props`. Non-object items are
+// dropped; objects with missing/malformed required fields get a
+// safe default (newly minted id, empty title, current timestamp)
+// rather than failing the whole replace.
+export function sanitizeItem(raw: unknown): ScheduledItem | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Partial<ScheduledItem>;
+  const itemId = typeof obj.id === "string" && obj.id.length > 0 ? obj.id : makeId("sched");
+  const title = typeof obj.title === "string" ? obj.title : "";
+  const createdAt = typeof obj.createdAt === "number" && Number.isFinite(obj.createdAt) ? obj.createdAt : Date.now();
+  return { id: itemId, title, createdAt, props: sanitizeProps(obj.props) };
+}
+
 export function handleReplace(_items: ScheduledItem[], input: SchedulerActionInput): SchedulerActionResult {
   if (!Array.isArray(input.items)) {
     return { kind: "error", status: 400, error: "items array required" };
   }
-  const next = sortItems(input.items);
+  const sanitized = input.items.map(sanitizeItem).filter((item): item is ScheduledItem => item !== null);
+  const next = sortItems(sanitized);
   return {
     kind: "success",
     items: next,
     message: `Replaced all items (${next.length} total)`,
-    jsonData: { count: next.length },
+    jsonData: { count: next.length, dropped: input.items.length - next.length },
   };
 }
 

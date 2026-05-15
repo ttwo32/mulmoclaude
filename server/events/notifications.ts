@@ -2,7 +2,7 @@
 // wrapper over the new notifier engine (PR 4 of feat-encore).
 //
 // The signature is preserved so the existing host call sites
-// (`server/agent/mcp-tools/notify.ts`, `server/api/routes/notifications.ts`,
+// (`server/agent/mcp-tools/notify.ts`,
 // `server/workspace/sources/pipeline/notify.ts`,
 // `server/plugins/diagnostics.ts`) keep working without source changes.
 // Internally it now:
@@ -16,14 +16,17 @@
 //      legacy entries publish with `lifecycle: "fyi"`, so the
 //      `action`-lifecycle rules don't apply and clicking still routes).
 //   4. Stashes the legacy fields (`kind`, `priority`, `action`,
-//      `i18n`, `transportId`, `sessionId`, the caller-supplied dedup
-//      `id`) on `pluginData` so the bell can preserve icon, i18n
-//      localization, and transport routing.
+//      `i18n`, `sessionId`, the caller-supplied dedup `id`) on
+//      `pluginData` so the bell can preserve icon, i18n localization,
+//      and dedup.
 //
-// Bridge push (`chat-service.pushToBridge`) and macOS Reminder push
-// no longer happen inline here — they're owned by adapters that
-// subscribe to the `notifier` pubsub channel. See
-// `server/notifier/legacy-adapters.ts`.
+// macOS Reminder push happens via the `macosReminderAdapter` listener
+// subscribed to the notifier pubsub channel. The previous bridge
+// fan-out path was removed (#1351 follow-up): the only callers
+// setting `transportId` were the PoC `/api/notifications/test` route
+// and `scheduleTestNotification`, both deleted in the same change.
+// Production callers never set `transportId`, so the entire bridge
+// side-channel was dead code.
 
 import { PAGE_ROUTES } from "../../src/router/pageRoutes.js";
 import {
@@ -38,7 +41,6 @@ import {
 } from "../../src/types/notification.js";
 import { publish as notifierPublish } from "../notifier/engine.js";
 import type { NotifierSeverity } from "../notifier/types.js";
-import { ONE_SECOND_MS, MAX_NOTIFICATION_DELAY_SEC } from "../utils/time.js";
 import { log } from "../system/logger/index.js";
 import { makeUuid } from "../utils/id.js";
 
@@ -51,7 +53,6 @@ export interface PublishNotificationOpts {
   action?: NotificationAction;
   priority?: NotificationPriority;
   sessionId?: string;
-  transportId?: string;
   /** Override the auto-generated UUID with a caller-supplied stable
    *  id. Used by the plugin-meta diagnostics: the same diagnostic
    *  id is returned from `/api/plugins/diagnostics`, and `pluginData`
@@ -60,7 +61,7 @@ export interface PublishNotificationOpts {
   id?: string;
   /** vue-i18n keys + params for clients to localize the title/body.
    *  Server-side `title` / `body` stay set as English fallbacks for
-   *  logs, macOS Reminder push, and bridge push paths. */
+   *  logs and the macOS Reminder push. */
   i18n?: NotificationI18n;
 }
 
@@ -79,7 +80,6 @@ export interface LegacyNotifierPluginData {
   priority: NotificationPriority;
   action: NotificationAction;
   i18n?: NotificationI18n;
-  transportId?: string;
   sessionId?: string;
 }
 
@@ -155,9 +155,7 @@ function buildChatTarget(target: Extract<NavigateTarget, { view: typeof NOTIFICA
   // redirect is worse UX than a non-clickable entry. Dot-segment
   // sessionId would normalize off /chat, so drop too.
   if (!target.sessionId || !isSafePathComponent(target.sessionId)) return undefined;
-  const sessionPath = `/${PAGE_ROUTES.chat}/${encodeURIComponent(target.sessionId)}`;
-  if (target.resultUuid) return `${sessionPath}?result=${encodeURIComponent(target.resultUuid)}`;
-  return sessionPath;
+  return `/${PAGE_ROUTES.chat}/${encodeURIComponent(target.sessionId)}`;
 }
 
 function buildFilesTarget(target: Extract<NavigateTarget, { view: typeof NOTIFICATION_VIEWS.files }>): string {
@@ -233,12 +231,12 @@ export function legacyActionToNavigateTarget(action: NotificationAction | undefi
  * to the calling plugin so plugins cannot impersonate each other.
  *
  * This wrapper exists for host-side callers (`server/agent/`,
- * `server/api/routes/`, `server/workspace/`, `server/plugins/diagnostics.ts`)
- * that don't have a `PluginRuntime` to hand. It forwards into
- * `notifier.publish` with `lifecycle: "fyi"` and stashes legacy fields
- * on `pluginData` so the bell can preserve icon / i18n / transport
- * semantics. Bridge + macOS push are owned by separate adapters
- * subscribed to the `notifier` pubsub channel, not by this function.
+ * `server/workspace/`, `server/plugins/diagnostics.ts`) that don't
+ * have a `PluginRuntime` to hand. It forwards into `notifier.publish`
+ * with `lifecycle: "fyi"` and stashes legacy fields on `pluginData`
+ * so the bell can preserve icon / i18n / dedup semantics. macOS
+ * Reminder push is owned by the adapter subscribed to the notifier
+ * pubsub channel, not by this function.
  */
 export function publishNotification(opts: PublishNotificationOpts): void {
   const legacyId = opts.id ?? makeUuid();
@@ -250,7 +248,6 @@ export function publishNotification(opts: PublishNotificationOpts): void {
     priority: opts.priority ?? NOTIFICATION_PRIORITIES.normal,
     action,
     i18n: opts.i18n,
-    transportId: opts.transportId,
     sessionId: opts.sessionId,
   };
   // Fire-and-forget — the engine queues writes through its own
@@ -268,73 +265,4 @@ export function publishNotification(opts: PublishNotificationOpts): void {
   }).catch((err) => {
     log.warn("notifications", "publish failed", { error: String(err), legacyId, kind: opts.kind });
   });
-}
-
-// ── Legacy test notification (kept for PoC endpoint) ────────────
-
-export const DEFAULT_NOTIFICATION_MESSAGE = "Test notification";
-export const DEFAULT_NOTIFICATION_TRANSPORT_ID = "cli";
-
-export interface ScheduleNotificationOptions {
-  message?: string;
-  body?: string;
-  delaySeconds?: number;
-  transportId?: string;
-  // Optional deep-link action — lets dev-side callers fire a
-  // notification that navigates to a specific permalink when
-  // clicked. Without this the fired notification has no click
-  // behaviour (same as before #762).
-  action?: NotificationAction;
-  // Optional kind override — lets the manual-test helper fire a
-  // representative notification for every NotificationKind (todo,
-  // scheduler, agent, …) so the bell's icons can be eyeballed.
-  kind?: NotificationKind;
-}
-
-export interface ScheduledNotification {
-  firesAt: string;
-  delaySeconds: number;
-  cancel: () => void;
-}
-
-/** PoC: schedules one `publishNotification` after a delay. Bridge
- *  push is no longer sent inline here — the bridge adapter (subscribed
- *  to the notifier channel) fans out to bridges based on the entry's
- *  `pluginData.transportId`. */
-export function scheduleTestNotification(opts: ScheduleNotificationOptions): ScheduledNotification {
-  const message = opts.message ?? DEFAULT_NOTIFICATION_MESSAGE;
-  const transportId = opts.transportId ?? DEFAULT_NOTIFICATION_TRANSPORT_ID;
-  const delaySeconds = clampDelay(opts.delaySeconds);
-  const delayMs = delaySeconds * ONE_SECOND_MS;
-  const kind = opts.kind ?? NOTIFICATION_KINDS.push;
-
-  const firesAt = new Date(Date.now() + delayMs).toISOString();
-
-  const timer = setTimeout(() => {
-    publishNotification({
-      kind,
-      title: message,
-      body: opts.body,
-      priority: NOTIFICATION_PRIORITIES.normal,
-      action: opts.action,
-      transportId,
-    });
-  }, delayMs);
-
-  return {
-    firesAt,
-    delaySeconds,
-    cancel: () => clearTimeout(timer),
-  };
-}
-
-const DEFAULT_DELAY_SECONDS = 60;
-
-function clampDelay(raw: number | undefined): number {
-  if (typeof raw !== "number" || !Number.isFinite(raw)) {
-    return DEFAULT_DELAY_SECONDS;
-  }
-  if (raw < 0) return 0;
-  if (raw > MAX_NOTIFICATION_DELAY_SEC) return MAX_NOTIFICATION_DELAY_SEC;
-  return Math.floor(raw);
 }

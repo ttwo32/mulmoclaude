@@ -127,12 +127,13 @@
               <div
                 v-for="item in itemsForDay(day)"
                 :key="item.id"
-                class="text-xs px-1.5 py-0.5 rounded cursor-pointer truncate"
-                :class="selectedId === item.id ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-800 hover:bg-blue-200'"
-                :title="item.title"
+                class="text-xs px-1.5 py-0.5 cursor-pointer truncate"
+                :class="[segmentClasses(item, day), selectedId === item.id ? 'bg-blue-500 text-white' : chipColorClasses(item)]"
+                :title="chipTitle(item)"
                 @click="selectItem(item)"
               >
-                <span v-if="itemTime(item)" class="font-medium">{{ itemTime(item) }} </span>{{ item.title }}
+                <span v-if="isBrokenChip(item)" class="font-medium">⚠ </span><span v-else-if="itemTime(item)" class="font-medium">{{ itemTime(item) }} </span
+                >{{ item.title }}
               </div>
             </div>
           </div>
@@ -173,12 +174,12 @@
               <div
                 v-for="item in itemsForDay(day).slice(0, MAX_MONTH_ITEMS)"
                 :key="item.id"
-                class="text-[10px] leading-tight px-1 py-0.5 rounded cursor-pointer truncate"
-                :class="selectedId === item.id ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-800 hover:bg-blue-200'"
-                :title="item.title"
+                class="text-[10px] leading-tight px-1 py-0.5 cursor-pointer truncate"
+                :class="[segmentClasses(item, day), selectedId === item.id ? 'bg-blue-500 text-white' : chipColorClasses(item)]"
+                :title="chipTitle(item)"
                 @click="selectItem(item)"
               >
-                {{ item.title }}
+                <span v-if="isBrokenChip(item)" class="font-medium">⚠ </span>{{ item.title }}
               </div>
               <div v-if="itemsForDay(day).length > MAX_MONTH_ITEMS" class="text-[10px] text-gray-400 px-1">
                 {{ t("pluginScheduler.moreCount", { count: itemsForDay(day).length - MAX_MONTH_ITEMS }) }}
@@ -258,9 +259,10 @@ import { apiPost } from "../../utils/api";
 import { pluginEndpoints } from "../api";
 import type { SchedulerEndpoints } from "./automationsDefinition";
 import TasksTab from "./TasksTab.vue";
-import { isToday } from "../../utils/format/date";
+import { isToday, formatShortDate, formatMonthYear } from "../../utils/format/date";
 import { errorMessage } from "../../utils/errors";
 import { SCHEDULER_VIEW, SCHEDULER_VIEW_MODES as VIEW_MODES, SCHEDULER_TAB, type SchedulerViewMode as ViewMode, type SchedulerTab } from "./viewModes";
+import { coversDay, eventColorClasses, isMalformedRange, segmentPosition, type SegmentPosition } from "./multiDayHelpers";
 
 const { t } = useI18n();
 
@@ -367,7 +369,41 @@ function toDateString(date: Date): string {
 
 function itemsForDay(day: Date): ScheduledItem[] {
   const dateStr = toDateString(day);
-  return items.value.filter((item) => String(item.props.date) === dateStr);
+  return items.value.filter((item) => coversDay(item, dateStr));
+}
+
+const SEGMENT_BASE: Record<SegmentPosition, string> = {
+  only: "rounded",
+  start: "rounded-l",
+  middle: "",
+  end: "rounded-r",
+};
+
+function segmentClasses(item: ScheduledItem, day: Date): string {
+  const pos = segmentPosition(item, toDateString(day));
+  return pos ? SEGMENT_BASE[pos] : "rounded";
+}
+
+// Red dashed outline + warning-amber background screams "this is
+// wrong, click and fix it." Returns a class string when the event
+// has a broken range; empty when the event is well-formed and the
+// per-event palette colour should apply.
+const BROKEN_CLASSES = "bg-red-50 text-red-900 hover:bg-red-100 border border-dashed border-red-400";
+
+function chipColorClasses(item: ScheduledItem): string {
+  if (isMalformedRange(item)) return BROKEN_CLASSES;
+  return eventColorClasses(item.id);
+}
+
+function chipTitle(item: ScheduledItem): string {
+  if (isMalformedRange(item)) {
+    return `⚠ ${t("pluginScheduler.invalidRange", { endDate: String(item.props.endDate) })} — ${item.title}`;
+  }
+  return item.title;
+}
+
+function isBrokenChip(item: ScheduledItem): boolean {
+  return isMalformedRange(item);
 }
 
 const unscheduledItems = computed(() => items.value.filter((item) => !item.props.date));
@@ -388,13 +424,9 @@ const monthGrid = computed(() => getMonthGrid(currentDate.value.getFullYear(), c
 const headerLabel = computed(() => {
   if (viewMode.value === "week") {
     const days = weekDays.value;
-    const fmt = (date: Date) => date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    return `${fmt(days[0])} – ${fmt(days[6])}, ${days[0].getFullYear()}`;
+    return `${formatShortDate(days[0])} – ${formatShortDate(days[6])}, ${days[0].getFullYear()}`;
   }
-  return currentDate.value.toLocaleDateString(undefined, {
-    month: "long",
-    year: "numeric",
-  });
+  return formatMonthYear(currentDate.value);
 });
 
 function goToday() {

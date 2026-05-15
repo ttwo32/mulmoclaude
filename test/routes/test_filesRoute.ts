@@ -23,7 +23,14 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseRange, classify, isSensitivePath, RAW_SECURITY_HEADERS } from "../../server/api/routes/files.js";
+import {
+  parseRange,
+  classify,
+  isSensitivePath,
+  RAW_SECURITY_HEADERS,
+  RAW_SECURITY_HEADERS_PDF,
+  rawSecurityHeadersForMime,
+} from "../../server/api/routes/files.js";
 
 describe("parseRange — happy path", () => {
   it("parses a basic start-end range", () => {
@@ -247,6 +254,48 @@ describe("RAW_SECURITY_HEADERS", () => {
     // sandbox back up, this catches it early.
     assert.equal(RAW_SECURITY_HEADERS["Access-Control-Allow-Origin"], undefined);
     assert.equal(RAW_SECURITY_HEADERS["Cross-Origin-Resource-Policy"], undefined);
+  });
+});
+
+describe("RAW_SECURITY_HEADERS_PDF — Safari/WebKit carve-out (#1299)", () => {
+  // WebKit refuses to render `Content-Security-Policy: sandbox` PDFs
+  // and forces a download — the Files preview iframe ends up blank
+  // on Safari. The PDF viewer's own sandbox provides script
+  // isolation for AcroJS, so dropping the response CSP is safe.
+  // These tests pin the carve-out so a future "let's just apply the
+  // CSP to everything" refactor can't silently regress #1299.
+
+  it("does NOT set Content-Security-Policy on PDFs", () => {
+    assert.equal(RAW_SECURITY_HEADERS_PDF["Content-Security-Policy"], undefined);
+  });
+
+  it("still sets X-Content-Type-Options nosniff on PDFs", () => {
+    // Keeping `nosniff` prevents a PDF being re-interpreted as HTML
+    // even if a misbehaving server (or proxy) drops Content-Type.
+    assert.equal(RAW_SECURITY_HEADERS_PDF["X-Content-Type-Options"], "nosniff");
+  });
+});
+
+describe("rawSecurityHeadersForMime", () => {
+  it("returns the PDF-specific set for application/pdf", () => {
+    assert.equal(rawSecurityHeadersForMime("application/pdf"), RAW_SECURITY_HEADERS_PDF);
+  });
+
+  it("returns the default sandbox set for image/* / text/* / SVG / HTML", () => {
+    // SVG and HTML are the original threat shapes the sandbox CSP
+    // was added to defend (plans/done/fix-files-raw-csp-sandbox.md).
+    // Anything that isn't a PDF MUST stay on the default headers.
+    for (const mime of ["image/svg+xml", "text/html", "image/png", "text/plain", "application/octet-stream", "video/mp4", "audio/mpeg"]) {
+      assert.equal(rawSecurityHeadersForMime(mime), RAW_SECURITY_HEADERS, `expected sandbox CSP for ${mime}`);
+    }
+  });
+
+  it("does not match PDF on a near-miss MIME like application/x-pdf", () => {
+    // Strict `application/pdf` match — extension-implied / vendor-
+    // prefix MIMEs do NOT get the carve-out unless the canonical
+    // form is sent (the route's MIME_BY_EXT only emits the canonical
+    // form for `.pdf`, so this is mainly a hardening assertion).
+    assert.equal(rawSecurityHeadersForMime("application/x-pdf"), RAW_SECURITY_HEADERS);
   });
 });
 

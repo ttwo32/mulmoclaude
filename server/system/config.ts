@@ -17,6 +17,12 @@ import { writeFileAtomicSync } from "../utils/files/atomic.js";
 import { readTextSafeSync } from "../utils/files/safe.js";
 import { isRecord, isStringArray, isStringRecord } from "../utils/types.js";
 
+// Reasoning-effort levels accepted by `claude --effort`. Kept as a
+// closed union so the validator + UI stay in lockstep; new levels
+// added by the CLI must be mirrored here intentionally.
+export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type EffortLevel = (typeof EFFORT_LEVELS)[number];
+
 export interface AppSettings {
   // Extra tool names appended to BASE_ALLOWED_TOOLS in
   // server/agent/config.ts#buildCliArgs. Typical entries are
@@ -41,6 +47,11 @@ export interface AppSettings {
   photoExif?: {
     autoCapture: boolean;
   };
+
+  // Reasoning effort passed through as `claude --effort <level>` on
+  // every agent invocation (#1323). Unset → flag is omitted →
+  // Claude's own default.
+  effortLevel?: EffortLevel;
 }
 
 const DEFAULT_SETTINGS: AppSettings = { extraAllowedTools: [] };
@@ -68,11 +79,16 @@ function isPhotoExifSettings(value: unknown): value is { autoCapture: boolean } 
   return isRecord(value) && typeof value.autoCapture === "boolean";
 }
 
+function isEffortLevel(value: unknown): value is EffortLevel {
+  return typeof value === "string" && (EFFORT_LEVELS as readonly string[]).includes(value);
+}
+
 export function isAppSettings(value: unknown): value is AppSettings {
   if (!isRecord(value)) return false;
   if (!isStringArray(value.extraAllowedTools)) return false;
   if (value.googleMapsApiKey !== undefined && typeof value.googleMapsApiKey !== "string") return false;
   if (value.photoExif !== undefined && !isPhotoExifSettings(value.photoExif)) return false;
+  if (value.effortLevel !== undefined && !isEffortLevel(value.effortLevel)) return false;
   return true;
 }
 
@@ -88,11 +104,31 @@ export function isAppSettings(value: unknown): value is AppSettings {
  *  `loadSettings` (DEFAULT_SETTINGS) + `saveSettings` (payload
  *  ensures the array). Loosening the storage validator would
  *  weaken that guarantee for code reading from `loadSettings`. */
-export function isAppSettingsPatch(value: unknown): value is Partial<AppSettings> {
+/** Wire shape for a settings PUT patch. Mirrors `Partial<AppSettings>`
+ *  but lets nullable fields carry `null` as a "clear me" sentinel —
+ *  callers normalise via `normaliseAppSettingsPatch` before merging
+ *  into the storage shape (#1323). */
+export type AppSettingsPatch = Partial<Omit<AppSettings, "effortLevel">> & {
+  effortLevel?: EffortLevel | null;
+};
+
+/** Convert a wire patch to the storage-shape patch by dropping any
+ *  `null` sentinels (which mean "clear" for the corresponding field). */
+export function normaliseAppSettingsPatch(patch: AppSettingsPatch): Partial<AppSettings> {
+  const { effortLevel, ...rest } = patch;
+  const out: Partial<AppSettings> = { ...rest };
+  if (effortLevel !== null && effortLevel !== undefined) {
+    out.effortLevel = effortLevel;
+  }
+  return out;
+}
+
+export function isAppSettingsPatch(value: unknown): value is AppSettingsPatch {
   if (!isRecord(value)) return false;
   if (value.extraAllowedTools !== undefined && !isStringArray(value.extraAllowedTools)) return false;
   if (value.googleMapsApiKey !== undefined && typeof value.googleMapsApiKey !== "string") return false;
   if (value.photoExif !== undefined && !isPhotoExifSettings(value.photoExif)) return false;
+  if (value.effortLevel !== undefined && value.effortLevel !== null && !isEffortLevel(value.effortLevel)) return false;
   return true;
 }
 
@@ -116,6 +152,9 @@ function cloneAppSettings(settings: AppSettings): AppSettings {
   }
   if (settings.photoExif !== undefined) {
     copy.photoExif = { autoCapture: settings.photoExif.autoCapture };
+  }
+  if (settings.effortLevel !== undefined) {
+    copy.effortLevel = settings.effortLevel;
   }
   return copy;
 }
@@ -145,7 +184,7 @@ export function loadSettings(): AppSettings {
     log.warn("config", "settings.json does not match AppSettings schema — using defaults", { file });
     return { ...DEFAULT_SETTINGS };
   }
-  return cloneAppSettings({ ...DEFAULT_SETTINGS, ...parsed });
+  return cloneAppSettings({ ...DEFAULT_SETTINGS, ...normaliseAppSettingsPatch(parsed) });
 }
 
 export function saveSettings(settings: AppSettings): void {
@@ -159,6 +198,9 @@ export function saveSettings(settings: AppSettings): void {
   }
   if (settings.photoExif !== undefined) {
     payload.photoExif = { autoCapture: settings.photoExif.autoCapture };
+  }
+  if (settings.effortLevel !== undefined) {
+    payload.effortLevel = settings.effortLevel;
   }
   const serialised = JSON.stringify(payload, null, 2);
   writeFileAtomicSync(settingsPath(), `${serialised}\n`, { mode: 0o600 });
@@ -250,10 +292,17 @@ export function isMcpServerSpec(value: unknown): value is McpServerSpec {
 
 // Workspace id must be slug-shaped so it survives being used as the
 // mcpServers map key and in the `mcp__<id>__<tool>` tool naming.
+//
+// Consecutive `__` is forbidden inside the id because `__` is the
+// delimiter in the tool-name encoding — a server id like `foo__bar`
+// produces `mcp__foo__bar__tool`, which is ambiguous between server
+// `foo` (tool `bar__tool`) and server `foo__bar` (tool `tool`).
+// Forbidding `__` in the id keeps the convention unambiguous
+// everywhere (Codex review on #1356).
 const MCP_ID_RE = /^[a-z][a-z0-9_-]{0,63}$/;
 
 export function isMcpServerId(value: unknown): value is string {
-  return typeof value === "string" && MCP_ID_RE.test(value);
+  return typeof value === "string" && MCP_ID_RE.test(value) && !value.includes("__");
 }
 
 export function isMcpConfigFile(value: unknown): value is McpConfigFile {

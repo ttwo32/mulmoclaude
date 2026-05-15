@@ -30,18 +30,9 @@ export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
 // ── Wiki bullet-link parsers ──────────────────────────────────────
 //
-// Used by `server/api/routes/wiki.ts` to parse top-of-page index
-// bullets like:
-//   - [Title](path/to/page.md) — optional summary
-//   - [[wiki-style title]] — optional summary
-// Each `[^x]+` runs over a fixed exclusion set with a hard delimiter
-// (`]`, `)`); the optional summary group's `(.*)` is a single greedy
-// run, no nested overlap. Linear in line length.
-//
-// eslint-disable-next-line security/detect-unsafe-regex -- bullet-link parser; bounded captures with hard delimiters
-export const BULLET_LINK_PATTERN = /^[-*]\s+\[([^\]]+)\]\(([^)]*)\)(?:\s*[—–-]\s*(.*))?/;
-// eslint-disable-next-line security/detect-unsafe-regex -- same shape as BULLET_LINK_PATTERN
-export const BULLET_WIKI_LINK_PATTERN = /^[-*]\s+\[\[([^\]]+)\]\](?:\s*[—–-]\s*(.*))?/;
+// Moved to `src/lib/wiki-page/index-parse.ts` as part of the pure-
+// lib extraction (#1297). The patterns are still bounded with hard
+// delimiters; the ReDoS-safety rationale travelled with them.
 
 // ── Skills body blank-line stripper ───────────────────────────────
 //

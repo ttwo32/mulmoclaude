@@ -182,6 +182,7 @@ import { localDateString } from "../dates";
 import { countryHasFeature, type SupportedCountryCode } from "../countries";
 import { isTaxAccountCode } from "./accountNumbering";
 import AccountsModal from "./AccountsModal.vue";
+import { errorMessage } from "../../../utils/errors";
 
 const { t } = useI18n();
 
@@ -413,7 +414,7 @@ async function onSubmit(): Promise<void> {
     // belt-and-braces guard against a runtime failure leaving the
     // submit button stuck — the user gets a visible error
     // instead of an unhandled rejection.
-    error.value = err instanceof Error ? err.message : String(err);
+    error.value = errorMessage(err);
   } finally {
     submitting.value = false;
   }

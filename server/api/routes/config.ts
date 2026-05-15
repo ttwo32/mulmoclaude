@@ -5,10 +5,12 @@ import {
   isAppSettingsPatch,
   loadMcpConfig,
   loadSettings,
+  normaliseAppSettingsPatch,
   saveMcpConfig,
   saveSettings,
   toMcpEntries,
   type AppSettings,
+  type AppSettingsPatch,
   type McpConfigFile,
   type McpServerEntry,
 } from "../../system/config.js";
@@ -137,7 +139,7 @@ router.put(API_ROUTES.config.base, (req: Request<unknown, unknown, PutConfigBody
   res.json(buildFullResponse());
 });
 
-router.put(API_ROUTES.config.settings, (req: Request<unknown, unknown, Partial<AppSettings>>, res: ConfigRes) => {
+router.put(API_ROUTES.config.settings, (req: Request<unknown, unknown, AppSettingsPatch>, res: ConfigRes) => {
   const { body } = req;
   log.info("config", "PUT settings: start");
   if (!isAppSettingsPatch(body)) {
@@ -150,8 +152,16 @@ router.put(API_ROUTES.config.settings, (req: Request<unknown, unknown, Partial<A
   // that knows about only some fields (e.g. Tools tab sends only
   // `extraAllowedTools`, Map tab sends only `googleMapsApiKey`)
   // doesn't wipe fields owned by other tabs.
+  //
+  // `null` in the patch is a sentinel for "clear this field":
+  // normaliseAppSettingsPatch drops the entry from the patch, AND we
+  // must also delete it from the merged result so the existing
+  // value doesn't leak through the spread.
   const existing = loadSettings();
-  const merged: AppSettings = { ...existing, ...body };
+  const merged: AppSettings = { ...existing, ...normaliseAppSettingsPatch(body) };
+  if (body.effortLevel === null) {
+    delete merged.effortLevel;
+  }
   if (!runSaveOrFail(res, () => saveSettings(merged), "saveSettings failed")) {
     return;
   }

@@ -28,6 +28,7 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
 import { formatDateTime } from "../utils/format/date";
+import { formatBytes } from "../utils/format/bytes";
 
 const { t } = useI18n();
 
@@ -43,10 +44,4 @@ const emit = defineEmits<{
   toggleMdRaw: [];
   deselect: [];
 }>();
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-}
 </script>

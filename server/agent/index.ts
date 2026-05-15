@@ -139,6 +139,7 @@ export async function* runAgent({
       activePlugins,
       mcpConfigPath: hasMcp ? mcpPaths.argPath : undefined,
       extraAllowedTools: [...settings.extraAllowedTools, ...userServerAllowedTools],
+      effortLevel: settings.effortLevel,
       abortSignal,
       userTimezone,
       useDocker,

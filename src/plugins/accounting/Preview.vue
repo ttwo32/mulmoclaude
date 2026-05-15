@@ -12,6 +12,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import { formatAmountNumeric } from "./currencies";
 
 const { t } = useI18n();
 
@@ -32,10 +33,6 @@ interface EntriesLike {
 }
 interface BookLike {
   book?: { id?: string; name?: string };
-}
-
-function formatAmount(value: number): string {
-  return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // Each summarise* helper returns null when its branch doesn't apply,
@@ -65,7 +62,7 @@ function summarisePl(json: Record<string, unknown>): string | null {
   return t("pluginAccounting.preview.pl", {
     from: profitLoss.from ?? "?",
     to: profitLoss.to ?? "?",
-    net: formatAmount(profitLoss.netIncome),
+    net: formatAmountNumeric(profitLoss.netIncome),
   });
 }
 
@@ -75,7 +72,7 @@ function summariseBs(json: Record<string, unknown>): string | null {
   const assets = balanceSheet.sections.find((section) => section.type === "asset");
   return t("pluginAccounting.preview.bs", {
     date: balanceSheet.asOf,
-    assets: assets ? formatAmount(assets.total ?? 0) : "?",
+    assets: assets ? formatAmountNumeric(assets.total ?? 0) : "?",
   });
 }
 

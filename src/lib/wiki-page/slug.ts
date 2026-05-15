@@ -1,22 +1,20 @@
-// Shared wiki-page slug logic — pure functions reused by:
+// Pure wiki-page slug helpers — string-only, no Node / browser
+// dependencies, importable from any bundle.
 //
+// Used by:
 //   - server/workspace/wiki-pages/io.ts (the write chokepoint)
-//   - server/workspace/wiki-history/hook/snapshot.ts (the
-//     PostToolUse hook script that detects LLM Write/Edit on a
-//     wiki page and triggers a snapshot)
+//   - server/workspace/hooks/handlers/wikiSnapshot.ts (the
+//     PostToolUse handler that fires on Write/Edit of a wiki page)
+//   - server/api/routes/wiki.ts (page resolver + lint)
+//   - server/api/routes/wiki/history.ts (history slug guard)
+//   - src/plugins/wiki/route.ts (router slug guard — replaces the
+//     local `isSafeWikiSlug` duplicate that existed before the
+//     pure-lib refactor)
+//   - src/plugins/wiki/helpers.ts (renderer slugify for [[…]] links)
 //
-// Both call sites need the same answer: "given this absolute
-// path and the pages directory, is it a wiki page, and if so
-// what slug?". Before the extraction the hook re-implemented
-// the rules as a JS-as-string template literal that drifted
-// from the server-side logic — see #951's discussion of how to
-// stop copying #lint logic between hook and server.
-//
-// Only `node:path` is allowed here so esbuild can bundle this
-// file into the hook script (no Node-specific server-side
-// imports leak into the bundle).
-
-import path from "node:path";
+// Any helper that needs `node:path` lives in `./paths.ts` so that
+// importing this file from frontend code never pulls in Node
+// builtins.
 
 /** Reject slugs that would escape `data/wiki/pages/` once
  *  joined back into a path, or that are otherwise invalid as
@@ -38,29 +36,19 @@ export function isSafeSlug(slug: string): boolean {
   return true;
 }
 
-/** Given an absolute path and the absolute `pagesDir`, return the
- *  slug if `absPath` is a direct `.md` child of `pagesDir`, else
- *  null. Pure path-string math — no fs IO, no symlink resolution.
+/** Slug rules for `[[wiki link]]` text → slug derivation:
+ *  lowercase, spaces collapsed to hyphens, every non-ASCII /
+ *  non-alphanumeric / non-hyphen character stripped.
  *
- *  Caller responsibility: pass already-realpath'd values for both
- *  arguments. Mixing a realpath'd `absPath` with a symlinked
- *  `pagesDir` (or vice versa) silently mismatches because
- *  `path.relative` is plain string arithmetic. The trap caused
- *  #883 review-iter-1 — a symlinked workspace silently routed
- *  wiki writes through the generic writer. */
-export function wikiSlugFromAbsPath(absPath: string, pagesDir: string): string | null {
-  const rel = path.relative(pagesDir, absPath);
-  if (rel.length === 0) return null;
-  if (path.isAbsolute(rel)) return null;
-  // Direct child only — no nested layout today. Any separator
-  // means the path either escapes (`../secret.md`) or descends
-  // (`subdir/foo.md`). A literal page name like `..foo.md` is a
-  // single segment without a separator and is allowed (codex
-  // iter-3 #883 — the prior `startsWith("..")` rule wrongly
-  // rejected it).
-  if (rel.includes(path.sep)) return null;
-  if (!rel.endsWith(".md")) return null;
-  const slug = rel.slice(0, -".md".length);
-  if (!isSafeSlug(slug)) return null;
-  return slug;
+ *  Pure: no normalisation, no transliteration — this is the
+ *  same shape the index parser, page resolver, and frontend
+ *  renderer all need to agree on. Non-ASCII titles (e.g.
+ *  Japanese) collapse to an empty string here; callers fall back
+ *  to other strategies (title-match in the index, or the agent
+ *  pre-resolving to a slug-form target via `[[slug|display]]`). */
+export function wikiSlugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
 }

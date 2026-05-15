@@ -98,6 +98,7 @@ import { formatAmount, inputStepFor } from "../currencies";
 import { localDateString } from "../dates";
 import { useLatestRequest } from "./useLatestRequest";
 import AccountsModal from "./AccountsModal.vue";
+import { errorMessage } from "../../../utils/errors";
 
 const { t } = useI18n();
 
@@ -238,7 +239,7 @@ async function onSubmit(): Promise<void> {
     successMessage.value = t("pluginAccounting.openingForm.success");
     emit("submitted");
   } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err);
+    error.value = errorMessage(err);
   } finally {
     submitting.value = false;
   }

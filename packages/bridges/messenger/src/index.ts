@@ -14,7 +14,9 @@
 import "dotenv/config";
 import crypto from "crypto";
 import express, { type Request, type Response } from "express";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createBridgeClient, chunkText } from "@mulmobridge/client";
+import { narrowChallenge } from "./verify.js";
 
 const TRANSPORT_ID = "messenger";
 const PORT = Number(process.env.MESSENGER_BRIDGE_PORT) || 3004;
@@ -76,35 +78,72 @@ function verifySignature(rawBody: string, signature: string): boolean {
 // ── Webhook server ──────────────────────────────────────────────
 
 const BODY_LIMIT = "1mb";
-const RATE_WINDOW_MS = 60_000;
-const MAX_REQUESTS_PER_WINDOW = 120;
-const requestCounts = new Map<string, { count: number; resetAt: number }>();
 
-function rateLimitCheck(clientIp: string): boolean {
-  const now = Date.now();
-  const entry = requestCounts.get(clientIp);
-  if (!entry || now >= entry.resetAt) {
-    requestCounts.set(clientIp, { count: 1, resetAt: now + RATE_WINDOW_MS });
-    return true;
-  }
-  entry.count += 1;
-  return entry.count <= MAX_REQUESTS_PER_WINDOW;
-}
+// `express-rate-limit` is the well-tested per-IP throttle that
+// CodeQL's `js/missing-rate-limiting` rule recognises. Defaults
+// match the conservative 120 req/min/IP cap the bridge has shipped
+// since the original custom Map-based limiter was added — Meta's
+// platform sends well under this rate during normal use, so the
+// cap exists to bound a flood / accidentally-stuck retry loop.
+const webhookRateLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 120,
+  // Send the limit + remaining count in standard `RateLimit-*`
+  // headers so the upstream platform can self-throttle.
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  // Explicit keyGenerator routed through `ipKeyGenerator(...)` so
+  // IPv6 clients get folded to their /56 subnet (a raw `req.ip` key
+  // would let IPv6 rotation within a prefix evade the per-client
+  // limit). `req.ip` itself is trust-proxy-aware via the
+  // `app.set("trust proxy", ...)` block below. (Codex reviews
+  // iter-1 + iter-2 on #1326.)
+  keyGenerator: (req) => ipKeyGenerator(req.ip ?? "", 56),
+});
 
 const app = express();
 app.disable("x-powered-by");
+
+// Honour an explicit `trust proxy` setting so `req.ip` (the
+// rate-limit key below) reflects the real client IP rather than
+// the load balancer's. Default `false` for safety; operators
+// behind a known LB choose from:
+//   - hop count:  BRIDGE_TRUST_PROXY=1
+//   - boolean:    BRIDGE_TRUST_PROXY=true / false
+//   - preset:     BRIDGE_TRUST_PROXY=loopback
+//   - CIDR list:  BRIDGE_TRUST_PROXY=10.0.0.0/8,192.168.0.0/16
+// Without this every webhook looks like it comes from one IP and
+// the limiter degrades into a global throttle. The boolean branch
+// is required because Express does NOT auto-convert string
+// "true"/"false" — without this, `BRIDGE_TRUST_PROXY=true` is read
+// as a (never-matching) CIDR rule (Codex reviews on #1326).
+const trustProxyEnv = process.env.BRIDGE_TRUST_PROXY;
+if (trustProxyEnv) {
+  const lower = trustProxyEnv.toLowerCase();
+  const numeric = Number(trustProxyEnv);
+  const value: boolean | number | string =
+    lower === "true" ? true : lower === "false" ? false : Number.isInteger(numeric) && numeric >= 0 ? numeric : trustProxyEnv;
+  app.set("trust proxy", value);
+}
+
 app.use(express.text({ type: "application/json", limit: BODY_LIMIT }));
 
-// Webhook verification (GET)
-app.get("/webhook", (req: Request, res: Response) => {
+// Webhook verification (GET). Rate-limited so a flood of bogus
+// `hub.challenge` probes can't hammer the bridge before the
+// `hub.verify_token` check rejects them. Matches the WhatsApp
+// bridge's GET-side throttling — same shared Meta protocol, same
+// abuse surface (Codex review on #1326). The `narrowChallenge`
+// helper from `./verify.ts` enforces the `js/reflected-xss`
+// shape whitelist; see that file for the full rationale.
+app.get("/webhook", webhookRateLimit, (req: Request, res: Response) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
-  if (mode === "subscribe" && token === verifyToken) {
+  const challenge = narrowChallenge(req.query["hub.challenge"]);
+  if (mode === "subscribe" && token === verifyToken && challenge !== null) {
     console.log("[messenger] webhook verified");
-    res.status(200).send(challenge);
+    res.type("text/plain").status(200).send(challenge);
   } else {
-    res.status(403).send("Forbidden");
+    res.status(403).type("text/plain").send("Forbidden");
   }
 });
 
@@ -121,14 +160,10 @@ async function handleWebhookBody(rawBody: string): Promise<void> {
   }
 }
 
-// Webhook events (POST)
-app.post("/webhook", async (req: Request, res: Response) => {
-  const clientIp = req.ip ?? "unknown";
-  if (!rateLimitCheck(clientIp)) {
-    res.status(429).send("Too Many Requests");
-    return;
-  }
-
+// Webhook events (POST). Rate-limited per-IP via `webhookRateLimit`
+// above; the middleware writes the 429 response itself when the cap
+// is hit so the handler body only sees admitted requests.
+app.post("/webhook", webhookRateLimit, async (req: Request, res: Response) => {
   const signature = typeof req.headers["x-hub-signature-256"] === "string" ? req.headers["x-hub-signature-256"] : "";
   const rawBody = typeof req.body === "string" ? req.body : "";
 

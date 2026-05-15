@@ -79,9 +79,9 @@ e2e-live/
 | `/e2e-live-media` | media.spec.ts | 5 | B-17, B-18, B-19, B-20, B-21, B-46 |
 | `/e2e-live-roles` | roles.spec.ts | 5 | B-15, B-41 |
 | `/e2e-live-session` | session.spec.ts | 3 | B-13, B-14, B-16 |
-| `/e2e-live-wiki` | wiki.spec.ts | 3 | B-23〜B-27 |
+| `/e2e-live-wiki` | wiki.spec.ts | 7 | B-23〜B-27, #1297 |
 | `/e2e-live-ui` | ui.spec.ts | 4 | B-30, B-31, B-34, B-50 |
-| `/e2e-live-skills` | skills.spec.ts | 2 | B-08, B-22, B-41 |
+| `/e2e-live-skills` | skills.spec.ts | 4 | B-08, B-22, B-41, post-#1298 bridge |
 | `/e2e-live-docker` | docker.spec.ts | 8 (うち 2 は L4) | B-01〜B-08 |
 
 ## Docker 依存度フラグ（凡例）
@@ -201,7 +201,7 @@ e2e-live/
 - 操作: bridge 接続中にサーバ再起動 → 再接続待機
 - 検証: 固定 token で再接続成功
 
-### wiki（3）
+### wiki（7）
 
 #### L-14: Wiki ページ生成 → 内部リンクを踏める
 
@@ -223,6 +223,34 @@ e2e-live/
 - 重要度: **B** / Docker: `both` / 画像: 不要
 - 操作: 複数ページ生成 → `/wiki` 直下の index を開く → 各リンクをクリック
 - 検証: すべて 404 にならず開ける
+
+#### L-WIKI-PIPE: `[[slug|alias]]` 形式リンクのクリック → URL に `|alias` が混入しない
+
+- カバー: issue #1297 / PR #1312
+- 重要度: **A** / Docker: `both` / 画像: 不要
+- 操作: source / target の 2 ページ seed → source 側に `[[<targetSlug>|<日本語表示>]]` を埋める → クリック
+- 検証: `data-page` が target slug のみ、 表示テキストが alias のみ、 クリック後 URL に `%7C` (`\|`) が含まれない、 target の body marker が表示される
+
+#### L-WIKI-LINT-PIPE-CLEAN: lint レポートで `[[slug|alias]]` が broken link に出ない
+
+- カバー: issue #1297 / PR #1312 (lint UI 側)
+- 重要度: **A** / Docker: `both` / 画像: 不要
+- 操作: source / target の 2 ページ seed → source 側に `[[<targetSlug>|<日本語表示>]]` を埋める → `/wiki/lint-report` を開く
+- 検証: lint 出力 `<li>` の中に source ページ名 + alias ASCII token + `not found` を全て含む行が 0 件 (pre-fix の false positive shape の sentinel)
+
+#### L-WIKI-LINT-EMPTY-TARGET: lint レポートで bare `[[Japanese]]` が "empty target" 診断に出る
+
+- カバー: PR #1312 で追加された新診断カテゴリ
+- 重要度: **B** / Docker: `both` / 画像: 不要
+- 操作: source ページ 1 件 seed (target 不在で resolver が解決不能にする) → `[[日本語のみのターゲット記号終端タイトル]]` (ASCII フリーの固定文字列、 nonce を入れない) を埋める → `/wiki/lint-report` を開く
+- 検証: lint 出力に source + bare Japanese target + `empty target` を含む `<li>` が 1 件、 同条件で `not found` を含む行は 0 件 (新診断と broken-link 診断が混ざらないこと)
+
+#### L-WIKI-LINT-BROKEN: lint レポートで `[[bogus-slug]]` が broken link 診断に出る
+
+- カバー: 既存 broken-link 診断の sanity (#1312 の周辺退化検出)
+- 重要度: **B** / Docker: `both` / 画像: 不要
+- 操作: source ページ 1 件 seed (bogus target は seed しない) → `[[<bogus-slug>]]` を埋める → `/wiki/lint-report` を開く
+- 検証: lint 出力に source + `<bogus-slug>.md not found` を含む `<li>` が 1 件 (一般的な broken-link diagnostic shape)
 
 ### ui（4）
 
@@ -350,11 +378,21 @@ e2e-live/
 | **L-14** wiki 内部リンク | ✅ 実装済 | wiki-nav.spec.ts、 fixture wiki page 2 件 seed → wikilink `[[slug]]` を click → `/wiki/pages/<target>` に遷移 (B-23/B-24/B-25)、 catch-all で `/chat` に飛ばないこと |
 | **L-15** 非 ASCII slug の wiki ページ | ✅ 実装済 | wiki-nav.spec.ts、 `日本語タイトル-nonascii-target-${project}-${nonce}` 型 slug の page を 2 件 seed → (A) URL 直叩き (`encodeURIComponent` round trip) と (B) `[[…]]` wikilink クリックの両経路で `wiki-page-body` に Japanese 本文が描画され `/chat` に飛ばないことを assert (B-26 / B-27)。 server `wikiSlugify` が Japanese を落として exact-key match が外れる前提で `resolvePagePath` の fuzzy `key.includes(slug)` 分岐に乗せる設計 (`data/wiki/index.md` 直接編集を避けるため)。 fuzzy が source page と target page の両方にマッチする落とし穴 (両 slug の ASCII tail が共通になる) を踏んだので、 target slug 側に `nonascii-target` という source 名に含まれない unique token を入れて衝突回避 |
 | **L-16** wiki index ナビゲーション | ✅ 実装済 | wiki-nav.spec.ts、 `replaceWikiIndex(content)` + `restoreWikiIndex(original)` helper で `data/wiki/index.md` を一時差し替え → `placeWikiPage` で 2 ページ seed → `/wiki` に直遷移 → `wiki-page-entry-${slug}` を 2 件 visible で確認 → 各エントリを click → `/wiki/pages/<slug>` に遷移 + body marker を assert (B-23/B-24)、 `/chat` フォールバック退行を否定 assertion で塞ぐ。 共有 index ファイルを書く唯一の test なので将来 index 系を増やすときは serial 化 or 別 spec ファイルに切り出す注意書きを describe 上に置いた |
+| **L-WIKI-PIPE** `[[slug\|alias]]` クリック後 URL 清浄性 | ✅ 実装済 | wiki-nav.spec.ts、 PR #1312 (issue #1297) で fix された `parseWikiLink` の `\|` split 退化を end-to-end で検出する net。 source ページに `[[<targetSlug>\|日本語表示+ASCII token]]` を埋め込んで seed → renderer assertion で `data-page` = targetSlug only / 表示テキスト = alias only / DOM 全体に `data-page*="\|"` が 0 件を確認 → click → URL が `/wiki/pages/<targetSlug>$` で終わり `%7C` (= `\|`) が含まれず `/chat` に飛ばないことを assert → target body marker visible。 lint 側の regression は `test/lib/wiki-page/test_lint.ts` の `findBrokenLinksInPage — [[slug\|alias]] regression` ユニット test がカバーするので spec はフロント挙動 (renderer/router) に絞り込み |
+| **L-WIKI-LINT-PIPE-CLEAN** lint レポート UI で `[[slug\|alias]]` が false positive にならない | ✅ 実装済 | wiki-nav.spec.ts、 PR #1312 (issue #1297) の lint 側を end-to-end で検証。 source / target の 2 ページ seed (`[[<slug>\|日本語+aliasAsciiToken]]`) → `/wiki/lint-report` 遷移 → 「Wiki Lint Report」 heading visible で hydrate 待機 → `<li>` に source slug + `not found` を含む行が 0 件 / alias ASCII token + `not found` を含む行も 0 件、 を 2 段の sentinel で確認。 pre-fix の false positive shape (`<slug>-<alias-ascii>.md not found`) を直接 negate する形 |
+| **L-WIKI-LINT-EMPTY-TARGET** lint レポート UI で bare `[[Japanese]]` が "empty target" 診断に出る | ✅ 実装済 | wiki-nav.spec.ts、 PR #1312 で新設された empty-target 診断 (slug 化結果が空文字列のケース) を end-to-end で検証。 source ページ 1 件 seed (target 不在) → `[[日本語のみのターゲット記号終端タイトル]]` (固定 ASCII フリー文字列) を埋める。 nonce を target に入れると ASCII suffix が wikiSlugify を生き残って empty-target 診断ではなく `<slug>.md not found` 扱いになる退化シナリオを踏んだ (iter 2 で発覚 → 修正)。 per-test 一意性は nonce 付き `sourceSlug` 側で確保、 target 文字列が parallel projects 間で固定でも `<li>:has-text(sourceSlug)` チェーンで scope 衝突なし → `/wiki/lint-report` 遷移 → `<li>` に source + bare Japanese target + `empty target` を全部含む行が 1 件 / 同条件で `not found` を含む行は 0 件 を assert (新診断と broken-link 診断が混ざらないこと) |
+| **L-WIKI-LINT-BROKEN** lint レポート UI で `[[bogus-slug]]` が broken link 診断に出る | ✅ 実装済 | wiki-nav.spec.ts、 既存 broken-link 診断の sanity (PR #1312 周辺退化の検出 net)。 source ページ 1 件 seed (bogus target は seed しない、 ASCII slug 想定) → `[[<bogus-slug>]]` を埋める → `/wiki/lint-report` 遷移 → `<li>` に source + `<bogus-slug>.md not found` を含む行が 1 件 を assert。 一般的な broken-link 診断 shape を確認 |
 | **L-18** presentForm i18n raw key | ✅ 実装済 | ui.spec.ts、 LLM に「nickname text field 1 個の presentForm を表示して」 と依頼 → `present-form-view` testid (`src/plugins/presentForm/View.vue` に追加) が visible になったら `not.toContainText("pluginPresentForm.")` で B-34 を locale 非依存にカバー。 raw i18n key 漏れは prefix 文字列が DOM の visible text に出ることが regression shape なので submit ボタンや progress カウンタ単体に縛らずに view 全体の textContent を見る設計。 form は submit せず assistant turn を drain して trace を保全 |
 | **L-21** chart deferred-tool dispatch | ✅ 実装済 | skills.spec.ts、 「`L-21 sales` の bar chart を chart tool で render して」 と prompt → `chart-card-0` + `chart-canvas-0` testid (`src/plugins/chart/View.vue` 既存) が visible になることを assert (B-41 canary)。 L-03 (presentMulmoScript) と異なる plugin で 2 本目の deferred dispatch canary を立て、 deferred mode で 1 plugin だけ schema 取りこぼす shear 退行を網羅。 LLM のばらつきを「`Do not narrate the result.`」 で抑え、 textResponse fallback を防ぐ |
 | **L-22** skill end-to-end 実行 (B-08) | ✅ 実装済 | skills.spec.ts、 合成 skill を `<workspace>/.claude/skills/<unique-slug>/SKILL.md` に seed (body には 「`/<slug>` で呼ばれたら `L22-OK-<nonce>` という marker を返答せよ」 の指示) → `/skills` 直叩き → 一覧に row 出現 → click で `skill-body-rendered` に marker が描画 → Run ボタン → `/chat/<id>` で agent ターン完走 → assistant 応答に同 marker が含まれることを assert。 discovery → list API → detail API → slash-command dispatch → skill body が agent context に乗る、 の 4 段全てが繋がっていないと marker が出ない設計。 nonce で他テストと衝突回避、 marker は ASCII の決定論的文字列で LLM 揺れ吸収 |
+| **L-31** mc-manage-skills bridge dispatch canary (post-#1298) | ✅ 実装済 | skills.spec.ts、 General role + 「次の挙動の skill を、 slug を `<explicit-slug>` にして保存してください」 prompt → `waitForAssistantTurn` で agent turn 完走 → `readSessionToolCalls(sessionId)` で `tool_call` jsonl を読み、 `Write` against `data/skills/<slug>/SKILL.md` (post-#1298 bridge staging path) が含まれることを assert。 #1284 / #1296 / #1298 全てが揃わないと成立しない: (a) mc-manage-skills が General に居る (b) preset SKILL.md が discovery される (c) 本文の指示通り agent が staging path に Write する。 同様の盤面で agent が `.claude/skills/` に直 Write すれば permission gate に hang する (これが #1298 で bridge が回避した regression)。 prompt は slug pin で plumbing canary を確実化、 ambiguity の検証は L-32 が担当 |
+| **L-32** end-to-end skill landing + Run canary (post-#1298) | ✅ 実装済 | skills.spec.ts、 General role + 「skill 化して」 (slug 任せ、 marker 入り body 要求) → `snapshotProjectSkillSlugs()` で baseline → `waitForAssistantTurn` → (1) bridge mirror が `.claude/skills/<new-slug>/SKILL.md` に landing し本文に marker を含むことを baseline diff + body read で assert → (2) `/skills` に navigate して `skill-item-<slug>` row が visible (`/api/config/refresh` 効果) → (3) row click → Run → assistant 応答に marker echo (slash dispatch + body 反映)。 discovery → dispatch → `Write` (staging) → bridge hook (mirror) → refresh → registry rescan → invocation の 7 段 end-to-end canary。 L-22 (直 seed→Run) では `refreshConfig` を経由しないので、 bridge → registry の繋ぎ込みは L-32 の Run leg だけが catch する設計。 cleanup は marker hit した new slug のみを target にして並列実行中の他 spec / future test の slug を巻き込まない、 creation session + run session 両方を delete |
 | L-10, L-13, L-17, L-23〜L-30 | 未実装 | 後続 PR で順次。 L-10 / L-13 はサーバ再起動 (env unset / 再接続) が必要なので別インフラ skill で扱う。 L-17 は `00f4a740 fix(notifier): drop HTTP publish` で外部から bridge message を注入するルートが廃止されており、 test 用 inject 経路 (engine.publish 直叩き or socket.io 直接 emit) の追加が前提。 L-23〜L-30 は docker-only / manual-l4 |
 | **L-EDIT** beat 編集永続化 | ✅ 実装済 (active) | mulmo-script-edit.spec.ts、 PR #1243 で #1074 fix と同梱で unskip 済 (`adcca773 fix: persist presentMulmoScript beat edits across page reload`)。 fixture json を seed → presentMulmoScript view を立ち上げ → beat 0 の source-editor textarea で `text: ""` → `"L-EDIT marker via e2e-live"` に書き換え → update ボタン押下 (`sourceOpen[index]=false` で textarea が `v-if` 解除されるのを成功シグナルに使う、 button が enabled に戻るのを待つと button 自体が DOM から消えてるので timeout する罠あり) → wiki launcher → session tab で SPA 内ナビゲーション (page.goto は server `enrichWithMulmoScript` で fix を bypass するので避ける) → marker が再表示される事を assert |
+| **L-LINKIFY-CODESPAN** inline-code workspace path の auto-linkify (#1300 / PR #1325 layer A) | ✅ 実装済 | workspace-link-routing.spec.ts、 PR #1325 の codespan-fallback layer (A) を end-to-end で検証。 ASCII filename の workspace ファイルを `artifacts/e2e-live/workspace-link-routing/` 配下に seed → LLM に「`` `artifacts/.../foo.md` `` 開いて内容を確認」 の inline-code 形式を 1 行で echo させる (issue #1300 の再現 shape そのまま) → `a.workspace-link[data-workspace-path="<path>"]` が visible で inner `<code>` が path テキストを保持していることを assert → click → /files navigation + 本文 marker visible を assert。 unit test (`test/utils/markdown/test_workspaceLinkify.ts`) は detector + marked pipeline 単体のみカバー、 本 spec は marked → linkify → textResponse click handler → `appApi.navigateToWorkspacePath` → router の 5 段を初めて end-to-end で繋ぐ net。 L-23 (Markdown-link 形式 + multibyte) と orthogonal で encoding 軸を持ち込まないため ASCII slug |
+| **PR #1325 layer B** SYSTEM_PROMPT の "Referring to files in chat replies" 保持 | ✅ 実装済 (unit) | test/agent/test_agent_prompt.ts、 LLM 遵守そのものは LLM 揺れで deterministic に測れないため、 SYSTEM_PROMPT 内の該当セクションヘッダ + 3 大ルール (ALWAYS Markdown link form / NEVER inline code / NEVER plain text) + workspace-relative path convention 文言の保持を unit test で固定化。 既存 image-reference convention test (stage 2 of feat-image-path-routing) と同じ pattern。 これにより layer A (e2e-live codespan-fallback) と layer B (unit test 文言保持) の組合せで manual 0 を達成 |
+| **L-SETTINGS-EFFORT** Settings → Model effortLevel 双方向同期 (#1323) | ✅ 実装済 | settings.spec.ts、 `config/settings.json` を snapshot (real user file は finally で復元、 codex iter-1 で seed は merge-onto-snapshot に変更し SIGKILL 耐性確保) → Phase 1: seed `{...original, effortLevel:"max"}` → modal open → `settings-tab-model` クリック → `settings-model-effort-select` が `max` を見ている (load path: GET /api/config + cloneAppSettings) → Phase 2: select を `low` に変更 → `@change` auto-save → `settings-model-status` が `low` を含むまで wait → ファイルから `effortLevel: "low"` を直接読み出して確認 (save path: PUT /api/config/settings → atomic write) → Phase 3: 空オプションで clear → status から `low` 消失 → ファイルから `effortLevel` キー自体が消えていることを assert (null sentinel → route の `delete merged.effortLevel` after spread が効いている)。 `buildCliArgs` unit test と config route integration test では取り切れない 「Vue ref ↔ select wire / `@change` auto-save / null sentinel 漏れ」 をブラウザ越しに 1 spec で網羅。 `config/settings.json` は workspace 共有ファイルなので describe は `mode: "serial"`、 同 file を mutate する将来 spec も同じ fence を借りる必要あり。 `restoreSettings` は他の cleanup helper と違い error を握り潰さない (real user data なので silent 破損を避ける、 codex iter-1)。 `readWorkspaceFile` helper を新設 (live-chat.ts、 ENOENT は `null`、 他 IO エラーは throw)。 wall time 1.2s |
+| **L-SETTINGS-EFFORT-SPAWN** settings.json → claude `--effort` 引数到達 (#1323 最終ホップ) | ✅ 実装済 | settings.spec.ts、 L-SETTINGS-EFFORT の sibling として「load → spawn」 ホップを単独で検証 (姉妹は「UI ↔ disk」 のみ)。 `seedWithEffort(original, "low")` で disk に直書き → `startNewSession` → `sendChatMessage("Reply with the single word: ok.")` → `/chat/<id>` URL 確定で session id を早めにキャプチャ (cleanup 確実化) → `ps -A -ww -o command=` を `toPass` で poll し、 `mcp__mulmoclaude` (`--allowedTools` 内に必ず入る固有 marker、 user 並走の Claude Code CLI を除外) を含むプロセスが現れるまで待つ → 全該当プロセスに `--effort low` regex match を assert → `waitForAssistantResponseComplete` で trace を末尾まで撮る → `deleteSession` + `restoreSettings`。 `buildCliArgs` の unit test では掴めない 「`loadSettings → settings.effortLevel → buildCliArgs(effortLevel) → spawn` の鎖が切れる」 系の退行を end-to-end で検出。 1 LLM ターン消費、 wall time ~7s。 ps 出力の長大化対策として `-ww` を渡している (Linux 必須、 macOS は pipe 時 truncate しないが安全側) |
 | **L-W-S-03** `<picture><source srcset>` rewriter | 🟡 skip 中 | wiki.spec.ts、 `<picture><source srcset>` の rewriter 対応待ち。 #1011 Stage B (commit `f3c52268 feat: shared HTML URL-attr rewriter`) で `<source src>` / `<video poster\|src>` / `<audio src>` までは widen 済だが、 **`srcset` (comma-separated descriptor list) は明示的に deferred** (`src/utils/image/htmlSrcAttrs.ts:21-24` の deferred 注記参照)。 `srcset` 専用の split/rewrite pass が入った後に skip 解除する想定。 別の Stage B 効果 (`<video poster>` 等) を測りたければ別 spec として L-W-S-06+ を立てるのが筋 |
 
 ## 実装の詳細
@@ -378,11 +416,19 @@ e2e-live/
 | `readPdfDownload(download)` | `Download` を読み込み `%PDF-` magic bytes を検証、Buffer 返す |
 | `readMovieDownload(download)` | `Download` を読み込み MP4 の `ftyp` magic bytes を検証、Buffer 返す（L-03 用） |
 | `placeFixtureInWorkspace(fixtureRel, workspaceRel)` | `e2e-live/fixtures/<fixtureRel>` を `~/mulmoclaude/<workspaceRel>` にコピー |
+| `placeWorkspaceFile(workspaceRel, body)` | インライン文字列を `~/mulmoclaude/<workspaceRel>` に書き込む（fixture json を持たずに済むケース用） |
+| `readWorkspaceFile(workspaceRel)` | `~/mulmoclaude/<workspaceRel>` の raw テキストを読む。 存在しなければ `null`（snapshot/restore 用、 L-SETTINGS-EFFORT で `config/settings.json` を round trip） |
 | `removeFromWorkspace(workspaceRel)` | best-effort delete（finally で呼ぶ） |
 | `placeWikiPage(slug, body)` / `removeWikiPage(slug)` | `data/wiki/pages/<slug>.md` を直接置く / 消す |
 | `replaceWikiIndex(content)` / `restoreWikiIndex(original)` | `data/wiki/index.md` を一時差し替えして `original` 文字列で復元 (L-16 が共有 index を mutate するため) |
 | `navigateToWikiIndex(page)` / `navigateToWikiPage(page, slug)` | `/wiki` / `/wiki/pages/<slug>` に直遷移 |
 | `getCurrentSessionId(page)` | URL から `/chat/<id>` を抽出 |
+| `startGuaranteedNewSession(page)` | `startNewSession` の race-free 版。 SPA の auto-redirect で stale session id を掴むのを防ぐ。 jsonl 直読み spec が新 session id を必要とする時用 (L-31 / L-32) |
+| `waitForAssistantTurn(page, timeoutMs?)` | `waitForAssistantResponseComplete` の strict 版 (`thinking-indicator` の出現も待つ)。 jsonl / fs assertion で fast-path race を起こさないために使う (L-31 / L-32) |
+| `readSessionToolCalls(sessionId)` | `<workspace>/conversations/chat/<id>.jsonl` から `tool_call` レコードを順に返す。 `Write` against `data/skills/<slug>/SKILL.md` 等の dispatch 検証用 (L-31) |
+| `stagingSkillSlugFromWriteCall(call)` | `Write` tool_call の `file_path` から `data/skills/<slug>/SKILL.md` の slug を抽出。 post-#1298 bridge dispatch canary 用 (L-31) |
+| `snapshotProjectSkillSlugs()` / `readProjectSkillBody(slug)` | `.claude/skills/` 直下の slug 一覧と `<slug>/SKILL.md` 本文。 baseline diff + marker hit で test-owned slug を識別する outcome canary 用 (L-32) |
+| `placeProjectSkill(slug, description, body)` / `removeProjectSkill(slug)` | `.claude/skills/<slug>/SKILL.md` を直接 seed / cleanup。 後者は post-#1298 を意識して staging `data/skills/<slug>/` も併せて消す (L-22 / L-31 / L-32) |
 | `deleteSession(page, sessionId)` | `DELETE /api/sessions/:id` で hard delete（best-effort、auth は `<meta name="mulmoclaude-auth">` から） |
 
 ### testid 必要時の追加方針
@@ -957,6 +1003,7 @@ artifact name: `mulmoclaude-tarball`（10 MB 程度、`.tgz`）。
 - [x] ~~**Safari (webkit) project の追加**~~ → 反映済（`e2e-live/playwright.config.ts` に `webkit` project + `testMatch: "media.spec.ts"`）
 - [x] ~~**webkit で L-01 が `naturalWidth=0` で fail する件の調査と修正**~~ → #1015 close 済（real bug ではなく dev server stale だっただけ。 上の 「真の原因」 セクション参照。 dev 再起動後に webkit L-01 + L-02 pass 確認）
 - [x] ~~**L-05 (generateImage)** 実装時に #983 の path-in-message を活用~~ → 実装済（path 文字列キャプチャは不要だった: `[generate-image-view]` testid 経由で `<img>.src` を読めば `/artifacts/images/...` の prefix が取れるので tool message を parse する必要がない。 #983 で server message に path が乗るのは agent 側の hint として有用、 spec 側は DOM-only assertion で十分）
+- [ ] **wiki lint 残り 3 診断カテゴリの e2e 化** (本 PR #1297 関連スコープ外として保留): 本 PR で `broken link` (L-WIKI-LINT-BROKEN) と `empty target` (L-WIKI-LINT-EMPTY-TARGET) は e2e でカバー済。 残る `Orphan page` / `Missing file` / `Tag drift` の 3 種は unit test (`findOrphanPages` / `findMissingFiles` / `findTagDrift`) で論理側はカバー済だが UI 表示の e2e net がない。 いずれも `data/wiki/index.md` を mutate する必要があり L-16 と同じく `replaceWikiIndex` / `restoreWikiIndex` 経由で書き換えてから `/wiki/lint-report` で診断行を assert する形になる。 Orphan / Missing / Tag drift は L-16 と shared 状態 (index.md) を奪い合うので **L-16 と同じ describe.serial ブロックに集約** か、 **専用 spec ファイルに切り出して describe.serial で囲む** 必要あり。 PR #1312 (issue #1297) が触っていない既存診断なので別 PR (`/make-e2e-live` 再起動) で 1〜3 シナリオ追加が筋。 PR #1312 のオリジナル QA チェックリスト C-3 / C-4 / C-5 に対応
 
 ---
 

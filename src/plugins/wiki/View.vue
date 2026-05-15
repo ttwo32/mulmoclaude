@@ -227,7 +227,7 @@
            fallbacks (deleted page / page with no body) so the
            History tab next to it stays reachable in those states. -->
       <template v-if="action === 'page'">
-        <div v-show="pageTab === PAGE_TAB.content" class="flex-1 overflow-y-auto flex flex-col">
+        <div v-show="pageTab === PAGE_TAB.content" ref="scrollRef" class="flex-1 overflow-y-auto flex flex-col">
           <!-- Empty state: page does not exist. -->
           <div v-if="!pageExists" class="flex-1 flex items-center justify-center text-gray-400 text-sm">
             <div class="text-center space-y-4">

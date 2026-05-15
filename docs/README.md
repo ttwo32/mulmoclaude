@@ -16,6 +16,7 @@ Guides for using MulmoClaude. No programming knowledge required.
 | [LINE セットアップ](message_apps/line/README.ja.md)         | 日本語   | LINE bot の作成と接続手順 (ngrok 必要)                  |
 | [Relay Setup](message_apps/relay/README.md)                 | English  | Deploy a cloud relay — no ngrok, offline queue          |
 | [Relay セットアップ](message_apps/relay/README.ja.md)       | 日本語   | クラウドリレーのデプロイ — ngrok 不要、オフラインキュー |
+| [Claude Code → MulmoClaude 移行ガイド](migrating-from-claude-code.md) | 日本語 | 普段 Claude Code (CLI) を使っているユーザ向けの移行手順 — skill / MCP / hooks / settings の引っ越し早見表 |
 
 ## Tips & Integrations
 
@@ -39,6 +40,14 @@ Guides for using MulmoClaude. No programming knowledge required.
 | [Image-path Routing — Research](image-path-routing.md)            | English  | Read-only audit of how the LLM's image references become browser-loadable URLs                                     |
 | [Image-path Routing — 設計議論](discussion-image-path-routing.md) | 日本語   | 画像パスのルーティング再設計の議論メモと段階的実装計画                                                             |
 | [Wiki / HTML 表示サーフェス](wiki-html-render-surfaces.md)        | 日本語   | Wiki / HTML / Markdown が表示される複数箇所の差異 (権限・画像パス解決) を整理                                      |
+
+## Extension Mechanisms
+
+Before adding a new feature, pick the right extension path. The document below compares all seven (built-in plugin / runtime plugin / external MCP / skill / role / bridge / built-in MCP-only tool), maps which capabilities each one offers, and gives the project's design priority (skill-first; plugin / role only as last resort).
+
+| Document                                                          | Language | Description                                                                                                                                                                            |
+| ----------------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Extension Mechanisms — どこに何を作るか](extension-mechanisms.md) | 日本語   | 7 つの拡張経路の比較・capability マトリクス・判断ガイド・設計指針 (skill ファースト / plugin と role は極力増やさない方針)                                                              |
 
 ## Plugin Authoring
 
@@ -65,11 +74,13 @@ Code structure, APIs, and build instructions for the host itself. Plugin authors
 | Document                                      | Language | Description                                                                                                                                  |
 | --------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Developer Guide](developer.md)               | English  | Environment variables, scripts, workspace structure, CI, internal packages, and the in-tree [plugin development](developer.md#plugin-development) reference |
+| [Shared Utilities Catalog](shared-utils.md)   | English  | One-stop list of cross-cutting helpers (time, errors, paths, files, network, markdown, …). Check this before writing a new helper; append a 1-line entry when adding one |
 | [UI Cheatsheet](ui-cheatsheet.md)             | English  | ASCII layouts of every major UI surface, anchored to component / `data-testid` names so chat / PR text can reference them precisely |
 | [Bridge Protocol](bridge-protocol.md)         | English  | MulmoBridge wire protocol spec (socket.io events, auth)                                                                             |
 | [Task Manager](task-manager.md)               | English  | Server tick loop + @receptron/task-scheduler integration                                                                            |
 | [Logging](logging.md)                         | English  | Log levels, formats, rotation                                                                                                       |
 | [Sandbox Credentials](sandbox-credentials.md) | English  | Docker sandbox credential forwarding                                                                                                |
+| [MCP servers and the Docker sandbox](mcp-sandbox.md) | English  | Why stdio MCP servers can't run under the sandbox, why HTTP MCPs do, and what MulmoClaude drops from the per-session MCP config (#1334) |
 | [Manual Testing](manual-testing.md)           | English  | Manual test items not covered by E2E                                                                                                |
 
 ## Project

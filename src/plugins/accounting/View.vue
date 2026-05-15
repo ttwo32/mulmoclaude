@@ -138,6 +138,7 @@ import BookSettings from "./components/BookSettings.vue";
 import { getOpeningBalances, getAccounts, getBooks, type Account, type BookSummary } from "./api";
 import { ACCOUNTING_ACTIONS } from "./actions";
 import { useAccountingChannel, useAccountingBooksChannel } from "../../composables/useAccountingChannel";
+import { errorMessage } from "../../utils/errors";
 
 const { t } = useI18n();
 
@@ -318,7 +319,7 @@ async function refetchBooks(): Promise<void> {
       showFirstRunForm.value = true;
     }
   } catch (err) {
-    bookLoadError.value = err instanceof Error ? err.message : String(err);
+    bookLoadError.value = errorMessage(err);
   } finally {
     loadingBooks.value = false;
   }

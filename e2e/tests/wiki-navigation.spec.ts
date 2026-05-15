@@ -179,6 +179,56 @@ test.describe("wiki navigation — URL sync", () => {
     await expect(page.getByText("Welcome to the project.")).toBeVisible();
   });
 
+  test("clicking an in-content [[wiki-link]] resets scrollTop on the destination page", async ({ page }) => {
+    // Regression guard: the action='page' Content tab container kept
+    // its scrollTop across page->page navigation because it was the
+    // only branch missing ref="scrollRef", so the watch(content)
+    // reset silently no-op'd. The destination page would land at
+    // wherever the source page was scrolled to, not at the top.
+    const filler = "Filler paragraph for scrollable height.\n\n".repeat(80);
+    const PAGE_FROM = {
+      action: "page",
+      title: "from-page",
+      pageName: "from-page",
+      content: `# From\n\n${filler}\nGo to [[to-page]] now.\n`,
+    };
+    const PAGE_TO = {
+      action: "page",
+      title: "to-page",
+      pageName: "to-page",
+      content: `# To\n\nSENTINEL-DEST-TOP\n\n${filler}`,
+    };
+    await page.route(
+      (url) => url.pathname === "/api/wiki",
+      async (route) => {
+        const body = (route.request().postDataJSON() ?? {}) as { pageName?: string };
+        if (body.pageName === "from-page") return route.fulfill({ json: { data: PAGE_FROM } });
+        if (body.pageName === "to-page") return route.fulfill({ json: { data: PAGE_TO } });
+        return route.fulfill({ json: { data: INDEX_PAYLOAD } });
+      },
+    );
+
+    await page.goto("/wiki/pages/from-page");
+    const wikiBody = page.getByTestId("wiki-page-body");
+    await expect(wikiBody).toBeVisible();
+    // The scrollable container is WikiPageBody's parent — the div
+    // that now carries ref="scrollRef" in src/plugins/wiki/View.vue.
+    const scrollContainer = wikiBody.locator("xpath=..");
+    const SOURCE_SCROLL_PX = 400;
+    await scrollContainer.evaluate((element, top) => {
+      element.scrollTop = top as number;
+    }, SOURCE_SCROLL_PX);
+    expect(await scrollContainer.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+
+    await page.locator('.wiki-link[data-page="to-page"]').click();
+    await page.waitForURL(/\/wiki\/pages\/to-page$/);
+    await expect(page.getByText("SENTINEL-DEST-TOP")).toBeVisible();
+
+    // Same DOM container is reused (action stays 'page'); the fix's
+    // ref="scrollRef" lets the watch(content) reset scrollTop to 0.
+    await expect(scrollContainer).toHaveJSProperty("scrollTop", 0, { timeout: 2000 });
+  });
+
   test("navigating from a page back to the index strips the slug from the URL (#655 follow-up)", async ({ page }) => {
     // Regression: buildWikiRouteParams({ kind: "index" }) used to
     // return `{}`, but Vue Router's named-route navigation does NOT

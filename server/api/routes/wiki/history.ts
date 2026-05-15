@@ -7,9 +7,9 @@
 //     itself, so undo stays cheap).
 //
 // Path safety: both `:slug` and `:stamp` are validated *before*
-// they are joined with the workspace root. The slug check matches
-// `wiki-pages/io.ts`'s `isSafeSlug`; the stamp check is the
-// `FILENAME_RE` shape exposed via `isSafeStamp`.
+// they are joined with the workspace root. The slug check is the
+// shared `isSafeSlug` from `src/lib/wiki-page/slug.ts`; the stamp
+// check is the `FILENAME_RE` shape exposed via `isSafeStamp`.
 
 import { Router, type Request, type Response } from "express";
 import path from "node:path";
@@ -24,19 +24,10 @@ import { readTextOrNull } from "../../../utils/files/safe.js";
 import { workspacePath } from "../../../workspace/workspace.js";
 import { pushToolResult } from "../../../events/session-store/index.js";
 import { log } from "../../../system/logger/index.js";
+import { errorMessage } from "../../../utils/errors.js";
+import { isSafeSlug } from "../../../../src/lib/wiki-page/slug.js";
 
 const router = Router();
-
-// Mirrors `isSafeSlug` from wiki-pages/io.ts (kept independent so
-// the route layer doesn't import the helper through a circular
-// dependency — io.ts already imports snapshot.ts).
-function isSafeSlug(slug: string): boolean {
-  if (slug.length === 0) return false;
-  if (slug === "." || slug === "..") return false;
-  if (slug.includes("/") || slug.includes("\\")) return false;
-  if (slug.includes("\0")) return false;
-  return true;
-}
 
 // Restore is a write under the user's workspace; record a short
 // reason on the new snapshot so the history reads "Restored from
@@ -250,7 +241,7 @@ router.post("/internal/snapshot", async (req: Request<object, unknown, InternalS
     } catch (err) {
       log.warn("wiki", "page-edit toolResult publish failed", {
         slug,
-        error: err instanceof Error ? err.message : String(err),
+        error: errorMessage(err),
       });
     }
   }

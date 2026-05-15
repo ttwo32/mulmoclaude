@@ -1,6 +1,15 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { dispatchScheduler, handleAdd, handleDelete, handleReplace, handleShow, handleUpdate, sortItems } from "../../server/api/routes/schedulerHandlers.js";
+import {
+  dispatchScheduler,
+  handleAdd,
+  handleDelete,
+  handleReplace,
+  handleShow,
+  handleUpdate,
+  sanitizeProps,
+  sortItems,
+} from "../../server/api/routes/schedulerHandlers.js";
 import type { ScheduledItem } from "../../server/api/routes/scheduler.js";
 
 function makeItem(overrides: Partial<ScheduledItem> = {}): ScheduledItem {
@@ -256,6 +265,147 @@ describe("handleReplace", () => {
     assert.equal(result.kind, "success");
     if (result.kind !== "success") return;
     assert.equal(result.items[0]?.id, "a");
+  });
+});
+
+describe("multi-day events (endDate)", () => {
+  it("sanitizeProps keeps a well-formed range untouched", () => {
+    const props = { date: "2026-05-27", endDate: "2026-05-29" };
+    assert.equal(sanitizeProps(props), props);
+  });
+
+  it("sanitizeProps preserves a malformed-but-string endDate (view surfaces it as 'broken')", () => {
+    // Earlier versions silently dropped these — but the user
+    // never noticed their typo. Keeping the raw bad string lets
+    // the view render a broken-chip UI so the user/LLM gets a
+    // visible cue to fix it.
+    const beforeStart = { date: "2026-05-27", endDate: "2026-05-25" };
+    assert.equal(sanitizeProps(beforeStart).endDate, "2026-05-25");
+
+    const noStart = { endDate: "2026-05-29" };
+    assert.equal(sanitizeProps(noStart).endDate, "2026-05-29");
+
+    const notIso = { date: "2026-05-27", endDate: "next Friday" };
+    assert.equal(sanitizeProps(notIso).endDate, "next Friday");
+  });
+
+  it("sanitizeProps drops non-string endDate (crash protection)", () => {
+    const numEnd = { date: "2026-05-27", endDate: 20260529 as unknown as string };
+    assert.equal(sanitizeProps(numEnd).endDate, undefined);
+  });
+
+  it("sanitizeProps keeps an equal-day endDate (single-day explicit range)", () => {
+    const props = { date: "2026-05-27", endDate: "2026-05-27" };
+    assert.equal(sanitizeProps(props).endDate, "2026-05-27");
+  });
+
+  it("sanitizeProps coerces non-object input to an empty props object", () => {
+    // req.body.props is not runtime-validated upstream, so malformed
+    // payloads (number / null / string / array) must not throw.
+    assert.deepEqual(sanitizeProps(1), {});
+    assert.deepEqual(sanitizeProps("hello"), {});
+    assert.deepEqual(sanitizeProps(null), {});
+    assert.deepEqual(sanitizeProps(undefined), {});
+    assert.deepEqual(sanitizeProps([1, 2, 3]), {});
+    assert.deepEqual(sanitizeProps(true), {});
+  });
+
+  it("handleAdd does not crash on non-object props payload", () => {
+    const result = handleAdd([], { title: "x", props: 1 as unknown as Record<string, string> });
+    assert.equal(result.kind, "success");
+    if (result.kind !== "success") return;
+    assert.deepEqual(result.items[0]?.props, {});
+  });
+
+  it("handleReplace tolerates items whose props are non-object", () => {
+    const broken = { id: "a", title: "x", createdAt: 0, props: 1 as unknown as Record<string, string> };
+    const result = handleReplace([], { items: [broken] });
+    assert.equal(result.kind, "success");
+    if (result.kind !== "success") return;
+    assert.deepEqual(result.items[0]?.props, {});
+  });
+
+  it("handleReplace mints a string id for items missing one (color-hash crash protection)", () => {
+    const noId = { title: "no id", createdAt: 100, props: {} } as unknown as ScheduledItem;
+    const numericId = { id: 12345 as unknown as string, title: "num", createdAt: 200, props: {} };
+    const result = handleReplace([], { items: [noId, numericId] });
+    assert.equal(result.kind, "success");
+    if (result.kind !== "success") return;
+    assert.equal(result.items.length, 2);
+    for (const item of result.items) {
+      assert.equal(typeof item.id, "string");
+      assert.ok(item.id.length > 0);
+    }
+  });
+
+  it("handleReplace coerces missing / malformed title and createdAt to safe defaults", () => {
+    const before = Date.now();
+    const malformed = { id: "a", title: 42 as unknown as string, createdAt: "soon" as unknown as number, props: {} };
+    const result = handleReplace([], { items: [malformed] });
+    assert.equal(result.kind, "success");
+    if (result.kind !== "success") return;
+    assert.equal(result.items[0]?.title, "");
+    assert.ok((result.items[0]?.createdAt ?? 0) >= before);
+  });
+
+  it("handleReplace drops non-object items and reports the count in jsonData", () => {
+    const valid = makeItem({ id: "ok", props: {} });
+    const result = handleReplace([], { items: [valid, null as unknown as ScheduledItem, "string" as unknown as ScheduledItem, 7 as unknown as ScheduledItem] });
+    assert.equal(result.kind, "success");
+    if (result.kind !== "success") return;
+    assert.equal(result.items.length, 1);
+    assert.equal(result.jsonData.dropped, 3);
+  });
+
+  it("handleAdd persists a valid endDate", () => {
+    const result = handleAdd([], { title: "Trip", props: { date: "2026-05-27", endDate: "2026-05-29" } });
+    assert.equal(result.kind, "success");
+    if (result.kind !== "success") return;
+    assert.equal(result.items[0]?.props.endDate, "2026-05-29");
+  });
+
+  it("handleAdd preserves a malformed endDate string for the broken-chip UI", () => {
+    const result = handleAdd([], { title: "Trip", props: { date: "2026-05-27", endDate: "2026-05-25" } });
+    assert.equal(result.kind, "success");
+    if (result.kind !== "success") return;
+    assert.equal(result.items[0]?.props.date, "2026-05-27");
+    assert.equal(result.items[0]?.props.endDate, "2026-05-25");
+  });
+
+  it("handleUpdate accepts a valid endDate patch", () => {
+    const original = makeItem({ id: "a", props: { date: "2026-05-27" } });
+    const result = handleUpdate([original], { id: "a", props: { endDate: "2026-05-29" } });
+    assert.equal(result.kind, "success");
+    if (result.kind !== "success") return;
+    assert.equal(result.items[0]?.props.endDate, "2026-05-29");
+  });
+
+  it("handleUpdate preserves an invalid endDate patch string and applies other patched props", () => {
+    const original = makeItem({ id: "a", props: { date: "2026-05-27" } });
+    const result = handleUpdate([original], { id: "a", props: { endDate: "2026-05-25", location: "Tokyo" } });
+    assert.equal(result.kind, "success");
+    if (result.kind !== "success") return;
+    assert.equal(result.items[0]?.props.endDate, "2026-05-25");
+    assert.equal(result.items[0]?.props.location, "Tokyo");
+  });
+
+  it("handleUpdate honours a null patch to remove endDate", () => {
+    const original = makeItem({ id: "a", props: { date: "2026-05-27", endDate: "2026-05-29" } });
+    const result = handleUpdate([original], { id: "a", props: { endDate: null } });
+    assert.equal(result.kind, "success");
+    if (result.kind !== "success") return;
+    assert.equal(result.items[0]?.props.endDate, undefined);
+  });
+
+  it("handleReplace preserves string endDate values for every item (view handles malformed)", () => {
+    const good = makeItem({ id: "a", props: { date: "2026-05-27", endDate: "2026-05-29" } });
+    const bad = makeItem({ id: "b", props: { date: "2026-05-27", endDate: "2026-05-25" } });
+    const result = handleReplace([], { items: [good, bad] });
+    assert.equal(result.kind, "success");
+    if (result.kind !== "success") return;
+    const byId = Object.fromEntries(result.items.map((i) => [i.id, i]));
+    assert.equal(byId.a?.props.endDate, "2026-05-29");
+    assert.equal(byId.b?.props.endDate, "2026-05-25");
   });
 });
 

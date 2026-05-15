@@ -81,7 +81,9 @@ const HOST_TOOL_NAMES = {
   manageBookmarks: "manageBookmarks",
   manageTodoList: "manageTodoList",
   manageSpotify: "manageSpotify",
-  manageRecipes: "manageRecipes",
+  // manageRecipes removed (#1286) — recipe-book-plugin dropped from
+  // PRESET_PLUGINS; recipe management moved to the `mc-cooking-coach`
+  // preset skill which drives files directly via Read/Write/Edit.
   manageDebug: "manageDebug",
   edgar: "edgar",
 } as const;

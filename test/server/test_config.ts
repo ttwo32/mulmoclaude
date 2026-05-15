@@ -64,6 +64,46 @@ describe("isAppSettings", () => {
     assert.equal(mod.isAppSettings({ extraAllowedTools: ["ok", 42] }), false);
     assert.equal(mod.isAppSettings({ extraAllowedTools: [null] }), false);
   });
+
+  it("accepts known effortLevel values", () => {
+    for (const level of mod.EFFORT_LEVELS) {
+      assert.ok(mod.isAppSettings({ extraAllowedTools: [], effortLevel: level }), `expected ${level} to be accepted`);
+    }
+  });
+
+  it("rejects unknown effortLevel values", () => {
+    assert.equal(mod.isAppSettings({ extraAllowedTools: [], effortLevel: "ultra" }), false);
+    assert.equal(mod.isAppSettings({ extraAllowedTools: [], effortLevel: "" }), false);
+    assert.equal(mod.isAppSettings({ extraAllowedTools: [], effortLevel: 42 }), false);
+    assert.equal(mod.isAppSettings({ extraAllowedTools: [], effortLevel: null }), false);
+  });
+});
+
+describe("isAppSettingsPatch", () => {
+  it("allows null effortLevel as the clear-me sentinel", () => {
+    assert.ok(mod.isAppSettingsPatch({ effortLevel: null }));
+    assert.ok(mod.isAppSettingsPatch({ effortLevel: "high" }));
+    assert.ok(mod.isAppSettingsPatch({}));
+  });
+
+  it("rejects garbage effortLevel even on the patch path", () => {
+    assert.equal(mod.isAppSettingsPatch({ effortLevel: "ultra" }), false);
+    assert.equal(mod.isAppSettingsPatch({ effortLevel: 42 }), false);
+  });
+});
+
+describe("normaliseAppSettingsPatch", () => {
+  it("strips null effortLevel", () => {
+    assert.deepEqual(mod.normaliseAppSettingsPatch({ effortLevel: null }), {});
+  });
+
+  it("preserves a present effortLevel", () => {
+    assert.deepEqual(mod.normaliseAppSettingsPatch({ effortLevel: "high" }), { effortLevel: "high" });
+  });
+
+  it("preserves other fields untouched", () => {
+    assert.deepEqual(mod.normaliseAppSettingsPatch({ extraAllowedTools: ["a"], effortLevel: null }), { extraAllowedTools: ["a"] });
+  });
 });
 
 describe("loadSettings", () => {
@@ -202,6 +242,21 @@ describe("isMcpServerId", () => {
     assert.equal(mod.isMcpServerId("-foo"), false);
     assert.equal(mod.isMcpServerId("Foo"), false);
     assert.equal(mod.isMcpServerId("has space"), false);
+  });
+
+  // Codex iter-2 on #1356: consecutive `__` is forbidden because the
+  // tool-naming encoding (`mcp__<server>__<tool>`) uses `__` as the
+  // delimiter — a server id like `foo__bar` produces a tool name
+  // ambiguous between server `foo` and server `foo__bar`. Single `_`
+  // is still allowed.
+  it("rejects ids containing consecutive `__` (delimiter collision)", () => {
+    assert.equal(mod.isMcpServerId("foo__bar"), false);
+    assert.equal(mod.isMcpServerId("a__b"), false);
+    assert.equal(mod.isMcpServerId("__leading"), false);
+    assert.equal(mod.isMcpServerId("trailing__"), false);
+    // Single `_` still accepted (regression guard).
+    assert.ok(mod.isMcpServerId("foo_bar"));
+    assert.ok(mod.isMcpServerId("a_b_c"));
   });
 });
 

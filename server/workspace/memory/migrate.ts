@@ -25,6 +25,7 @@ import { writeFileAtomic } from "../../utils/files/atomic.js";
 import { readTextSafe } from "../../utils/files/safe.js";
 import { log } from "../../system/logger/index.js";
 import { errorMessage } from "../../utils/errors.js";
+import { truncate } from "../../utils/text.js";
 import { ClaudeCliNotFoundError } from "../journal/archivist-cli.js";
 import { WORKSPACE_FILES } from "../paths.js";
 import { regenerateIndex, writeMemoryEntry } from "./io.js";
@@ -231,7 +232,7 @@ function buildEntry(candidate: MemoryCandidate, classification: MemoryClassifica
 
 function truncateForDescription(text: string): string {
   const oneLine = text.replace(/\s+/g, " ").trim();
-  return oneLine.length > 120 ? `${oneLine.slice(0, 117)}…` : oneLine;
+  return truncate(oneLine, 120);
 }
 
 function uniqueSlug(base: string, used: Set<string>): string {

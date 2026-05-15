@@ -12,6 +12,7 @@ import { env } from "../../system/env.js";
 import { updateHasUnread } from "../../utils/files/session-io.js";
 import { EVENT_TYPES, GENERATION_KINDS, type GenerationKind, type PendingGeneration, generationKey } from "../../../src/types/events.js";
 import { ONE_HOUR_MS, ONE_MINUTE_MS } from "../../utils/time.js";
+import { errorMessage } from "../../utils/errors.js";
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -394,7 +395,7 @@ function applyEventToSession(session: ServerSession, type: string, event: Record
       enqueueJsonlAppend(session, buildToolCallLine(event)).catch((err: unknown) => {
         log.warn("session-store", "persist tool_call failed (non-fatal)", {
           chatSessionId: session.chatSessionId,
-          error: err instanceof Error ? err.message : String(err),
+          error: errorMessage(err),
         });
       });
     }

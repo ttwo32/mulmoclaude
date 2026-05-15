@@ -1,7 +1,9 @@
 // POST /api/config/refresh — wraps `refreshScheduledSkills()` +
-// `refreshUserTasks()` into one endpoint so the `mc-settings` skill's
+// `refreshUserTasks()` into one endpoint so the config-refresh
 // PostToolUse hook (#1283) can fire-and-forget after Write/Edit of
 // the relevant config files without knowing which refreshers exist.
+// Serves the `mc-manage-skills` + `mc-manage-automations` preset
+// skills (split out from the original `mc-settings` in #1295).
 //
 // Best-effort by design: failures from one refresher don't block the
 // other; the response is always 200 with a per-refresher status so the
@@ -10,6 +12,7 @@
 import { Router, Request, Response } from "express";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
 import { log } from "../../system/logger/index.js";
+import { errorMessage } from "../../utils/errors.js";
 import { refreshScheduledSkills } from "../../workspace/skills/scheduler.js";
 import { refreshUserTasks } from "../../workspace/skills/user-tasks.js";
 
@@ -31,7 +34,7 @@ async function safeRefresh(label: string, refresher: () => Promise<number>): Pro
     const count = await refresher();
     return { ok: true, count };
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
+    const error = errorMessage(err);
     log.warn("config-refresh", `${label} refresh failed`, { error });
     return { ok: false, error };
   }

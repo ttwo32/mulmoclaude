@@ -2,6 +2,8 @@
 // All functions are locale-aware on purpose; tests assert
 // structural properties only, not exact strings.
 
+type DateLike = Date | number | string;
+
 /** "Apr 11 06:32" — short month + day + 24h time. */
 export function formatDate(iso: string): string {
   const date = new Date(iso);
@@ -24,7 +26,7 @@ export function formatTime(epochMs: number): string {
 }
 
 /** "06:32" — short HH:MM. Accepts Date, epoch ms, or ISO string. */
-export function formatShortTime(value: Date | number | string): string {
+export function formatShortTime(value: DateLike): string {
   try {
     const date = value instanceof Date ? value : new Date(value);
     return date.toLocaleTimeString([], {
@@ -37,11 +39,21 @@ export function formatShortTime(value: Date | number | string): string {
 }
 
 /** "Apr 11" — short month + day. Accepts Date, epoch ms, or ISO string. */
-export function formatShortDate(value: Date | number | string): string {
+export function formatShortDate(value: DateLike): string {
   const date = value instanceof Date ? value : new Date(value);
   return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
+  });
+}
+
+/** "April 2026" — long month + year. Used by month-pickers and
+ *  page headers where the day is implicit. */
+export function formatMonthYear(value: DateLike): string {
+  const date = value instanceof Date ? value : new Date(value);
+  return date.toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
   });
 }
 

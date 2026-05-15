@@ -25,8 +25,8 @@ const repoRoot = path.resolve(__dirname, "..");
 // root for stable error messages.
 const ENTRIES = [
   {
-    src: "server/workspace/wiki-history/hook/snapshot.ts",
-    out: "server/workspace/wiki-history/hook/snapshot.mjs",
+    src: "server/workspace/hooks/dispatcher.ts",
+    out: "server/workspace/hooks/dispatcher.mjs",
   },
 ];
 

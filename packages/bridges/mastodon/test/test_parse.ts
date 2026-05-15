@@ -35,6 +35,17 @@ describe("htmlToText", () => {
     assert.equal(htmlToText("a &amp; b &lt;x&gt; &quot;y&quot; &#39;z&#39; &nbsp;w"), "a & b <x> \"y\" 'z'  w");
   });
 
+  it("does NOT double-unescape `&amp;lt;` to `<`", () => {
+    // CodeQL js/double-escaping: a chained decoder that runs
+    // `&amp; → &` first would turn `&amp;lt;` into `&lt;` and then
+    // (in the next pass) into `<`. The single-pass decoder keeps
+    // the author's intent: `&amp;lt;` means "the literal text
+    // &lt;", not "the < character".
+    assert.equal(htmlToText("a &amp;lt; b"), "a &lt; b");
+    assert.equal(htmlToText("&amp;amp;"), "&amp;");
+    assert.equal(htmlToText("&amp;quot;"), "&quot;");
+  });
+
   it("returns empty string for empty / whitespace-only input", () => {
     assert.equal(htmlToText(""), "");
     assert.equal(htmlToText("   "), "");

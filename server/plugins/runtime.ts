@@ -18,6 +18,7 @@ import type { FileOps, PluginRuntime } from "gui-chat-protocol";
 
 import { WORKSPACE_PATHS } from "../workspace/paths.js";
 import { writeFileAtomic } from "../utils/files/atomic.js";
+import { errorMessage } from "../utils/errors.js";
 import { log as hostLog, type Logger } from "../system/logger/index.js";
 import { ensureInsideBase } from "./runtime-loader.js";
 import { ONE_SECOND_MS } from "../utils/time.js";
@@ -207,8 +208,7 @@ function makeScopedFetch(pkgName: string): PluginRuntime["fetch"] {
       if (err instanceof Error && err.name === "AbortError") {
         throw new Error(`plugin/${pkgName}: fetch timed out after ${timeoutMs}ms (${url})`);
       }
-      const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`plugin/${pkgName}: fetch failed (${url}): ${message}`);
+      throw new Error(`plugin/${pkgName}: fetch failed (${url}): ${errorMessage(err)}`);
     } finally {
       clearTimeout(timer);
     }

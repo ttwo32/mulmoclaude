@@ -142,6 +142,27 @@ describe("buildCliArgs", () => {
 
     assert.ok(!args.includes("--mcp-config"));
   });
+
+  it("includes --effort when effortLevel is set", async () => {
+    const args = buildCliArgs({
+      systemPrompt: "test",
+      activePlugins: [],
+      effortLevel: "high",
+    });
+
+    const effortIdx = args.indexOf("--effort");
+    assert.ok(effortIdx >= 0, "--effort flag must exist");
+    assert.equal(args[effortIdx + 1], "high");
+  });
+
+  it("omits --effort when effortLevel is unset", async () => {
+    const args = buildCliArgs({
+      systemPrompt: "test",
+      activePlugins: [],
+    });
+
+    assert.ok(!args.includes("--effort"));
+  });
 });
 
 describe("resolveMcpConfigPaths", () => {
@@ -383,7 +404,10 @@ describe("prepareUserServers", () => {
     assert.equal(api.url, "http://host.docker.internal:8080/mcp");
   });
 
-  it("rewrites workspace-scoped args for stdio servers in docker mode", async () => {
+  it("rewrites workspace-scoped args for stdio servers when NOT in docker mode", async () => {
+    // Outside the sandbox, stdio entries pass through with their
+    // workspace-scoped args normalised. (Docker-mode drops stdio
+    // entirely — see the next test.)
     const servers: Record<string, McpServerSpec> = {
       fs: {
         type: "stdio",
@@ -391,24 +415,66 @@ describe("prepareUserServers", () => {
         args: ["-y", "@modelcontextprotocol/server-filesystem", `${hostWs}/docs`],
       },
     };
-    const out = prepareUserServers(servers, true, hostWs);
+    const out = prepareUserServers(servers, false, hostWs);
     const fsSpec = out.fs;
     assert.ok(fsSpec && fsSpec.type === "stdio");
-    assert.deepEqual(fsSpec.args, ["-y", "@modelcontextprotocol/server-filesystem", `${CONTAINER_WORKSPACE_PATH}/docs`]);
+    // Non-docker mode doesn't rewrite the workspace prefix — the
+    // host path is the right path.
+    assert.deepEqual(fsSpec.args, ["-y", "@modelcontextprotocol/server-filesystem", `${hostWs}/docs`]);
   });
 
-  it("leaves non-workspace stdio args untouched (caller warns in UI)", async () => {
+  it("drops stdio servers entirely in docker mode (#1334)", async () => {
+    // Symmetric with `userServerAllowedToolNames`: stdio entries
+    // can't run inside the sandbox image, and Claude CLI 2.1.x
+    // silently exits 1 when a stdio MCP fails to spawn. Drop them
+    // before writing the per-session MCP config so the CLI never
+    // tries. See docs/mcp-sandbox.md for the full rationale.
     const servers: Record<string, McpServerSpec> = {
-      bad: {
+      api: { type: "http", url: "https://api.example/mcp" },
+      fs: {
         type: "stdio",
-        command: "node",
-        args: ["/etc/hosts"],
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-filesystem", `${hostWs}/docs`],
+      },
+      mem: {
+        type: "stdio",
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-memory"],
       },
     };
     const out = prepareUserServers(servers, true, hostWs);
-    const { bad } = out;
-    assert.ok(bad && bad.type === "stdio");
-    assert.deepEqual(bad.args, ["/etc/hosts"]);
+    assert.deepEqual(Object.keys(out), ["api"]);
+  });
+
+  it("docker-mode drop applies even when no http entries are present", async () => {
+    // Boundary: a config with ONLY stdio entries yields an empty
+    // server map under docker. Nothing should crash, no entries
+    // should leak through.
+    const servers: Record<string, McpServerSpec> = {
+      fs: {
+        type: "stdio",
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-filesystem"],
+      },
+    };
+    const out = prepareUserServers(servers, true, hostWs);
+    assert.deepEqual(out, {});
+  });
+
+  it("disabled stdio entries are dropped before the docker filter even sees them", async () => {
+    // The disabled-check fires first, so a disabled stdio entry
+    // never reaches the docker filter. Verify both modes agree
+    // for disabled entries.
+    const servers: Record<string, McpServerSpec> = {
+      off: {
+        type: "stdio",
+        command: "npx",
+        args: ["-y", "@modelcontextprotocol/server-memory"],
+        enabled: false,
+      },
+    };
+    assert.deepEqual(prepareUserServers(servers, false, hostWs), {});
+    assert.deepEqual(prepareUserServers(servers, true, hostWs), {});
   });
 });
 

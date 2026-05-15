@@ -212,6 +212,32 @@ describe("PUT /config/settings", () => {
     putSettingsHandler({ body: { googleMapsApiKey: 12345 } } as Request, res);
     assert.equal(state.status, 400);
   });
+
+  it("sets effortLevel from a patch", () => {
+    configMod.saveSettings({ extraAllowedTools: ["mcp__keep"] });
+    const { state, res } = mockRes();
+    putSettingsHandler({ body: { effortLevel: "high" } } as Request, res);
+    assert.equal(state.status, 200);
+    const persisted = configMod.loadSettings();
+    assert.equal(persisted.effortLevel, "high");
+    assert.deepEqual(persisted.extraAllowedTools, ["mcp__keep"]);
+  });
+
+  it("clears effortLevel when patch sends null", () => {
+    configMod.saveSettings({ extraAllowedTools: ["mcp__keep"], effortLevel: "max" });
+    const { state, res } = mockRes();
+    putSettingsHandler({ body: { effortLevel: null } } as Request, res);
+    assert.equal(state.status, 200);
+    const persisted = configMod.loadSettings();
+    assert.equal(persisted.effortLevel, undefined);
+    assert.deepEqual(persisted.extraAllowedTools, ["mcp__keep"]);
+  });
+
+  it("rejects unknown effortLevel values with 400", () => {
+    const { state, res } = mockRes();
+    putSettingsHandler({ body: { effortLevel: "ultra" } } as Request, res);
+    assert.equal(state.status, 400);
+  });
 });
 
 describe("PUT /config (atomic)", () => {

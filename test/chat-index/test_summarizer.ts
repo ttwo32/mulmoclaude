@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { extractText, truncate, parseClaudeJsonResult, validateSummaryResult, formatSpawnError } from "../../server/workspace/chat-index/summarizer.js";
+import { extractText, truncateMiddle, parseClaudeJsonResult, validateSummaryResult, formatSpawnError } from "../../server/workspace/chat-index/summarizer.js";
 
 describe("extractText", () => {
   it("keeps user and assistant text turns", () => {
@@ -66,10 +66,10 @@ describe("extractText", () => {
   });
 });
 
-describe("truncate", () => {
+describe("truncateMiddle", () => {
   it("passes short input through unchanged", () => {
     const str = "hello world";
-    assert.equal(truncate(str), str);
+    assert.equal(truncateMiddle(str), str);
   });
 
   it("keeps head + tail for long input", () => {
@@ -78,7 +78,7 @@ describe("truncate", () => {
     const head = "HEAD_MARKER".padEnd(3000, "h");
     const middle = "m".repeat(5000);
     const tail = "TAIL_MARKER".padStart(5000, "t");
-    const out = truncate(head + middle + tail);
+    const out = truncateMiddle(head + middle + tail);
     assert.ok(out.length < (head + middle + tail).length);
     assert.match(out, /HEAD_MARKER/);
     assert.match(out, /TAIL_MARKER/);

@@ -1,0 +1,204 @@
+// Unit tests for the skill-bridge handler. The handler mirrors
+// edits + deletes from `data/skills/<slug>/SKILL.md` into
+// `.claude/skills/<slug>/SKILL.md`. We verify the path math and
+// the regex gating directly, plus a smoke test of the mirror
+// copy / delete against a real tmp workspace.
+
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import {
+  claudeSkillFilePath,
+  dataSkillDir,
+  dataSkillFilePath,
+  handleSkillBridge,
+  slugFromDataPath,
+  slugFromRmCommand,
+} from "../../../../server/workspace/hooks/handlers/skillBridge.js";
+
+function setWorkspace(root: string): void {
+  // The handler reads CLAUDE_PROJECT_DIR at call time. Mutating
+  // env before each test gives us a clean per-test workspace.
+  process.env.CLAUDE_PROJECT_DIR = root;
+}
+
+describe("slugFromDataPath", () => {
+  it("matches data/skills/<slug>/SKILL.md and returns the slug", () => {
+    setWorkspace("/ws");
+    assert.equal(slugFromDataPath("/ws/data/skills/nazonazo/SKILL.md"), "nazonazo");
+    assert.equal(slugFromDataPath("/ws/data/skills/my-skill/SKILL.md"), "my-skill");
+  });
+
+  it("rejects non-staging paths", () => {
+    setWorkspace("/ws");
+    assert.equal(slugFromDataPath("/ws/data/wiki/foo.md"), null);
+    assert.equal(slugFromDataPath("/ws/.claude/skills/foo/SKILL.md"), null);
+    assert.equal(slugFromDataPath("/elsewhere/data/skills/foo/SKILL.md"), null);
+  });
+
+  it("rejects sibling files in the staging skill dir", () => {
+    // Only SKILL.md crosses over — assets and notes stay
+    // staging-side. The agent writing `data/skills/foo/README.md`
+    // by mistake should be a no-op, not a mis-mirror.
+    setWorkspace("/ws");
+    assert.equal(slugFromDataPath("/ws/data/skills/foo/README.md"), null);
+    assert.equal(slugFromDataPath("/ws/data/skills/foo/assets/img.png"), null);
+  });
+
+  it("rejects flat <slug>.md (the old layout)", () => {
+    // Earlier draft used `data/skills/<slug>.md`. The agent's
+    // natural skill shape is nested-with-SKILL.md, so the flat
+    // form is no longer recognised. Document the change here so
+    // a partial revert can't silently re-introduce it.
+    setWorkspace("/ws");
+    assert.equal(slugFromDataPath("/ws/data/skills/foo.md"), null);
+  });
+
+  it("rejects invalid slugs", () => {
+    setWorkspace("/ws");
+    assert.equal(slugFromDataPath("/ws/data/skills/Foo/SKILL.md"), null, "uppercase rejected");
+    assert.equal(slugFromDataPath("/ws/data/skills/foo_bar/SKILL.md"), null, "underscore rejected");
+    assert.equal(slugFromDataPath("/ws/data/skills/-foo/SKILL.md"), null, "leading hyphen rejected");
+    assert.equal(slugFromDataPath("/ws/data/skills/foo--bar/SKILL.md"), null, "double hyphen rejected");
+  });
+});
+
+describe("slugFromRmCommand", () => {
+  it("matches `rm -rf data/skills/<slug>/` and variants with recursive flags", () => {
+    assert.equal(slugFromRmCommand("rm -rf data/skills/nazonazo/"), "nazonazo");
+    assert.equal(slugFromRmCommand("rm -rf data/skills/nazonazo"), "nazonazo");
+    assert.equal(slugFromRmCommand("rm -r data/skills/foo/"), "foo");
+    assert.equal(slugFromRmCommand("rm -R data/skills/foo"), "foo", "capital -R also recursive");
+    assert.equal(slugFromRmCommand("rm -fr data/skills/foo"), "foo", "flag order doesn't matter");
+    assert.equal(slugFromRmCommand("rm -rf 'data/skills/my-skill/'"), "my-skill");
+  });
+
+  it("rejects non-recursive forms (rm / rm -f) — they can't delete a directory, so mirroring would desync", () => {
+    // Codex regression: `rm` / `rm -f` against `data/skills/<slug>/`
+    // (a dir) fails with "is a directory" — the staging copy stays,
+    // but the previous regex would still let us delete the canonical
+    // tree. Strictly require a recursive flag now.
+    assert.equal(slugFromRmCommand("rm data/skills/nazonazo"), null);
+    assert.equal(slugFromRmCommand("rm -f data/skills/nazonazo"), null);
+    assert.equal(slugFromRmCommand("rm -fv data/skills/nazonazo"), null, "verbose-only still rejected");
+    assert.equal(slugFromRmCommand("rm -i data/skills/nazonazo"), null, "interactive-only rejected");
+  });
+
+  it("rejects wildcards and parent-dir deletes", () => {
+    // Mass deletes via wildcards or wiping the whole staging dir
+    // must NOT be mirrored — one typo could otherwise wipe every
+    // skill in .claude/skills/.
+    assert.equal(slugFromRmCommand("rm -rf data/skills/*"), null);
+    assert.equal(slugFromRmCommand("rm -rf data/skills/"), null);
+    assert.equal(slugFromRmCommand("rm -rf data/skills"), null);
+    assert.equal(slugFromRmCommand("rm -rf data/skills/foo data/skills/bar"), null);
+  });
+
+  it("rejects non-rm commands", () => {
+    assert.equal(slugFromRmCommand("ls data/skills/"), null);
+    assert.equal(slugFromRmCommand("mv data/skills/foo data/skills/bar"), null);
+  });
+});
+
+describe("handleSkillBridge — mirror copy", () => {
+  it("copies data/skills/<slug>/SKILL.md to .claude/skills/<slug>/SKILL.md on Write", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "skill-bridge-write-"));
+    setWorkspace(root);
+    await mkdir(dataSkillDir("nazonazo"), { recursive: true });
+    const content = "---\nname: nazonazo\n---\n\n# Test skill\n";
+    await writeFile(dataSkillFilePath("nazonazo"), content, "utf-8");
+
+    await handleSkillBridge({
+      tool_name: "Write",
+      tool_input: { file_path: dataSkillFilePath("nazonazo") },
+    });
+
+    const mirrored = await readFile(claudeSkillFilePath("nazonazo"), "utf-8");
+    assert.equal(mirrored, content);
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("removes .claude/skills/<slug>/ on a matching Bash rm -rf", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "skill-bridge-delete-"));
+    setWorkspace(root);
+    await mkdir(path.dirname(claudeSkillFilePath("doomed")), { recursive: true });
+    await writeFile(claudeSkillFilePath("doomed"), "---\nname: doomed\n---", "utf-8");
+
+    await handleSkillBridge({
+      tool_name: "Bash",
+      tool_input: { command: "rm -rf data/skills/doomed/" },
+    });
+
+    // Whole `.claude/skills/doomed/` is gone — not just the SKILL.md
+    // file. Skills can have sibling assets and we don't want
+    // orphans dangling.
+    assert.equal(existsSync(path.dirname(claudeSkillFilePath("doomed"))), false);
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("mirror copy completes BEFORE the refresh POST fires (no race)", async () => {
+    // Regression for Codex review on this PR: previously
+    // `handleConfigRefresh` ran in parallel with this handler, so
+    // `/api/config/refresh` could land before the canonical
+    // `.claude/skills/<slug>/SKILL.md` existed and the server's
+    // skill scan would miss the new file. Now `skillBridge` owns
+    // the refresh POST and fires it AFTER mirrorWrite. This test
+    // captures the request order by intercepting `fetch`.
+    const root = await mkdtemp(path.join(tmpdir(), "skill-bridge-race-"));
+    setWorkspace(root);
+    await mkdir(dataSkillDir("racey"), { recursive: true });
+    await writeFile(dataSkillFilePath("racey"), "---\nname: racey\n---\n", "utf-8");
+    // Provide token + port sidecars so buildAuthPost returns a
+    // real request (otherwise safePost short-circuits to no-op).
+    await writeFile(path.join(root, ".session-token"), "test-token", "utf-8");
+    await writeFile(path.join(root, ".server-port"), "65535", "utf-8");
+
+    const callOrder: { url: string; canonicalExists: boolean }[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+      callOrder.push({ url, canonicalExists: existsSync(claudeSkillFilePath("racey")) });
+      return new Response(null, { status: 204 });
+    };
+    try {
+      await handleSkillBridge({
+        tool_name: "Write",
+        tool_input: { file_path: dataSkillFilePath("racey") },
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    // Two fetches: /api/config/refresh, then /api/hooks/log.
+    // Both must observe the canonical file already on disk —
+    // i.e. mirrorWrite ran before either POST.
+    assert.ok(callOrder.length >= 1, "at least one fetch (refresh) should fire");
+    const refreshCall = callOrder.find((entry) => entry.url.endsWith("/api/config/refresh"));
+    assert.ok(refreshCall, "/api/config/refresh must be called");
+    assert.equal(refreshCall.canonicalExists, true, "canonical SKILL.md must exist before /api/config/refresh fires");
+
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("ignores writes outside data/skills/", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "skill-bridge-noop-"));
+    setWorkspace(root);
+    await mkdir(path.join(root, "data", "wiki"), { recursive: true });
+    await writeFile(path.join(root, "data", "wiki", "page.md"), "wiki content", "utf-8");
+
+    await handleSkillBridge({
+      tool_name: "Write",
+      tool_input: { file_path: path.join(root, "data", "wiki", "page.md") },
+    });
+
+    // Nothing was mirrored into .claude/skills/.
+    assert.equal(existsSync(path.join(root, ".claude", "skills")), false);
+
+    await rm(root, { recursive: true, force: true });
+  });
+});

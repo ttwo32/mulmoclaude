@@ -217,15 +217,18 @@ export const ROLES: Role[] = [
       "Tell a pirate adventure featuring a daring captain and her first mate across three islands. Use a cinematic photography style.",
     ],
   },
-  // The `settings` built-in role was removed (#1283). Workspace
-  // configuration (news sources, skills, scheduled automations) is
-  // now driven by the `mc-settings` preset skill — see
-  // `server/workspace/skills-preset/mc-settings/SKILL.md`. The skill
-  // edits the on-disk files directly; a post-write hook installed by
-  // `provisionConfigRefreshHook` re-registers scheduled skills and
-  // user tasks so changes activate without a server restart, so the
-  // role's bundled `manageSource` / `manageSkills` /
-  // `manageAutomations` tools are no longer needed as a role-level
+  // The `settings` built-in role was removed (#1283) and the
+  // `mc-settings` skill that replaced it was split (#1295) into
+  // three focused preset skills so Claude's discovery layer can pick
+  // the right one from a single user phrase:
+  //   - `mc-manage-skills`      — `<workspace>/.claude/skills/<slug>/SKILL.md`
+  //   - `mc-manage-sources`     — `<workspace>/sources/<slug>.md`
+  //   - `mc-manage-automations` — `<workspace>/config/scheduler/tasks.json`
+  // Each skill edits the on-disk files directly; the post-write hook
+  // installed by `provisionConfigRefreshHook` re-registers scheduled
+  // skills and user tasks so changes activate without a server
+  // restart. Role-level `manageSource` / `manageSkills` /
+  // `manageAutomations` tools are therefore no longer needed as a
   // bundle. The MCP tools themselves still exist for any role that
   // wants the direct-call path.
   {
@@ -317,34 +320,16 @@ export const ROLES: Role[] = [
       "Build a peer-comparison table for the top 5 US semiconductor companies",
     ],
   },
-  {
-    id: "cookingCoach",
-    name: "Cooking Coach",
-    icon: "restaurant",
-    prompt:
-      "You are a Cooking Coach assistant. You help the user keep a personal recipe book — saving recipes they like, retrieving them on demand, and updating them as they refine the technique.\n\n" +
-      "## manageRecipes (runtime plugin)\n\n" +
-      "Use the `manageRecipes` tool for every recipe-book operation. The plugin owns its data; you just call the tool with the right `kind`. Each recipe lives as one markdown file with structured frontmatter (title, tags, servings, prepTime, cookTime, created, updated) and a free-form markdown body.\n\n" +
-      '- **Saving** (`kind: "save"`): when the user shares a recipe they want to remember, distill it into a clean structure first. Pick a kebab-case ASCII slug for the filename — use a romanised form even when the title is non-ASCII (e.g. title `ピーマンの肉詰め` → slug `stuffed-peppers`). Title can be in the user\'s language. Body convention is `## 材料` (or `## Ingredients`) as a bullet list with quantities, then `## 手順` (or `## Steps`) as a numbered list, then optional notes / variations.\n' +
-      '- **Recalling** (`kind: "list"`): when the user asks to see what they\'ve saved, just call list. The canvas surface renders the result automatically.\n' +
-      '- **Updating** (`kind: "update"`): when the user refines a saved recipe, read the current version (list first if needed), apply the change, and call update with the full set of fields. `created` is preserved automatically; `updated` advances on every call.\n' +
-      '- **Deleting** (`kind: "delete"`): only when the user explicitly asks to remove a recipe.\n\n' +
-      "## Visuals\n\n" +
-      'Use `generateImage` to picture a finished dish, plating idea, or step illustration when the user asks ("how does it look?" / "draw me a picture") or when it would clearly help (e.g. an unfamiliar technique). One image per request unless the user asks for variations. Compose the prompt around the dish — appetising, well-lit, top-down or 3/4 plating shot — and let the image render in the chat alongside the recipe.\n\n' +
-      "## Tone\n\n" +
-      "Friendly, focused on the cooking — not the bookkeeping. Don't lecture about file paths or frontmatter; the structure is an implementation detail. When suggesting a substitution or technique, keep it short and practical.",
-    // manageRecipes is provided by the `@mulmoclaude/recipe-book-plugin`
-    // runtime preset (`server/plugins/preset-list.ts`). Runtime
-    // plugins are now gated by `availablePlugins` like static tools,
-    // so the tool name has to be listed here.
-    availablePlugins: [TOOL_NAMES.manageRecipes, TOOL_NAMES.presentForm, TOOL_NAMES.generateImage],
-    queries: [
-      "Save my Mom's stuffed peppers recipe",
-      "Show me the recipes I've saved",
-      "Remember this lasagna I made tonight",
-      "Update my pad thai — bump the lime to 2 tablespoons next time",
-    ],
-  },
+  // The `cookingCoach` built-in role was removed (#1286). Recipe
+  // management is now driven by the `mc-cooking-coach` preset skill —
+  // see `server/workspace/skills-preset/mc-cooking-coach/SKILL.md`.
+  // The recipe-book-plugin source still ships at
+  // `packages/plugins/recipe-book-plugin/` but is no longer in
+  // `PRESET_PLUGINS`, so its MCP tool / Vue View aren't mounted.
+  // Recipes live as plain markdown at `data/cooking/recipes/<slug>.md`
+  // with a `README.md` index the skill maintains. A boot-time
+  // migration helper moves any pre-skill recipes from the plugin's
+  // `files.data` scope to the new path.
   {
     id: "debug",
     name: "Debug",
@@ -378,7 +363,9 @@ export const ROLES: Role[] = [
       TOOL_NAMES.manageBookmarks,
       TOOL_NAMES.manageTodoList,
       TOOL_NAMES.manageSpotify,
-      TOOL_NAMES.manageRecipes,
+      // manageRecipes removed (#1286) — recipe-book-plugin no longer
+      // in PRESET_PLUGINS; recipes drive via the `mc-cooking-coach`
+      // preset skill.
       TOOL_NAMES.manageDebug,
     ],
     queries: [
@@ -413,10 +400,13 @@ export const BUILTIN_ROLE_IDS = {
   artist: "artist",
   tutor: "tutor",
   storyteller: "storyteller",
-  // settings: removed (#1283) — replaced by `mc-settings` preset skill.
+  // settings: removed (#1283) — replaced by `mc-manage-skills` /
+  // `mc-manage-sources` / `mc-manage-automations` preset skills (the
+  // single-skill `mc-settings` originally introduced in #1283 was
+  // split into three in #1295 for stronger discovery).
   accounting: "accounting",
   investor: "investor",
-  cookingCoach: "cookingCoach",
+  // cookingCoach: removed (#1286) — replaced by `mc-cooking-coach` preset skill.
   debug: "debug",
 } as const;
 

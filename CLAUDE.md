@@ -21,6 +21,12 @@ MulmoClaude is a text/task-driven agent app with rich visual output. It uses **C
 
 ## Key Rules (always apply)
 
+### Shared utilities — check before reinventing
+
+Before writing a new helper, scan [`docs/shared-utils.md`](docs/shared-utils.md). If a similar helper exists, use it. When you add a new shared helper (cross-cutting formatter, error normaliser, path joiner, etc.) append a 1-line entry to that catalog **in the same PR**.
+
+Skipping this step is how `truncate()` ended up with 6 implementations and `err instanceof Error ? err.message : String(err)` got inlined 30+ times despite `errorMessage()` existing in `server/utils/errors.ts`. The catalog is the prevention mechanism (#1304).
+
 ### Constants — no magic literals
 
 - **Time**: NEVER use raw numbers (`1000`, `60000`, `3600000`). Import from `server/utils/time.ts`
@@ -229,6 +235,16 @@ Full reference: [`docs/developer.md`](docs/developer.md#e2e-testing-playwright)
 - Use `data-testid` for element selection (name by function, not position)
 - Call `mockAllApis(page)` before `page.goto()`
 - Reusable interactions in `e2e/fixtures/chat.ts`
+
+### Live E2E (`e2e-live/`)
+
+Real-server, no-mock suite. **Read [`docs/e2e-live-testing.md`](docs/e2e-live-testing.md) before adding a new `e2e-live/tests/*.spec.ts`.** It covers:
+
+- `e2e/` vs `e2e-live/` — which one your scenario belongs in
+- Boot modes (`yarn dev` vs `npx mulmoclaude@<tarball>`)
+- The `fakeEchoBackend` test seam (`MULMOCLAUDE_FAKE_AGENT=1`) — what it fakes (LLM dispatch only) vs what it doesn't (external APIs)
+- When to add a pattern detector vs when to gate the test on `E2E_LIVE_NO_LLM=1`
+- The CI matrix in `.github/workflows/e2e_live_no_llm.yaml`
 
 ### Manual testing
 

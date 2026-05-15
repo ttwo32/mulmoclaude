@@ -27,13 +27,6 @@ describe("legacyActionToNavigateTarget — chat target", () => {
     });
     assert.equal(result, "/chat/sess-1");
   });
-  it("appends ?result=<uuid> when resultUuid is present", () => {
-    const result = legacyActionToNavigateTarget({
-      type: NOTIFICATION_ACTION_TYPES.navigate,
-      target: { view: NOTIFICATION_VIEWS.chat, sessionId: "sess-1", resultUuid: "uuid-abc" },
-    });
-    assert.equal(result, "/chat/sess-1?result=uuid-abc");
-  });
   it("returns undefined when sessionId is missing", () => {
     // The chat route requires :sessionId — without it the user would
     // bounce off the catch-all redirect.

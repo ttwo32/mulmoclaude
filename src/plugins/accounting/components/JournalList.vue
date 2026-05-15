@@ -207,6 +207,7 @@ import type { SupportedCountryCode } from "../countries";
 import { useLatestRequest } from "./useLatestRequest";
 import DateRangePicker from "./DateRangePicker.vue";
 import JournalEntryForm from "./JournalEntryForm.vue";
+import { errorMessage } from "../../../utils/errors";
 
 const { t } = useI18n();
 
@@ -460,7 +461,7 @@ async function onVoid(entry: JournalEntry): Promise<void> {
     const result = await voidEntry({ entryId: entry.id, reason: reason || undefined, bookId: props.bookId });
     if (!result.ok) error.value = result.error;
   } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err);
+    error.value = errorMessage(err);
   }
 }
 

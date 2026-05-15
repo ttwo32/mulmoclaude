@@ -41,13 +41,18 @@ export function initWorkspace(): string {
     copyFileSync(path.join(TEMPLATES_DIR, file), path.join(WORKSPACE_PATHS.helps, file));
   }
 
-  // Sync preset skills (#1210) from server/workspace/skills-preset/
-  // into <workspaceRoot>/.claude/skills/. Only `mc-*` slugs are
-  // touched — user-authored skills coexist untouched. Retired
-  // presets (no longer in source) are removed from the workspace.
+  // Sync preset skills from `server/workspace/skills-preset/` into
+  // the catalog (#1335 PR-A). Catalog entries are visible to UI /
+  // tooling but NOT in `.claude/skills/`, so they don't enter
+  // Claude Code's system prompt by default. Activation (catalog →
+  // `.claude/skills/`) lands with the UI in #1335 PR-B; until then
+  // the catalog is reachable by file path only. The dest directory
+  // is created here because it's outside `EAGER_WORKSPACE_DIRS`
+  // (it lives several levels deep and is preset-specific).
+  mkdirSync(WORKSPACE_PATHS.skillsCatalogPreset, { recursive: true });
   syncPresetSkills({
     sourceDir: SKILLS_PRESET_SOURCE_DIR,
-    destDir: WORKSPACE_PATHS.claudeSkills,
+    destDir: WORKSPACE_PATHS.skillsCatalogPreset,
     onInfo: (message, data) => log.info("skills-preset", message, data),
     onWarn: (message, data) => log.warn("skills-preset", message, data),
   });

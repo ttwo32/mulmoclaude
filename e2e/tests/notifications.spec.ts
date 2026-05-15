@@ -75,9 +75,9 @@ function buildEntry(entryId: string, title: string, navigateTarget: string): Not
 
 const SCENARIOS: readonly Scenario[] = [
   {
-    description: "chat target with session + result",
-    entry: buildEntry("notif-chat-1", "Agent reply ready", "/chat/sess-xyz?result=uuid-abc"),
-    expectedUrl: "/chat/sess-xyz?result=uuid-abc",
+    description: "chat target with session",
+    entry: buildEntry("notif-chat-1", "Agent reply ready", "/chat/sess-xyz"),
+    expectedUrl: "/chat/sess-xyz",
   },
   {
     description: "todos target with itemId",

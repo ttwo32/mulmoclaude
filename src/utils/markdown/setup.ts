@@ -13,6 +13,7 @@ import { marked } from "marked";
 import i18n from "../../lib/vue-i18n";
 import { wikiEmbedExtension } from "./wikiEmbeds";
 import { registerBuiltInWikiEmbeds, setEmbedLocaleProvider } from "./wikiEmbedHandlers";
+import { workspaceLinkifyExtension } from "./workspaceLinkify";
 
 let installed = false;
 
@@ -27,5 +28,9 @@ export function setupMarked(): void {
   setEmbedLocaleProvider(() => String(unref(i18n.global.locale)));
   registerBuiltInWikiEmbeds();
   marked.use(wikiEmbedExtension);
+  // Fallback for the LLM-output residue where a generated file gets
+  // emitted as an inline-code span instead of a Markdown link. See
+  // `workspaceLinkify.ts` for the detection contract (#1300).
+  marked.use(workspaceLinkifyExtension);
   installed = true;
 }
