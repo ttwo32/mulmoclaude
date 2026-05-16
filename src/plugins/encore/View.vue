@@ -1,7 +1,5 @@
 <script setup lang="ts">
-// Encore chat-on-mount page (skeleton — Step 1 of
-// plans/feat-encore-as-builtin.md). Step 5 wires up the real
-// dispatch + redirect-to-/chat/<chatId> flow.
+// Encore chat-on-mount page.
 //
 // Why the page exists at all:
 //   - The tick NEVER calls chat.start(). If it did, the chat would
@@ -11,30 +9,118 @@
 //     The bell's `navigateTarget` is just a URL, so to intercept the
 //     click we own the destination route (/encore) and run plugin
 //     code on mount.
-//   - On mount, this view calls `resolveNotification` which starts
-//     the chat server-side, then redirects to /chat/<chatId>. The
-//     user never actually sees this page beyond a ~300ms
-//     "Starting chat…" line.
+//   - On mount this View dispatches resolveNotification (which
+//     starts the chat server-side) and redirects to /chat/<chatId>
+//     via a FULL navigation. The full nav guarantees the
+//     `from encore` chip renders on first paint — same trick
+//     debug-plugin uses.
 //
-// Notification clearing is NOT done here — that's the LLM's job once
-// it's talking to the user in the resulting chat (it calls
-// markStepDone / markTargetSkipped with the pendingId; the MCP
-// handler reads the pending-clear ticket and calls notifier.clear).
+// Notification clearing is NOT done here — that's the LLM's job
+// once it's talking to the user in the resulting chat (the LLM
+// calls markStepDone / markTargetSkipped with the pendingId; the
+// MCP handler reads the pending-clear ticket and calls
+// notifier.clear). The only clear-here case is an orphan ticket
+// (already swept) — the server clears the bell entry by
+// notificationId and returns { orphan: true }, and we render the
+// "already resolved" line.
 
-import { computed } from "vue";
+import { computed, onMounted, ref } from "vue";
+import { pluginEndpoints } from "../api";
+import { apiCall } from "../../utils/api";
+
+const status = ref<"starting" | "redirecting" | "error" | "orphan">("starting");
+const errorMessage = ref<string | null>(null);
 
 const pendingId = computed<string | null>(() => {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
   return params.get("pendingId");
 });
+
+// The host's NotificationBell.vue splices `notificationId=<entryId>`
+// onto every navigateTarget at click time (see appendNotificationId
+// in src/components/NotificationBell.vue). Reading it lets the
+// server clear orphan bell entries whose pending-clear ticket was
+// already swept.
+const notificationId = computed<string | null>(() => {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  return params.get("notificationId");
+});
+
+interface ResolveResult {
+  ok: boolean;
+  chatId?: string;
+  navigateTo?: string;
+  orphan?: boolean;
+  error?: string;
+  message?: string;
+}
+
+async function resolveAndRedirect(): Promise<void> {
+  if (!pendingId.value) {
+    status.value = "error";
+    errorMessage.value = "No pendingId in URL — this page only opens from an Encore notification click.";
+    return;
+  }
+
+  try {
+    const endpoints = pluginEndpoints<{ dispatch: { method: string; url: string } }>("encore");
+    const { method, url } = endpoints.dispatch;
+    const response = await apiCall<ResolveResult>(url, {
+      method: method as "POST",
+      body: {
+        kind: "resolveNotification",
+        pendingId: pendingId.value,
+        notificationId: notificationId.value ?? undefined,
+      },
+    });
+    if (!response.ok) {
+      status.value = "error";
+      errorMessage.value = response.error;
+      return;
+    }
+    const result = response.data;
+    if (result.orphan) {
+      status.value = "orphan";
+      errorMessage.value = result.message ?? "This notification was already resolved.";
+      return;
+    }
+    if (!result.ok || !result.chatId) {
+      status.value = "error";
+      errorMessage.value = result.error ?? "resolveNotification returned no chatId";
+      return;
+    }
+    status.value = "redirecting";
+    // Full-page navigation (not Vue-router push) so the seeded
+    // user turn renders with the `from encore` chip on first
+    // paint — same mechanism debug-plugin uses.
+    window.location.href = result.navigateTo ?? `/chat/${result.chatId}`;
+  } catch (err) {
+    status.value = "error";
+    errorMessage.value = err instanceof Error ? err.message : String(err);
+  }
+}
+
+onMounted(() => {
+  void resolveAndRedirect();
+});
 </script>
 
 <template>
-  <!-- eslint-disable @intlify/vue-i18n/no-raw-text -- transient redirect page, not a user-facing surface; strings stay out of the 8-locale bundle (matches debug-plugin's View). -->
+  <!-- eslint-disable @intlify/vue-i18n/no-raw-text -- chat-on-mount page is a transient redirect, not a user-facing surface; strings stay out of the 8-locale bundle (matches debug-plugin's View). -->
   <div class="h-full flex items-center justify-center text-sm text-gray-500">
-    <div v-if="pendingId">Encore — pending {{ pendingId }} (skeleton; chat-on-mount flow wires up in Step 5)</div>
-    <div v-else>Encore — no pendingId in URL (this page only opens from an Encore notification click).</div>
+    <div v-if="status === 'starting'">Starting chat…</div>
+    <div v-else-if="status === 'redirecting'">Redirecting to chat…</div>
+    <div v-else-if="status === 'orphan'" class="text-center max-w-md px-4">
+      <div class="text-gray-700 mb-2">This notification has already been resolved.</div>
+      <a href="/chat" class="block text-blue-600 hover:underline text-sm">← back to chat</a>
+    </div>
+    <div v-else class="text-center max-w-md px-4">
+      <div class="text-red-600 mb-2">Couldn't open the resolution chat.</div>
+      <div class="text-xs text-gray-500">{{ errorMessage }}</div>
+      <a href="/chat" class="block mt-3 text-blue-600 hover:underline text-sm">← back to chat</a>
+    </div>
   </div>
   <!-- eslint-enable @intlify/vue-i18n/no-raw-text -->
 </template>

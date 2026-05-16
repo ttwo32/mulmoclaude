@@ -28,7 +28,15 @@ import { WORKSPACE_DIRS } from "../workspace/paths.js";
 import { log } from "../system/logger/index.js";
 import { tickUnlocked, withLock } from "./lock.js";
 import * as encoreNotifier from "./notifier.js";
+import { ENCORE_PLUGIN_PKG } from "./notifier.js";
 import type { PendingClearTicket } from "./tick.js";
+import { startChat } from "../api/routes/agent.js";
+import { PLUGIN_SESSION_ORIGIN_PREFIX } from "../../src/types/session.js";
+import { randomUUID } from "node:crypto";
+
+function makeUuid(): string {
+  return randomUUID();
+}
 
 // ── error types + envelope ────────────────────────────────────────
 
@@ -115,6 +123,15 @@ const SnoozeArgs = z.object({
   targetId: z.string(),
   stepId: z.string(),
   pendingId: z.string().optional(),
+});
+
+const ResolveNotificationArgs = z.object({
+  kind: z.literal("resolveNotification"),
+  pendingId: z.string(),
+  /** Bell entry id, spliced onto the navigateTarget at click time
+   *  by the host's NotificationBell.vue. Lets us clear orphan bell
+   *  entries whose pending-clear ticket was already swept. */
+  notificationId: z.string().optional(),
 });
 
 // ── path / id helpers ─────────────────────────────────────────────
@@ -485,6 +502,79 @@ async function handleRecordValues(args: z.infer<typeof RecordValuesArgs>): Promi
   };
 }
 
+async function handleOrphanResolve(args: z.infer<typeof ResolveNotificationArgs>): Promise<EncoreDispatchResult> {
+  // The ticket was already swept (e.g. the LLM resolved the
+  // obligation in another chat before this click). Clear the bell
+  // entry so it disappears.
+  if (args.notificationId) {
+    try {
+      await encoreNotifier.clear(args.notificationId);
+    } catch (err) {
+      log.warn("encore", "resolveNotification: orphan clear failed", {
+        notificationId: args.notificationId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return {
+    ok: false,
+    orphan: true,
+    message: `Encore: this notification has already been resolved (the pending-clear ticket is gone). Bell entry cleared.`,
+    error: "pending-clear ticket not found",
+  };
+}
+
+async function seedChatForTicket(ticket: PendingClearTicket, ticketRel: string, pendingId: string): Promise<string> {
+  const chatSessionId = makeUuid();
+  const result = await startChat({
+    message: ticket.seedPrompt,
+    roleId: "general",
+    chatSessionId,
+    origin: `${PLUGIN_SESSION_ORIGIN_PREFIX}${ENCORE_PLUGIN_PKG}`,
+  });
+  if (result.kind === "error") {
+    throw new EncoreError(result.status ?? 500, `resolveNotification: startChat failed — ${result.error}`);
+  }
+  await writeText(ticketRel, JSON.stringify({ ...ticket, chatSessionId }, null, 2));
+  log.info("encore", "resolveNotification: chat seeded", {
+    pendingId,
+    chatSessionId,
+    obligationId: ticket.obligationId,
+    cycleId: ticket.cycleId,
+  });
+  return chatSessionId;
+}
+
+async function handleResolveNotification(args: z.infer<typeof ResolveNotificationArgs>): Promise<EncoreDispatchResult> {
+  const ticketRel = pendingClearPath(args.pendingId);
+  const raw = await readTextOrNull(ticketRel);
+  if (raw === null) return handleOrphanResolve(args);
+
+  let ticket: PendingClearTicket;
+  try {
+    ticket = JSON.parse(raw) as PendingClearTicket;
+  } catch (err) {
+    throw new EncoreError(500, `pending-clear ticket ${JSON.stringify(args.pendingId)} is unparseable`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // Idempotency: if this ticket already has a chat session, reuse
+  // it rather than spawning a duplicate on double-click.
+  const { chatSessionId: existing } = ticket;
+  const chatSessionId = existing ?? (await seedChatForTicket(ticket, ticketRel, args.pendingId));
+  if (existing) {
+    log.info("encore", "resolveNotification: reusing existing chat", { pendingId: args.pendingId, chatSessionId });
+  }
+
+  return {
+    ok: true,
+    message: `Encore: opened chat ${chatSessionId} for ${ticket.obligationId}/${ticket.cycleId}.`,
+    chatId: chatSessionId,
+    navigateTo: `/chat/${chatSessionId}`,
+  };
+}
+
 async function handleSnooze(args: z.infer<typeof SnoozeArgs>): Promise<EncoreDispatchResult> {
   const { rel, state, body } = await loadCycle(args.obligationId, args.cycleId);
   // Clear the bell entry tied to this step (we need its id from
@@ -531,13 +621,6 @@ function workspaceRelativePath(rel: string): string {
 
 // ── dispatch ──────────────────────────────────────────────────────
 
-async function handleNotImplemented(kind: string): Promise<EncoreDispatchResult> {
-  return {
-    ok: false,
-    message: `Encore ${JSON.stringify(kind)} is not implemented yet — Step 5 of plans/feat-encore-as-builtin.md wires it in.`,
-  };
-}
-
 async function dispatchInner(body: EncoreDispatchBody): Promise<EncoreDispatchResult> {
   const { kind } = body;
   if (kind === "setup") return handleSetup(SetupArgs.parse(body));
@@ -548,7 +631,7 @@ async function dispatchInner(body: EncoreDispatchBody): Promise<EncoreDispatchRe
   if (kind === "markTargetSkipped") return handleMarkTargetSkipped(MarkTargetSkippedArgs.parse(body));
   if (kind === "recordValues") return handleRecordValues(RecordValuesArgs.parse(body));
   if (kind === "snooze") return handleSnooze(SnoozeArgs.parse(body));
-  if (kind === "resolveNotification") return handleNotImplemented(kind);
+  if (kind === "resolveNotification") return handleResolveNotification(ResolveNotificationArgs.parse(body));
   throw new EncoreError(400, `unknown kind ${JSON.stringify(kind)}`);
 }
 

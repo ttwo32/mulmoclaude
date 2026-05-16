@@ -59,6 +59,10 @@ export interface PendingClearTicket {
    *  pendingId so the LLM can call back with the right args. */
   seedPrompt: string;
   createdAt: string;
+  /** Filled by resolveNotification on the user's first bell click.
+   *  Subsequent clicks reuse it (idempotent) so a double-click
+   *  doesn't spawn two chats for the same bell entry. */
+  chatSessionId?: string;
 }
 
 export async function runTick(deps: TickDeps): Promise<void> {
