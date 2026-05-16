@@ -24,6 +24,8 @@ Tracks: [#1049](https://github.com/receptron/mulmoclaude/issues/1049) — 依存
 > 2. **下表の該当行の「状態」列に plan ファイルへの相対リンクを追記する** (例: `⏳ [plan](feat-pr-4a-docker-auto-fallback.md)`)
 > 3. PR が立ったら同じセルに PR 番号も追記 (例: `🚧 [plan](feat-pr-4a-docker-auto-fallback.md) / #1380`)
 > 4. PR がマージされたら状態を `✅` にして PR 番号を併記する (例: `✅ [plan](done/feat-pr-4a-docker-auto-fallback.md) / #1380`)。同時に plan を `plans/done/` に移動し、リンク先も `done/` プレフィックスに更新する (`/archive-shipped-plans` skill で自動化)。完了スライスでも plan リンクを保持することで、後から「なぜそう実装したか」を辿れるようにする
+> 
+> **例外**: スライス専用の plan ファイルが無く、この umbrella 自身を plan として兼用したスライス (例: PR-A は #1367 で README と本ファイルを同時に編集した) は、リンク先がこのファイル自身 (`umbrella-deps-ux-1049.md`) となり `done/` 移動も発生しない。完了行に `done/` プレフィックスが無い行はこの例外と読む
 >
 > 表の更新を怠ると umbrella 全体の進捗が見えなくなる。新規 plan を作成したら、対応する行を必ず更新すること。
 
