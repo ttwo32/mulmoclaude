@@ -793,37 +793,43 @@ async function installRepo(url: string, subpath?: string): Promise<void> {
   }
   addRepoBusy.value = true;
   addRepoError.value = null;
-  const trimmedSubpath = subpath?.trim();
-  const body: Record<string, string> = { url: trimmedUrl };
-  if (trimmedSubpath) body.subpath = trimmedSubpath;
-  const response = await apiPost<{ installed: true; repoId: string }>(endpoints.externalReposInstall.url, body);
-  addRepoBusy.value = false;
-  if (!response.ok) {
-    addRepoError.value = t("pluginManageSkills.errCatalogRepoInstallFailed", { error: response.error });
-    return;
+  try {
+    const trimmedSubpath = subpath?.trim();
+    const body: Record<string, string> = { url: trimmedUrl };
+    if (trimmedSubpath) body.subpath = trimmedSubpath;
+    const response = await apiPost<{ installed: true; repoId: string }>(endpoints.externalReposInstall.url, body);
+    if (!response.ok) {
+      addRepoError.value = t("pluginManageSkills.errCatalogRepoInstallFailed", { error: response.error });
+      return;
+    }
+    addRepoOpen.value = false;
+    await Promise.all([loadExternalRepos(), loadCatalog()]);
+  } finally {
+    addRepoBusy.value = false;
   }
-  addRepoOpen.value = false;
-  await Promise.all([loadExternalRepos(), loadCatalog()]);
 }
 
 async function uninstallRepo(repoId: string): Promise<void> {
   if (uninstallingRepoId.value !== null) return;
   if (typeof window !== "undefined" && !window.confirm(t("pluginManageSkills.catalogUninstallConfirm"))) return;
   uninstallingRepoId.value = repoId;
-  const response = await apiDelete<{ uninstalled: true }>(buildRouteUrl(endpoints.externalReposRemove, { repoId }));
-  uninstallingRepoId.value = null;
-  if (!response.ok) {
-    catalogError.value = t("pluginManageSkills.errCatalogRepoUninstallFailed", { error: response.error });
-    return;
+  try {
+    const response = await apiDelete<{ uninstalled: true }>(buildRouteUrl(endpoints.externalReposRemove, { repoId }));
+    if (!response.ok) {
+      catalogError.value = t("pluginManageSkills.errCatalogRepoUninstallFailed", { error: response.error });
+      return;
+    }
+    catalogError.value = null;
+    if (selectedCatalog.value?.repoId === repoId) {
+      selectedCatalog.value = null;
+      catalogDetail.value = null;
+    }
+    // Starred copies survive uninstall (backend-guaranteed, C1) — pull
+    // the active list so any starred-from-this-repo rows stay visible.
+    await Promise.all([loadExternalRepos(), loadCatalog(), refreshActiveList()]);
+  } finally {
+    uninstallingRepoId.value = null;
   }
-  catalogError.value = null;
-  if (selectedCatalog.value?.repoId === repoId) {
-    selectedCatalog.value = null;
-    catalogDetail.value = null;
-  }
-  // Starred copies survive uninstall (backend-guaranteed, C1) — pull
-  // the active list so any starred-from-this-repo rows stay visible.
-  await Promise.all([loadExternalRepos(), loadCatalog(), refreshActiveList()]);
 }
 
 // "Update" == re-install with the repo's recorded url/subpath. C1's
@@ -833,16 +839,22 @@ async function uninstallRepo(repoId: string): Promise<void> {
 async function updateRepo(repo: ExternalRepo): Promise<void> {
   if (updatingRepoId.value !== null) return;
   updatingRepoId.value = repo.repoId;
-  const body: Record<string, string> = { url: repo.url };
-  if (repo.subpath) body.subpath = repo.subpath;
-  const response = await apiPost<{ installed: true; repoId: string }>(endpoints.externalReposInstall.url, body);
-  updatingRepoId.value = null;
-  if (!response.ok) {
-    catalogError.value = t("pluginManageSkills.errCatalogRepoInstallFailed", { error: response.error });
-    return;
+  // try/finally so the in-flight gate always clears even if the
+  // request throws — otherwise the button stays disabled forever
+  // (same hardening as runOnceCatalogEntry, Codex review #1374).
+  try {
+    const body: Record<string, string> = { url: repo.url };
+    if (repo.subpath) body.subpath = repo.subpath;
+    const response = await apiPost<{ installed: true; repoId: string }>(endpoints.externalReposInstall.url, body);
+    if (!response.ok) {
+      catalogError.value = t("pluginManageSkills.errCatalogRepoInstallFailed", { error: response.error });
+      return;
+    }
+    catalogError.value = null;
+    await Promise.all([loadExternalRepos(), loadCatalog()]);
+  } finally {
+    updatingRepoId.value = null;
   }
-  catalogError.value = null;
-  await Promise.all([loadExternalRepos(), loadCatalog()]);
 }
 
 async function refreshActiveList(): Promise<void> {
