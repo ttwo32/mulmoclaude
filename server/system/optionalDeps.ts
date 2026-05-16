@@ -38,21 +38,34 @@ const REGISTRY: readonly OptionalDep[] = [
 ];
 
 async function onPath(command: string): Promise<boolean> {
-  const resolved = await which(command, { nothrow: true });
-  return resolved !== null;
+  try {
+    const resolved = await which(command, { nothrow: true });
+    return resolved !== null;
+  } catch {
+    // `which` shouldn't throw with nothrow, but a corrupt PATH or
+    // an fs error must degrade to "absent", never bubble up.
+    return false;
+  }
 }
 
+// Never throws — a missing optional dep degrades, it does not crash
+// startup. A throwing PATH check or liveness `probe` is treated as
+// "unavailable" rather than propagating into the boot sequence.
 // `pathCheck` is injectable so unit tests exercise the reason
 // mapping + override precedence without depending on the host's
 // real PATH.
 export async function probeOne(dep: OptionalDep, pathCheck: (command: string) => Promise<boolean> = onPath): Promise<DepStatus> {
-  if (!(await pathCheck(dep.command))) {
-    return { id: dep.id, available: false, reason: "not-on-path" };
-  }
-  if (dep.probe && !(await dep.probe())) {
+  try {
+    if (!(await pathCheck(dep.command))) {
+      return { id: dep.id, available: false, reason: "not-on-path" };
+    }
+    if (dep.probe && !(await dep.probe())) {
+      return { id: dep.id, available: false, reason: "probe-failed" };
+    }
+    return { id: dep.id, available: true, reason: "ok" };
+  } catch {
     return { id: dep.id, available: false, reason: "probe-failed" };
   }
-  return { id: dep.id, available: true, reason: "ok" };
 }
 
 let cache: Record<string, DepStatus> | null = null;
@@ -65,10 +78,21 @@ export async function probeOptionalDeps(): Promise<Record<string, DepStatus>> {
   if (cache) return cache;
   if (inFlight) return inFlight;
   inFlight = (async () => {
-    const statuses = await Promise.all(REGISTRY.map((dep) => probeOne(dep)));
-    cache = Object.fromEntries(statuses.map((status) => [status.id, status]));
-    inFlight = null;
-    return cache;
+    try {
+      const statuses = await Promise.all(REGISTRY.map((dep) => probeOne(dep)));
+      cache = Object.fromEntries(statuses.map((status) => [status.id, status]));
+      return cache;
+    } catch {
+      // probeOne never rejects, so this is unreachable in practice —
+      // but if it ever did, returning an empty map keeps boot alive
+      // (callers treat "no status" as "assume available"). Do NOT
+      // poison `cache` so a later call can retry.
+      return {};
+    } finally {
+      // Always clear so a rejected/failed run can't permanently
+      // poison the cache (Codex review).
+      inFlight = null;
+    }
   })();
   return inFlight;
 }

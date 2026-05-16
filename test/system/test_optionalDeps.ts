@@ -37,6 +37,28 @@ describe("probeOne — reason mapping + override precedence", () => {
     const dep: OptionalDep = { id: "ffmpeg", command: "ffmpeg", enables: "mulmocast" };
     assert.deepEqual(await probeOne(dep, present), { id: "ffmpeg", available: true, reason: "ok" });
   });
+
+  it("never throws when the PATH check itself throws (degrades, not crashes)", async () => {
+    const dep: OptionalDep = { id: "x", command: "x", enables: "x" };
+    const throwing = async () => {
+      throw new Error("corrupt PATH");
+    };
+    const status = await probeOne(dep, throwing);
+    assert.deepEqual(status, { id: "x", available: false, reason: "probe-failed" });
+  });
+
+  it("never throws when the liveness override throws", async () => {
+    const dep: OptionalDep = {
+      id: "docker",
+      command: "docker",
+      enables: "dockerSandbox",
+      probe: async () => {
+        throw new Error("daemon socket error");
+      },
+    };
+    const status = await probeOne(dep, present);
+    assert.deepEqual(status, { id: "docker", available: false, reason: "probe-failed" });
+  });
 });
 
 describe("registry", () => {
