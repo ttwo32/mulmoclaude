@@ -9,9 +9,13 @@ import { EXTERNAL_PRESETS } from "../../../../server/workspace/skills/external/p
 
 describe("EXTERNAL_PRESETS", () => {
   it("has at least the Anthropic + Superpowers entries", () => {
-    const urls = EXTERNAL_PRESETS.map((preset) => preset.url);
-    assert.ok(urls.includes("https://github.com/anthropics/skills"));
-    assert.ok(urls.includes("https://github.com/obra/superpowers"));
+    // Exact-equality membership (Set.has, not String/Array substring
+    // matching) so CodeQL's js/incomplete-url-substring-sanitization
+    // heuristic doesn't misread an asserted-equal URL literal as an
+    // origin check on untrusted input.
+    const urls = new Set(EXTERNAL_PRESETS.map((preset) => preset.url));
+    assert.ok(urls.has("https://github.com/anthropics/skills"));
+    assert.ok(urls.has("https://github.com/obra/superpowers"));
   });
 
   it("every entry is a well-formed public GitHub https repo URL", () => {
