@@ -1,6 +1,8 @@
-# docs: ffmpeg prerequisite + setup-mulmoclaude dependency check
+# umbrella: optional-dependency UX (#1049)
 
 Tracks: [#1049](https://github.com/receptron/mulmoclaude/issues/1049) — 依存欠落 UX 整備 umbrella。
+
+> ファイル名履歴: 旧称 `plans/docs-ffmpeg-prereq.md`。初期スライス (PR-A) 起点で命名したが、umbrella 全体の進捗ハブとして機能している実態に合わせて `umbrella-deps-ux-1049.md` に改名 (2026-05-16)。
 
 ## Umbrella 全体像 (#1049)
 
@@ -14,7 +16,7 @@ Tracks: [#1049](https://github.com/receptron/mulmoclaude/issues/1049) — 依存
 
 ### PR 一覧
 
-> **進捗管理ルール**: この `plans/docs-ffmpeg-prereq.md` を `#1049` umbrella の進捗ハブとして扱う。
+> **進捗管理ルール**: この `plans/umbrella-deps-ux-1049.md` を `#1049` umbrella の進捗ハブとして扱う。
 >
 > umbrella の各 PR に着手する際は、以下の手順で下表を更新する:
 >
@@ -29,15 +31,15 @@ Tracks: [#1049](https://github.com/receptron/mulmoclaude/issues/1049) — 依存
 
 | ID        | 内容                                                                                                                                                                               | 状態                                                                                          |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **PR-A**  | README に Prerequisites を明記 (ffmpeg / Docker / claude CLI / Node)                                                                                                               | ✅ [plan](docs-ffmpeg-prereq.md) / #1367                                                      |
-| **PR-1a** | bundled system skill の配布機構 (`--plugin-dir` + `discoverSkills` 拡張)                                                                                                           | ⏳                                                                                            |
-| **PR-1b** | `/check-prereqs` skill — **対話的な依存チェック**。probe → 「入れる/後で/入れない」分岐 → install ガイド → 再確認。下記 PR-1b ノート参照                                           | ⏳ — PR-1a 依存                                                                               |
-| **PR-1c** | Settings タブの依存欠落表示 (Gemini タブ横展開)。**Gemini API key 等の「あったら便利系」も案内**                                                                                   | ⏳                                                                                            |
-| **PR-1d** | `npx` 利用者向けブラウザ onboarding                                                                                                                                                | ⏳                                                                                            |
-| **PR-1e** | `yarn dev` 開発者向け onboarding skill                                                                                                                                             | 🟡 [plan](docs-ffmpeg-prereq.md) / #1367 (`setup-mulmoclaude` の dependency check 拡張で先行) |
-| **PR-2**  | 各失敗経路 (動画 / PDF / 画像 / MCP / ブリッジ / scheduler) の Web UI 表面化 audit。**自動 disable と組み合わせて運用**                                                            | ⏳                                                                                            |
-| **PR-3**  | `UserFacingError` 型導入 (`message` / `cause` / `remediation` / `docsUrl`)。**Disabled feature の理由表示にも使用**                                                                | ⏳                                                                                            |
-| **PR-4**  | **依存欠落時の graceful degradation (capability gating)** — 起動時に `which` 等で依存を probe し、不足時は該当 feature を runtime disable + warn。落とさない。下記 PR-4 ノート参照 | ⏳                                                                                            |
+| **PR-A**  | README に Prerequisites を明記 (ffmpeg / Docker / claude CLI / Node)                                                                                                               | ✅ [plan](umbrella-deps-ux-1049.md) / #1367                                                                                                       |
+| **PR-1a** | bundled system skill の配布機構 (`--plugin-dir` + `discoverSkills` 拡張)                                                                                                           | ⏳                                                                                                                                                |
+| **PR-1b** | `/check-prereqs` skill — **対話的な依存チェック**。probe → 「入れる/後で/入れない」分岐 → install ガイド → 再確認。下記 PR-1b ノート参照                                           | ⏳ — PR-1a 依存                                                                                                                                   |
+| **PR-1c** | Settings タブの依存欠落表示 (Gemini タブ横展開)。**Gemini API key 等の「あったら便利系」も案内**                                                                                   | ⏳                                                                                                                                                |
+| **PR-1d** | `npx` 利用者向けブラウザ onboarding                                                                                                                                                | ⏳                                                                                                                                                |
+| **PR-1e** | `yarn dev` 開発者向け onboarding skill                                                                                                                                             | 🟡 [plan](umbrella-deps-ux-1049.md) / #1367 (`setup-mulmoclaude` の dependency check 拡張で先行)                                                  |
+| **PR-2**  | 各失敗経路 (動画 / PDF / 画像 / MCP / ブリッジ / scheduler) の Web UI 表面化 audit。**自動 disable と組み合わせて運用**                                                            | ⏳                                                                                                                                                |
+| **PR-3**  | `UserFacingError` 型導入 (`message` / `cause` / `remediation` / `docsUrl`)。**Disabled feature の理由表示にも使用**                                                                | ⏳                                                                                                                                                |
+| **PR-4**  | **依存欠落時の graceful degradation (capability gating)** — 起動時に `which` 等で依存を probe し、不足時は該当 feature を runtime disable + warn。落とさない。下記 PR-4 ノート参照 | 🟡 [plan](feat-optional-deps-1385.md) / #1390 ([#1385](https://github.com/receptron/mulmoclaude/issues/1385) v1 = PR-4a + PR-4b + PR-4d を一括) |
 
 ### PR-1b ノート (新 skill `/check-prereqs`)
 
@@ -50,16 +52,33 @@ Tracks: [#1049](https://github.com/receptron/mulmoclaude/issues/1049) — 依存
 - **mode 引数は不要**: skill 1 個 = 1 mode で十分。pre-flight 用途と setup フロー内呼び出しで挙動を変える必要は無い (どちらも同じ「対話的に依存を確認」が欲しい)
 - **配布**: 開発者向けは project-local `.claude/skills/check-prereqs/` で OK。npx 利用者にも届かせる場合は PR-1a (bundled system skill 機構) が前提
 
-### PR-4 ノート (新規)
+### PR-4 ノート (進捗: v1 shipped via #1390 / [#1385](https://github.com/receptron/mulmoclaude/issues/1385))
 
-レビューア提案を素直に展開した umbrella 行。以下を別 PR として個別に出すことを想定:
+レビューア提案を素直に展開した umbrella 行。当初は PR-4a / 4b / 4c を個別に出して共通点が見えてから 4d に切り出す想定だったが、実装してみると probe レジストリと plugin の `requires` 宣言が並行ではなく共依存だったため、**PR-4a + PR-4b + PR-4d を 1 本にまとめて v1 として #1390 でマージ済み**。PR-4c は依存先が「Gemini API key」という env 変数で、`which`-based probe とは仕組みが異なるため別 PR として残置。
 
-- **PR-4a — Docker 不在 → 自動 `DISABLE_SANDBOX` + warn**: 起動時に `which docker` / `docker info` を probe。不足なら sandbox 無し起動に fallback し、起動 banner / Settings で「Docker 無しで動作中」を案内
-- **PR-4b — ffmpeg 不在 → mulmocast 関連 plugin を runtime disable + warn**: 動画系 tool を tool list から除外、UI で「動画生成は無効 (ffmpeg 未インストール)」と案内
-- **PR-4c — Gemini API key 不在 → 画像生成系 plugin を runtime disable + 案内**: 既存の Settings → Gemini タブを「不足案内」モードで使う
-- **PR-4d — 共通フレーム**: 依存 probe + feature toggle の汎用化。PR-4a–c の重複を吸収
+| 子 PR     | 内容                                                                 | 状態                                              |
+| --------- | -------------------------------------------------------------------- | ------------------------------------------------- |
+| **PR-4a** | Docker 不在 → 自動 `DISABLE_SANDBOX` + warn                          | ✅ #1390 (v1) — `isDockerLive()` を probe override |
+| **PR-4b** | ffmpeg 不在 → mulmocast 関連を runtime disable + warn                | 🟡 #1390 (v1, ルート層 503 ガード)                |
+| **PR-4c** | Gemini API key 不在 → 画像生成系 plugin を runtime disable + 案内    | ⏳ (env probe 別仕組みなので別 PR)                |
+| **PR-4d** | 共通フレーム (`server/system/optionalDeps.ts` + `PluginMeta.requires`) | ✅ #1390 (v1)                                     |
 
-PR-4d を最初に作るとブロッキングになるので、PR-4a / 4b / 4c を個別に出して共通点が見えてから 4d に切り出すのが現実的。
+**v1 (#1390) が提供したもの**:
+
+- `which@^6` 直接依存（root + `packages/mulmoclaude` 両方）
+- `server/system/optionalDeps.ts` = 集中レジストリ + 並列・プロセス存続中キャッシュの存在チェック、`probe` override (docker daemon liveness)
+- 起動時 probe + reason-aware ベル通知 (`not-on-path` / `probe-failed` を出し分け)、i18n 全 8 ロケール lockstep
+- `PluginMeta.requires` 拡張、`presentMulmoScript` が `["ffmpeg"]` を宣言
+- ffmpeg 欠如時、`generateMovie` / `renderBeat` が不透明な spawn エラーではなく **HTTP 503**
+- `test/system/test_optionalDeps*.ts` — CI 実行可能（API キー・実 ffmpeg 不要）な決定論的テスト
+
+**v2 (follow-up issue を切る想定)**:
+
+- MCP ツールリストの cross-process gating（ffmpeg 欠如時に LLM から `presentMulmoScript` ツール自体を隠す）— MCP が別 stdio 子プロセスで組まれるため。v1 はルート 503 ガードで「落ちない」を担保済み
+- `git` / `libreoffice` / `pandoc` / `poppler` のレジストリ追加
+- 警告文へのプラットフォーム別インストールヒント（`brew install ffmpeg` / `apt install` / `choco install`）
+
+PR-4c は umbrella 内で独立して進められる。
 
 ## PR-A + PR-1e 一部 の詳細 (現状 #1367 でカバー)
 
