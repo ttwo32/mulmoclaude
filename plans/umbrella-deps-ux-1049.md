@@ -58,11 +58,12 @@ Tracks: [#1049](https://github.com/receptron/mulmoclaude/issues/1049) — 依存
 
 レビューア提案を素直に展開した umbrella 行。当初は PR-4a / 4b / 4c を個別に出して共通点が見えてから 4d に切り出す想定だったが、実装してみると probe レジストリと plugin の `requires` 宣言が並行ではなく共依存だったため、**PR-4a + PR-4b + PR-4d を 1 本にまとめて v1 として #1390 でマージ済み**。PR-4c は依存先が「Gemini API key」という env 変数で、`which`-based probe とは仕組みが異なるため別 PR として残置。
 
-| 子 PR     | 内容                                                                 | 状態                                              |
-| --------- | -------------------------------------------------------------------- | ------------------------------------------------- |
-| **PR-4a** | Docker 不在 → 自動 `DISABLE_SANDBOX` + warn                          | ✅ #1390 (v1) — `isDockerLive()` を probe override |
-| **PR-4b** | ffmpeg 不在 → mulmocast 関連を runtime disable + warn                | 🟡 #1390 (v1, ルート層 503 ガード)                |
-| **PR-4c** | Gemini API key 不在 → 画像生成系 plugin を runtime disable + 案内    | ⏳ (env probe 別仕組みなので別 PR)                |
+#### v1 (出荷済み)
+
+| 子 PR     | 内容                                                                   | 状態                                              |
+| --------- | ---------------------------------------------------------------------- | ------------------------------------------------- |
+| **PR-4a** | Docker 不在 → 自動 `DISABLE_SANDBOX` + warn                            | ✅ #1390 (v1) — `isDockerLive()` を probe override |
+| **PR-4b** | ffmpeg 不在 → mulmocast 関連を runtime disable + warn                  | 🟡 #1390 (v1, ルート層 503 ガード)                |
 | **PR-4d** | 共通フレーム (`server/system/optionalDeps.ts` + `PluginMeta.requires`) | ✅ #1390 (v1)                                     |
 
 **v1 (#1390) が提供したもの**:
@@ -74,13 +75,23 @@ Tracks: [#1049](https://github.com/receptron/mulmoclaude/issues/1049) — 依存
 - ffmpeg 欠如時、`generateMovie` / `renderBeat` が不透明な spawn エラーではなく **HTTP 503**
 - `test/system/test_optionalDeps*.ts` — CI 実行可能（API キー・実 ffmpeg 不要）な決定論的テスト
 
-**v2 (follow-up issue を切る想定)**:
+#### umbrella 内で並走 (v1 と独立)
 
-- MCP ツールリストの cross-process gating（ffmpeg 欠如時に LLM から `presentMulmoScript` ツール自体を隠す）— MCP が別 stdio 子プロセスで組まれるため。v1 はルート 503 ガードで「落ちない」を担保済み
-- `git` / `libreoffice` / `pandoc` / `poppler` のレジストリ追加
-- 警告文へのプラットフォーム別インストールヒント（`brew install ffmpeg` / `apt install` / `choco install`）
+| 子 PR     | 内容                                                              | 状態                                |
+| --------- | ----------------------------------------------------------------- | ----------------------------------- |
+| **PR-4c** | Gemini API key 不在 → 画像生成系 plugin を runtime disable + 案内 | ⏳ (env probe 別仕組みなので別 PR) |
 
-PR-4c は umbrella 内で独立して進められる。
+#### v2 (未着手 — follow-up issue を切ってから着手)
+
+PR-4b の 🟡 を ✅ に押し上げる + 残りの依存をレジストリに乗せる + UX 改善。
+
+| 子 PR     | 内容                                                                                                          | 状態 |
+| --------- | ------------------------------------------------------------------------------------------------------------- | ---- |
+| **PR-4e** | MCP ツールリストの cross-process gating — ffmpeg 欠如時に LLM から `presentMulmoScript` ツール自体を隠す      | ⏳   |
+| **PR-4f** | `git` / `libreoffice` / `pandoc` / `poppler` のレジストリ追加 (probe 定義 + プラグイン `requires` 宣言)       | ⏳   |
+| **PR-4g** | 警告文にプラットフォーム別インストールヒント (`brew install ffmpeg` / `apt install` / `choco install`)        | ⏳   |
+
+PR-4e がマージできると PR-4b を ✅ に確定できる。PR-4f は複数の依存を 1 PR でまとめても、依存ごとに分割しても良い (着手時に判断)。
 
 ## PR-A + PR-1e 一部 の詳細 (現状 #1367 でカバー)
 
