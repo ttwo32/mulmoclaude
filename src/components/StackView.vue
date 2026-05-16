@@ -483,7 +483,16 @@ onUnmounted(() => {
 .stack-natural :deep(.overflow-x-auto) {
   overflow: visible !important;
 }
-.stack-natural :deep(.flex-1) {
+/* Scope the flex-1 neutralisation to VERTICAL flex contexts only
+   (#1277). The intent was always "don't let a column child's
+   flex-1 collapse the natural content height in stack mode". The
+   old bare `:deep(.flex-1)` also hit `.flex-1` children of ROW
+   containers (e.g. a plugin `<summary>`'s description wrapper),
+   freezing them at `flex: 0 0 auto` so they stopped growing /
+   wrapping horizontally (PR #1276 had to work around this
+   plugin-side). Restricting to `.flex-col > .flex-1` keeps the
+   column fix and leaves row layouts alone. */
+.stack-natural :deep(.flex-col > .flex-1) {
   flex: 0 0 auto !important;
 }
 /* presentHtml's View.vue uses CSS-defined (not Tailwind class)
