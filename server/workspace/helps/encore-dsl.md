@@ -125,7 +125,34 @@ Every action takes a `kind` discriminator. The handler validates the rest with Z
 { "kind": "setup", "definition": { /* full DSL above */ } }
 ```
 
-`definition` is an **OBJECT** in the tool-call arguments, not a JSON-encoded string. Don't `JSON.stringify` it — pass the object literal. The 400 you get for the string form names the error explicitly ("expected object, received string"), so if you see that, drop the stringify.
+`definition` is normally an **OBJECT** in the tool-call arguments. The handler also accepts a JSON-encoded string (it calls `JSON.parse` on the string before validating) so a `JSON.stringify`'d definition won't error — but the object form is preferred (one less parse step on the server, and easier for you to debug field-level Zod errors).
+
+Minimal concrete example — copy this exact wire shape (`definition` as an object literal):
+
+```json
+{
+  "kind": "setup",
+  "definition": {
+    "version": 1,
+    "displayName": "Daily check-in",
+    "type": "service",
+    "cadence": { "type": "daily" },
+    "targets": [{ "id": "me", "displayName": "Me" }],
+    "steps": [
+      {
+        "id": "checkin",
+        "displayName": "Check in",
+        "deadline": "cycle-deadline",
+        "firingPlan": [{ "at": "cycle-start", "severity": "info" }],
+        "fields": []
+      }
+    ],
+    "formSchema": { "fields": [] }
+  }
+}
+```
+
+For richer obligations (payments with currency, escalation phases, bundled targets, multi-step) see the worked examples below; they're shown in YAML for readability but translate field-for-field to JSON.
 
 Returns `{ ok: true, obligationId, cycleId, cyclePath, indexPath }`. Encore writes `obligations/<id>/index.md` plus the first cycle file and kicks the tick (so a `cycle-start` phase fires immediately).
 
@@ -139,7 +166,7 @@ Returns `{ ok: true, obligationId, cycleId, cyclePath, indexPath }`. Encore writ
 }
 ```
 
-`definition` is an **OBJECT**, not a JSON-encoded string (same as setup). Shallow-merge at the top level — for arrays (`targets`, `steps`, `formSchema.fields`, `firingPlan`) send the **full** replacement value, not just the field you want to change. Cannot change `type` / `currency` / `cadence.type`. Encore clears active bell entries on amend and re-fires with the new title/text.
+`definition` is preferred as an **OBJECT** (a JSON-encoded string of one is also accepted, same as setup). Shallow-merge at the top level — for arrays (`targets`, `steps`, `formSchema.fields`, `firingPlan`) send the **full** replacement value, not just the field you want to change. Cannot change `type` / `currency` / `cadence.type`. Encore clears active bell entries on amend and re-fires with the new title/text.
 
 ### markStepDone — CLOSE ONE STEP ON ONE TARGET
 
@@ -182,7 +209,15 @@ Writes partial values without closing the step. Use when the user has reported p
 { "kind": "snooze", "pendingId": "...", "obligationId": "...", "cycleId": "...", "targetId": "...", "stepId": "..." }
 ```
 
-Clears the current bell entry and persists a `snoozedSteps[stepId]` marker (24h by default) on the cycle file. The tick skips this step until the snooze timestamp passes; after that, the next tick re-fires from the current phase.
+Clears the current bell entry and persists a `snoozedSteps[stepId]` marker (24h by default) on the cycle file. The reconciler skips this step until the snooze timestamp passes; after that, the next reconcile re-fires from the current phase.
+
+### unsnooze
+
+```json
+{ "kind": "unsnooze", "obligationId": "...", "cycleId": "...", "targetId": "...", "stepId": "..." }
+```
+
+Inverse of `snooze`. Deletes `snoozedSteps[stepId]` from the target's record. If the step is otherwise eligible to fire (not closed, current phase past), the bell republishes in the same turn — no need to wait for the 24h timer or run a tick manually. A no-op if the step wasn't snoozed.
 
 ### query
 

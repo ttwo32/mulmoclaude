@@ -95,11 +95,23 @@ The reconciler needs to handle one subtle case the original tick handled implici
 ## Acceptance
 
 - Every existing component test in `test/plugins/test_encore_dispatch.ts` keeps passing — including the two-target bundle invariant and the cycle-close-provisions-successor invariant.
-- New tests cover:
-  - `unsnooze` republishes the bell in the same dispatch turn (no tick wait).
-  - `unsnooze` on a step that wasn't snoozed is a no-op that doesn't flicker the existing bell.
+- **New reconciler-level tests** in `test/plugins/test_encore_reconcile.ts` (state in, state out, no SSE):
+  1. **Trim symmetry** — bundle with two targets, one closed + one snoozed → both trim, bell clears. This is the load-bearing invariant the refactor rests on.
+  2. **Idempotency** — `reconcile` → `reconcile` with no state change between → second call makes zero notifier calls. Guards against bell-flicker regressions.
+  3. **Cycle-close transition** — closing the last open step in a handler-driven reconcile → just-closed cycle's tickets clear AND successor is provisioned AND reconciled in the same call.
+  4. **Snooze expiry** — `snoozedSteps[stepId]` with a past timestamp → treated as not-snoozed, pair fires.
+  5. **`invalidateAllBells: true`** — existing tickets cleared and republished with fresh DSL text (covers the `amendDefinition` path).
+  6. **Inactive status** — DSL `status !== "active"` → every bell + ticket for the obligation cleared, no republish.
+- **New dispatch-level tests** extending `test/plugins/test_encore_dispatch.ts`:
+  7. `unsnooze` republishes the bell in the same dispatch turn (no tick wait).
+  8. `unsnooze` on a step that wasn't snoozed is a no-op that doesn't flicker the existing bell.
+  9. `snooze` → `unsnooze` round-trip in one chat — bell present, gone, present.
+  10. Static guard test — assert no production code under `server/encore/` outside `reconcile.ts` and `handleOrphanResolve` imports/calls `encoreNotifier`. Programmatic enforcement of the grep guarantee below.
 - `dispatch.ts` no longer contains `dropTargetFromMatchingTickets`, `safeClearBell` calls from non-orphan paths, `resetActiveNotificationsForObligation`, or `clearPendingNotification` — these helpers are deleted, not just unused.
-- Single grep guarantee: `grep -rn "encoreNotifier\.\(publish\|clear\)" server/encore/` returns only `server/encore/reconcile.ts` (production) and `server/encore/dispatch.ts` orphan-cleanup in `handleOrphanResolve` (recovery path for ticket-less bells; documented exception).
+- Grep guarantee: `grep -rn "encoreNotifier\.\(publish\|clear\)" server/encore/` returns only:
+  - `server/encore/reconcile.ts` (production state-driven path), plus
+  - `server/encore/notifier.ts` (the wrapper that owns the host calls), plus
+  - two documented "ticket about to disappear, sweep the bell" exceptions: `handleOrphanResolve` in `dispatch.ts` (click landed after ticket was swept) and `pruneOneTicket` in `tick.ts` (30-day age-based orphan sweep). Both clear the host bell before unlinking the stale ticket so the next reconcile doesn't see "un-fired" and publish a duplicate.
 - `LLM_ENCORE_KINDS` in `src/plugins/encore/definition.ts` includes `unsnooze`; the bell-seed prompt in `reconcile.ts` mentions it alongside `snooze` so the LLM knows it's available.
 - All checks pass: `yarn format`, `yarn lint`, `yarn typecheck`, `yarn test`, `yarn build`.
 

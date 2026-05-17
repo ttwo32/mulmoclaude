@@ -36,7 +36,17 @@ export type EncoreEndpoints = { readonly [K in keyof typeof META.apiRoutes]: Res
  *  call it: if yes, add it here; if it's a browser-internal
  *  dispatch like resolveNotification, leave it out of this list
  *  and only handle it in dispatch.ts. */
-export const LLM_ENCORE_KINDS = ["setup", "amendDefinition", "markStepDone", "markTargetSkipped", "recordValues", "query", "appendNote", "snooze"] as const;
+export const LLM_ENCORE_KINDS = [
+  "setup",
+  "amendDefinition",
+  "markStepDone",
+  "markTargetSkipped",
+  "recordValues",
+  "query",
+  "appendNote",
+  "snooze",
+  "unsnooze",
+] as const;
 
 /** Every action kind the server-side dispatch handles, including
  *  browser-only ones. Re-exported for the dispatch.ts switch and

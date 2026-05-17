@@ -292,6 +292,36 @@ describe("Encore dispatch — component tests", () => {
     );
   });
 
+  it("setup accepts `definition` as a JSON-encoded string (LLM tolerance)", async () => {
+    // The LLM commonly JSON.stringify's the `definition` argument.
+    // Rejecting that with "expected object, received string" reads
+    // as a schema problem and the LLM tends to retry with the same
+    // shape. The handler now coerces string → object via JSON.parse
+    // before validation so both wire forms work identically.
+    const result = (await dispatch({ kind: "setup", definition: JSON.stringify(hisayoDefinition) })) as SetupResult;
+    assert.equal(result.ok, true, `setup-from-string failed: ${result.message}`);
+    assert.ok(result.obligationId);
+    assert.ok(result.cycleId);
+  });
+
+  it("setup rejects `definition` strings that aren't valid JSON with a clear message", async () => {
+    await assert.rejects(dispatch({ kind: "setup", definition: "{not json" }), /not valid JSON/);
+  });
+
+  it("setup rejects `definition` strings that decode to a non-object", async () => {
+    await assert.rejects(dispatch({ kind: "setup", definition: "[1,2,3]" }), /must be an object[\s\S]*got array/);
+  });
+
+  it("amendDefinition accepts `definition` as a JSON-encoded string (LLM tolerance)", async () => {
+    const setup = (await dispatch({ kind: "setup", definition: hisayoDefinition })) as SetupResult;
+    const result = await dispatch({
+      kind: "amendDefinition",
+      obligationId: setup.obligationId,
+      definition: JSON.stringify({ status: "paused" }),
+    });
+    assert.equal(result.ok, true, `amend-from-string failed: ${result.message}`);
+  });
+
   // Note: there is intentionally NO test that invokes
   // `dispatch({ kind: "resolveNotification" })`. That path calls
   // `startChat`, which (a) writes a real session file under
@@ -422,5 +452,96 @@ describe("Encore dispatch — component tests", () => {
     // Bell entry should be cleared.
     const remaining = await listFor("encore");
     assert.equal(remaining.length, 0, `expected bell to be empty after markStepDone, found ${remaining.length} entries`);
+  });
+
+  it("unsnooze republishes the bell in the same dispatch turn (no tick wait)", async () => {
+    // The pre-reconciler architecture had no way to undo a snooze
+    // before its 24h timer expired; the LLM had to call markStepDone
+    // (falsely) or markTargetSkipped (falsely) or hand-edit the file.
+    // Under the unified reconciler, unsnooze is the inverse of snooze
+    // and the bell republishes in the same turn — the publish
+    // happens inside the reconcile call that follows the unsnooze
+    // mutator, not via a tick.
+    const setup = (await dispatch({ kind: "setup", definition: hisayoDefinition })) as SetupResult;
+    const { cycleId } = setup;
+    if (!cycleId) throw new Error("setup should return cycleId");
+    const pendingDir = path.join(workspaceRoot, "data/plugins/encore/pending-clear");
+    const initialEntries = await fsPromises.readdir(pendingDir);
+    const initialTicket = JSON.parse(await fsPromises.readFile(path.join(pendingDir, initialEntries[0]), "utf8")) as { pendingId: string };
+
+    await dispatch({
+      kind: "snooze",
+      obligationId: setup.obligationId,
+      cycleId,
+      targetId: "hisayo",
+      stepId: "pay",
+      pendingId: initialTicket.pendingId,
+    });
+    assert.equal((await listFor("encore")).length, 0, "bell must clear after snooze");
+
+    await dispatch({
+      kind: "unsnooze",
+      obligationId: setup.obligationId,
+      cycleId,
+      targetId: "hisayo",
+      stepId: "pay",
+    });
+    const after = await listFor("encore");
+    assert.equal(after.length, 1, `bell must republish in the same turn as unsnooze; got ${after.length}`);
+  });
+
+  it("unsnooze on a step that wasn't snoozed is a no-op (no flicker)", async () => {
+    // Idempotency. If the LLM calls unsnooze on a step that's not
+    // currently snoozed, the existing bell must NOT flicker
+    // (clear+republish would change the notification id and re-ring
+    // the host bell). Verified by checking that the notification id
+    // stays the same across the no-op unsnooze.
+    const setup = (await dispatch({ kind: "setup", definition: hisayoDefinition })) as SetupResult;
+    const { cycleId } = setup;
+    if (!cycleId) throw new Error("setup should return cycleId");
+    const before = await listFor("encore");
+    assert.equal(before.length, 1);
+    const originalId = before[0].id;
+
+    await dispatch({
+      kind: "unsnooze",
+      obligationId: setup.obligationId,
+      cycleId,
+      targetId: "hisayo",
+      stepId: "pay",
+    });
+    const after = await listFor("encore");
+    assert.equal(after.length, 1, "bell count unchanged");
+    assert.equal(after[0].id, originalId, "notification id must not change (no clear+republish flicker)");
+  });
+
+  it("snooze → unsnooze round-trip: bell present → gone → present", async () => {
+    // End-to-end round-trip exercising both handlers through one
+    // chat. The post-unsnooze bell is a freshly-published one (new
+    // notification id), but it must be present.
+    const setup = (await dispatch({ kind: "setup", definition: hisayoDefinition })) as SetupResult;
+    const { cycleId } = setup;
+    if (!cycleId) throw new Error("setup should return cycleId");
+    const present1 = await listFor("encore");
+    assert.equal(present1.length, 1, "stage 1: setup published bell");
+
+    await dispatch({
+      kind: "snooze",
+      obligationId: setup.obligationId,
+      cycleId,
+      targetId: "hisayo",
+      stepId: "pay",
+    });
+    assert.equal((await listFor("encore")).length, 0, "stage 2: snooze cleared bell");
+
+    await dispatch({
+      kind: "unsnooze",
+      obligationId: setup.obligationId,
+      cycleId,
+      targetId: "hisayo",
+      stepId: "pay",
+    });
+    const present2 = await listFor("encore");
+    assert.equal(present2.length, 1, "stage 3: unsnooze republished bell");
   });
 });
