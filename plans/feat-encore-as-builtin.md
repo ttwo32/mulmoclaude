@@ -1,6 +1,6 @@
 # Plan: Encore as a built-in plugin (from-scratch reimplementation)
 
-> **Status: landed on `feat/encore-builtin`, awaiting merge.** Seven implementation commits walk Steps 1 → 7 of the build plan below; the eighth (`322dc4f7`) is a stabilization batch fixing five bugs that surfaced during real-world testing (YAML round-trip lossiness, FYI auto-clear on click, `resolveNotification` exposed to the LLM, stale `activeNotificationId` after server restarts, generic 500s on Zod failures). All 8 component tests pass; `vue-tsc` + `tsc` + ESLint clean. The host's `docs/developer.md` now points at Encore as the canonical worked example of a server-state-heavy built-in plugin (chat-on-mount page + per-plugin mutex + custom YAML schema).
+> **Status: landed on `feat/encore-builtin`, awaiting merge.** Implementation walked Steps 1 → 7 of the build plan below, plus stabilization batches addressing review feedback (YAML round-trip lossiness, FYI auto-clear on click, `resolveNotification` exposed to the LLM, stale `activeNotificationId` after server restarts, generic 500s on Zod failures, bundle-aware ticket clearing, next-cycle provisioning, and a follow-up refactor to a fully data-only on-disk model). `vue-tsc` + `tsc` + ESLint clean; component tests cover setup → query → amend → markStepDone with bundled targets, snooze, next-cycle provisioning, and stale-id recovery. The host's `docs/developer.md` now points at Encore as the canonical worked example of a server-state-heavy built-in plugin (chat-on-mount page + per-plugin mutex + custom YAML schema).
 >
 > This was a **from-scratch reimplementation** of Encore as a built-in plugin under `src/plugins/encore/` + `server/encore/`, on a new branch cut from `main`. The runtime-plugin codebase under `packages/plugins/encore-plugin/` (on `plan/feat-encore-dsl-v1`) was *not* touched and *not* migrated — we used its design doc as the spec and its lessons-learned section as warnings about traps, then wrote the built-in from zero.
 >
@@ -25,35 +25,35 @@ The runtime preset model exists for third-party plugin authors who ship as npm p
 4. **Codegen-driven wiring.** Built-in plugins are auto-discovered by `scripts/codegen-plugin-barrels.ts` scanning `src/plugins/<name>/`. Drop the directory in, run `yarn plugins:codegen` (auto-runs in `predev`/`prebuild`), done. No manual edits to `src/plugins/metas.ts` / `index.ts` / `server.ts`.
 5. **One bundle.** No `vite.config.ts` producing two outputs to satisfy the runtime loader's dynamic-import shape.
 
-## Directory layout to create
-
-Under `src/plugins/encore/`:
+## Directory layout (as built)
 
 ```text
 src/plugins/encore/
-├── meta.ts              ← definePluginMeta({ toolName: "manageEncore", apiNamespace: "encore", apiRoutes, workspaceDirs, staticChannels })
-├── index.ts             ← PluginRegistration: { def, view: View, preview: null, scope: "encore" }
+├── meta.ts              ← definePluginMeta({ toolName: "manageEncore", apiNamespace: "encore", apiRoutes, workspaceDirs })
+├── index.ts             ← PluginRegistration with the executor that posts to /api/encore
 ├── definition.ts        ← MCP ToolDefinition for manageEncore (discriminated `kind` arg)
-├── server.ts            ← Pure-handler module: handleSetup / handleAmend / handleMarkStepDone / handleMarkTargetSkipped / handleRecordValues / handleQuery / handleAppendNote / handleSnooze / handleResolveNotification
-├── tick.ts              ← The DSL interpreter (phase eval, (stepId, severity, fireDate) bundling, severity escalation via lastPublishedSeverity diff, kick-on-mutation entry point)
-├── cycle.ts             ← CycleState shape, buildCycleState / closeStep / skipTarget / snoozeStep / applyValues, parse/serialize cycle frontmatter
+└── View.vue             ← Chat-on-mount page at /encore. The tick never calls chat.start(); it points its notification at this route. When the user clicks the bell, the View mounts, calls resolveNotification (which calls chat.start server-side), and immediately redirects to /chat/<chatId>. Transient (~300ms). Notification clearing happens later in the resulting chat when the LLM calls markStepDone, NOT here.
+
+server/encore/
+├── dispatch.ts          ← Kind-discriminated handler entry point (setup / amend / query / markStepDone / markTargetSkipped / recordValues / appendNote / snooze / resolveNotification)
+├── tick.ts              ← DSL interpreter: phase eval, (stepId, severity, fireDate) bundling, severity escalation via ticket-stored severity, ensureOpenCycle (provisions next cycle when latest is derived-closed)
+├── cycle.ts             ← CycleState shape (data-only: values / skipped / completedSteps / snoozedSteps), pure mutators, parse/serialize
+├── closure.ts           ← isStepClosed / isTargetClosed / isCycleClosed pure derivation
+├── obligation.ts        ← Obligation index.md parse/serialize
 ├── lock.ts              ← Per-plugin mutex: withLock + tickUnlocked / kickTickLocked split
-├── notifier.ts          ← Thin closure wrapper around host notifier exposing only encore-scoped publish/clear (lifecycle derived from severity here)
-├── paths.ts             ← Workspace path helpers (obligationDir, obligationIndexPath, cycleFilePath, pendingClearPath)
-├── View.vue             ← Chat-on-mount page at /encore. The tick never calls chat.start() — instead it points its notification at this route. When the user clicks the bell, the View mounts, calls resolveNotification (which calls chat.start server-side), and immediately redirects to /chat/<chatId>. The user never sees the page itself; it's transient (~300ms). Notification clearing happens later in the resulting chat when the LLM calls markStepDone, NOT here.
+├── notifier.ts          ← Thin wrapper around host notifier; fixes pluginPkg, maps DSL severity → host severity, always lifecycle: "action"
+├── paths.ts             ← Workspace-relative path helpers (obligationDir, obligationIndexPath, cycleFilePath, pendingClearPath)
+├── boot.ts              ← Registers the hourly tick with task-manager at startup; fires once on boot to catch phases that came due during downtime
+├── yaml-fm.ts           ← Plugin-local YAML frontmatter parser using js-yaml's default schema (FAILSAFE_SCHEMA lost number/boolean types on round-trip)
 └── dsl/
     ├── schema.ts        ← Zod schema, discriminated union on type=payment|service, IDENTIFIER vs KEBAB regex split
     ├── cadence.ts       ← Annual / biannual / monthly / weekly / daily cycle math (cycle id, deadline, start)
     ├── at-expression.ts ← Parser for at-expressions (cycle-start, cycle-deadline, step-deadline, schedule:DATE; ±Nd offsets)
     └── at-resolver.ts   ← Resolve parsed at-expr against cycle anchors → ISO date
-```
 
-Server-side, under `server/`:
-
-```text
-server/api/routes/encore.ts          ← Express handler: POST /api/encore (dispatches by kind to src/plugins/encore/server.ts handlers); GET /api/encore (read-side, optional — query may suffice over MCP)
-server/events/encore-boot.ts         ← Registers the hourly tick with task-manager at startup
-server/workspace/helps/encore-dsl.md ← Teaching content (already exists on the runtime branch; copy verbatim — it's the spec's natural-language form)
+server/api/routes/encore.ts          ← Express handler: POST /api/encore (dispatches by kind to server/encore/dispatch.ts)
+server/utils/files/encore-io.ts      ← fs gateway: read/write/exists/readDir/unlink under WORKSPACE_PATHS.encore, with traversal-escape guard
+server/workspace/helps/encore-dsl.md ← Help file Claude reads for the DSL grammar + per-action call shapes + worked examples
 ```
 
 Host barrel touches (manual, not codegen):
@@ -112,7 +112,7 @@ Sized as one reviewable landing — pieces don't compose meaningfully on their o
 | 3. Handlers (setup / amend / query / appendNote) | Write the non-tick handlers in `server.ts`. Wire `server/api/routes/encore.ts` + `meta.ts` apiRoutes. Validate end-to-end via `POST /api/encore` + via MCP from a chat. Storage smoke test passing |
 | 4. Tick + bundling + escalation | Implement `lock.ts`, `notifier.ts` (scoped wrapper), `tick.ts`. Register hourly tick from `server/events/encore-boot.ts`. Wire `kickTickLocked` into every state-mutating handler |
 | 5. Click-handler page | `View.vue` at `/encore`. Add `/encore` route + page key. Implement `handleResolveNotification` with orphan-clear path. End-to-end: create obligation → tick fires → click bell → chat opens with seed |
-| 6. Tests | Mirror runtime branch's `test/plugins/test_encore_storage.ts` (storage smoke / query / resolveNotification / concurrent mutations) as `test/plugins/test_encore_builtin.ts`. Add a tick-firing unit test (mock now, advance through `firingPlan` phases, assert single bundled publish + correct escalation) — the runtime version skipped this because the live testing surfaced everything; from-scratch we should have it |
+| 6. Tests | Component test at `test/plugins/test_encore_dispatch.ts` covering the dispatch flow (setup / query / amend / bundled markStepDone / next-cycle provisioning / stale-id recovery) against a tmpdir workspace, with the host notifier redirected via `_setFilePathsForTesting`. |
 | 7. Docs | `docs/developer.md` plugin-development section gets Encore as the canonical example of "built-in plugin with MCP tool + chat-on-mount page + mutex". `docs/plugin-runtime.md` unchanged (it documents runtime plugins, not built-ins). Update this plan doc's status banner to "landed on `<branch-name>`" once the PR opens |
 
 Each step should leave `yarn typecheck` / `yarn lint` / `yarn build` clean (per CLAUDE.md's "after modifying any source code" rule).

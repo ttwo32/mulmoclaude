@@ -27,9 +27,19 @@ export function encoreRoot(workspaceRoot?: string): string {
 }
 
 /** Join a workspace-relative encore path (from paths.ts) to the
- *  absolute on-disk location. */
+ *  absolute on-disk location. Validates that the resolved path is
+ *  still inside the Encore root — `path.join` alone happily
+ *  resolves `../../..` and escapes the plugin tree if a caller
+ *  ever passes a traversal-laden segment. paths.ts validates
+ *  segments at the source, but defense in depth is cheap. */
 function abs(rel: string, workspaceRoot?: string): string {
-  return path.join(encoreRoot(workspaceRoot), rel);
+  const root = encoreRoot(workspaceRoot);
+  const resolved = path.resolve(root, rel);
+  const normalisedRoot = path.resolve(root);
+  if (resolved !== normalisedRoot && !resolved.startsWith(`${normalisedRoot}${path.sep}`)) {
+    throw new Error(`encore: path ${JSON.stringify(rel)} escapes the plugin root`);
+  }
+  return resolved;
 }
 
 /** Read a text file under the Encore tree. Returns `null` if the

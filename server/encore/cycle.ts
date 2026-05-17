@@ -37,6 +37,12 @@ export interface TargetRecord {
    *  via this map; steps with required fields ALSO require this
    *  marker (recordValues alone never closes anything). */
   completedSteps?: Record<string, string>;
+  /** stepId → ISO timestamp until which the step is snoozed. The
+   *  tick skips steps whose snooze hasn't expired (treats them as
+   *  un-firable). Set by `snooze`; once the timestamp passes, the
+   *  next tick re-evaluates and may re-fire. NOT closure — a
+   *  snoozed step is still considered open by closure.ts. */
+  snoozedSteps?: Record<string, string>;
 }
 
 export interface CycleState {
@@ -91,6 +97,16 @@ export function recordTargetSkip(state: CycleState, targetId: string): CycleStat
   const next = cloneState(state);
   const record = upsertRecord(next, targetId);
   record.skipped = new Date().toISOString();
+  return next;
+}
+
+/** Mark a step snoozed until `untilIso` for one target. The tick
+ *  will skip it until the timestamp passes. Not closure — once
+ *  the snooze expires the step is firable again. */
+export function recordStepSnooze(state: CycleState, targetId: string, stepId: string, untilIso: string): CycleState {
+  const next = cloneState(state);
+  const record = upsertRecord(next, targetId);
+  record.snoozedSteps = { ...(record.snoozedSteps ?? {}), [stepId]: untilIso };
   return next;
 }
 
@@ -153,25 +169,44 @@ export function parseCycleFile(raw: string): { state: CycleState; body: string }
 /** Strip old-shape fields (status, steps with stepDeadline/
  *  activeNotificationId/lastPublishedSeverity) from each target
  *  record. New-shape fields pass through verbatim. */
+/** Pick only string-valued entries from a map. Used to validate
+ *  `completedSteps` / `snoozedSteps` so a malformed object/boolean
+ *  doesn't get treated as a truthy completion marker. */
+function pickStringMap(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const filtered: Record<string, string> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "string") filtered[key] = value;
+  }
+  return Object.keys(filtered).length > 0 ? filtered : undefined;
+}
+
+function normaliseSkipped(raw: unknown): string | undefined {
+  if (typeof raw === "string") return raw;
+  // Tolerate boolean form from any intermediate iteration.
+  if (raw === true) return new Date(0).toISOString();
+  return undefined;
+}
+
+function normaliseOneRecord(raw: Record<string, unknown>): TargetRecord {
+  const normalised: TargetRecord = {};
+  if (raw.values && typeof raw.values === "object") {
+    normalised.values = raw.values as Record<string, unknown>;
+  }
+  const skipped = normaliseSkipped(raw.skipped);
+  if (skipped) normalised.skipped = skipped;
+  const completed = pickStringMap(raw.completedSteps);
+  if (completed) normalised.completedSteps = completed;
+  const snoozed = pickStringMap(raw.snoozedSteps);
+  if (snoozed) normalised.snoozedSteps = snoozed;
+  return normalised;
+}
+
 function normaliseRecords(raw: Record<string, unknown>): Record<string, TargetRecord> {
   const out: Record<string, TargetRecord> = {};
   for (const [targetId, value] of Object.entries(raw)) {
     if (!value || typeof value !== "object") continue;
-    const rec = value as Record<string, unknown>;
-    const normalised: TargetRecord = {};
-    if (rec.values && typeof rec.values === "object") {
-      normalised.values = rec.values as Record<string, unknown>;
-    }
-    if (typeof rec.skipped === "string") {
-      normalised.skipped = rec.skipped;
-    } else if (rec.skipped === true) {
-      // Tolerate boolean form from any intermediate iteration.
-      normalised.skipped = new Date(0).toISOString();
-    }
-    if (rec.completedSteps && typeof rec.completedSteps === "object") {
-      normalised.completedSteps = rec.completedSteps as Record<string, string>;
-    }
-    out[targetId] = normalised;
+    out[targetId] = normaliseOneRecord(value as Record<string, unknown>);
   }
   return out;
 }
@@ -187,6 +222,7 @@ export function serializeCycleFile(state: CycleState, body: string): string {
     if (record.values && Object.keys(record.values).length > 0) out.values = record.values;
     if (record.skipped) out.skipped = record.skipped;
     if (record.completedSteps && Object.keys(record.completedSteps).length > 0) out.completedSteps = record.completedSteps;
+    if (record.snoozedSteps && Object.keys(record.snoozedSteps).length > 0) out.snoozedSteps = record.snoozedSteps;
     records[targetId] = out;
   }
   return serializeWithFrontmatter(

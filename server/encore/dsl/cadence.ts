@@ -144,24 +144,29 @@ export type CycleSlot =
  *  cycle, matching the spec's cycle-start = day-after-prev-deadline
  *  rule). */
 export function currentCycleSlot(cadence: Cadence, now: Date): CycleSlot {
+  // Compare as ISO date strings — the deadline is date-only, and
+  // comparing `now` (a full timestamp) against a midnight Date
+  // would roll over one day early on the deadline day. ISO-string
+  // lexical compare is calendar-correct for YYYY-MM-DD.
+  const todayIso = isoDate(now);
   const year = now.getUTCFullYear();
   if (cadence.type === "annual") {
     const [{ month, day }] = cadence.cycles;
-    const thisYearDeadline = utcDate(year, month - 1, day);
-    return { kind: "annual", year: now <= thisYearDeadline ? year : year + 1 };
+    const thisYearDeadlineIso = isoDate(utcDate(year, month - 1, day));
+    return { kind: "annual", year: todayIso <= thisYearDeadlineIso ? year : year + 1 };
   }
   if (cadence.type === "biannual") {
     const [first, second] = cadence.cycles;
-    const firstDeadline = utcDate(year, first.month - 1, first.day);
-    const secondDeadline = utcDate(year, second.month - 1, second.day);
-    if (now <= firstDeadline) return { kind: "biannual", year, half: 1 };
-    if (now <= secondDeadline) return { kind: "biannual", year, half: 2 };
+    const firstDeadlineIso = isoDate(utcDate(year, first.month - 1, first.day));
+    const secondDeadlineIso = isoDate(utcDate(year, second.month - 1, second.day));
+    if (todayIso <= firstDeadlineIso) return { kind: "biannual", year, half: 1 };
+    if (todayIso <= secondDeadlineIso) return { kind: "biannual", year, half: 2 };
     return { kind: "biannual", year: year + 1, half: 1 };
   }
   if (cadence.type === "monthly") {
     const monthZero = now.getUTCMonth();
-    const deadlineThisMonth = utcDate(year, monthZero, cadence.day);
-    if (now <= deadlineThisMonth) {
+    const deadlineThisMonthIso = isoDate(utcDate(year, monthZero, cadence.day));
+    if (todayIso <= deadlineThisMonthIso) {
       return { kind: "monthly", year, month: monthZero + 1 };
     }
     const next = utcDate(year, monthZero + 1, 1);

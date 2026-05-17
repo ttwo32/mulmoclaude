@@ -37,7 +37,7 @@ import { parseAtExpression } from "./dsl/at-expression.js";
 import { resolveAtExpression } from "./dsl/at-resolver.js";
 import type { EncoreDsl, Severity, StepDef } from "./dsl/schema.js";
 import { parseIndexFile } from "./obligation.js";
-import { buildCycleState, parseCycleFile, serializeCycleFile, type CycleState } from "./cycle.js";
+import { buildCycleState, parseCycleFile, serializeCycleFile, type CycleState, type TargetRecord } from "./cycle.js";
 import { isCycleClosed, isStepClosed } from "./closure.js";
 import { cycleFilePath, obligationDir, obligationIndexPath, pendingClearPath, PENDING_CLEAR_DIRNAME, OBLIGATIONS_DIRNAME } from "./paths.js";
 import { exists, readDir, readTextOrNull, writeText, unlink } from "../utils/files/encore-io.js";
@@ -260,14 +260,29 @@ interface UnfiredPair {
   fireDate: string;
 }
 
+function isStepEligibleToFire(
+  record: TargetRecord | undefined,
+  step: StepDef,
+  todayIso: string,
+  activeByStepTarget: Map<string, PendingClearTicket>,
+  targetId: string,
+): boolean {
+  if (isStepClosed(record, step)) return false;
+  if (activeByStepTarget.has(`${step.id}:${targetId}`)) return false;
+  // A snoozed step is "open but defer firing" — skip until the
+  // snooze timestamp has passed.
+  const snoozedUntil = record?.snoozedSteps?.[step.id];
+  if (snoozedUntil && snoozedUntil > todayIso) return false;
+  return true;
+}
+
 function collectUnfired(dsl: EncoreDsl, state: CycleState, activeByStepTarget: Map<string, PendingClearTicket>, todayIso: string): UnfiredPair[] {
   const out: UnfiredPair[] = [];
   for (const target of dsl.targets) {
     const record = state.records[target.id];
     if (record?.skipped) continue;
     for (const step of dsl.steps) {
-      if (isStepClosed(record, step)) continue;
-      if (activeByStepTarget.has(`${step.id}:${target.id}`)) continue;
+      if (!isStepEligibleToFire(record, step, todayIso, activeByStepTarget, target.id)) continue;
       const phase = currentPhaseFor(step, state, todayIso);
       if (!phase) continue;
       out.push({ targetId: target.id, stepId: step.id, stepDef: step, severity: phase.severity, fireDate: phase.fireDate });
@@ -475,6 +490,29 @@ async function ticketsForCycle(obligationId: string, cycleId: string): Promise<P
   return out;
 }
 
+async function pruneOneTicket(rel: string, raw: string, now: Date, log: typeof defaultLog): Promise<void> {
+  let ticket: PendingClearTicket;
+  try {
+    ticket = JSON.parse(raw) as PendingClearTicket;
+  } catch {
+    await unlink(rel);
+    return;
+  }
+  const ageMs = now.getTime() - new Date(ticket.createdAt).getTime();
+  if (ageMs <= ORPHAN_TICKET_AGE_MS) return;
+  log.info("encore", "tick: pruning orphan ticket", { pendingId: ticket.pendingId, ageMs });
+  // Clear the host bell entry BEFORE unlinking the ticket. Otherwise
+  // the bell entry stays visible but the ticket is gone — next tick
+  // treats the step as un-fired and publishes a duplicate while the
+  // stale entry is still up.
+  try {
+    await encoreNotifier.clear(ticket.notificationId);
+  } catch (err) {
+    log.warn("encore", "tick: prune-bell-clear failed", { notificationId: ticket.notificationId, error: err instanceof Error ? err.message : String(err) });
+  }
+  await unlink(rel);
+}
+
 async function pruneOrphanTickets(now: Date, log: typeof defaultLog): Promise<void> {
   const entries = await readDir(PENDING_CLEAR_DIRNAME);
   for (const entry of entries) {
@@ -482,18 +520,7 @@ async function pruneOrphanTickets(now: Date, log: typeof defaultLog): Promise<vo
     const rel = path.join(PENDING_CLEAR_DIRNAME, entry);
     const raw = await readTextOrNull(rel);
     if (!raw) continue;
-    let ticket: PendingClearTicket;
-    try {
-      ticket = JSON.parse(raw) as PendingClearTicket;
-    } catch {
-      await unlink(rel);
-      continue;
-    }
-    const ageMs = now.getTime() - new Date(ticket.createdAt).getTime();
-    if (ageMs > ORPHAN_TICKET_AGE_MS) {
-      log.info("encore", "tick: pruning orphan ticket", { pendingId: ticket.pendingId, ageMs });
-      await unlink(rel);
-    }
+    await pruneOneTicket(rel, raw, now, log);
   }
 }
 

@@ -21,7 +21,17 @@
 import { z } from "zod";
 
 import { EncoreDslInput, type EncoreDsl } from "./dsl/schema.js";
-import { applyValues, buildCycleState, parseCycleFile, recordStepDone, recordTargetSkip, serializeCycleFile, type CycleState } from "./cycle.js";
+import {
+  applyValues,
+  buildCycleState,
+  parseCycleFile,
+  recordStepDone,
+  recordStepSnooze,
+  recordTargetSkip,
+  serializeCycleFile,
+  type CycleState,
+} from "./cycle.js";
+import { ONE_HOUR_MS } from "../utils/time.js";
 import { isCycleClosed, isStepClosed } from "./closure.js";
 import { parseIndexFile, serializeIndexFile } from "./obligation.js";
 import { currentCycleSlot } from "./dsl/cadence.js";
@@ -223,9 +233,14 @@ async function handleAmend(args: z.infer<typeof AmendArgs>): Promise<EncoreDispa
 
   // Shallow merge at the top level, array fields replace whole.
   const merged: Record<string, unknown> = { ...(existing as unknown as Record<string, unknown>), ...patch };
-  // Preserve server-generated fields if the caller didn't pass them.
-  if (!("id" in patch)) merged.id = existing.id;
-  if (!("createdAt" in patch)) merged.createdAt = existing.createdAt;
+  // Server-generated identity fields are always immutable. Even if
+  // the LLM includes `id` or `createdAt` in the patch (mistake),
+  // force them back to the existing values — letting `id` change
+  // would desync the directory name (`obligations/<args.obligationId>/`)
+  // from `dsl.id`, and tickets / queries written under the new id
+  // would point at files that aren't there.
+  merged.id = existing.id;
+  merged.createdAt = existing.createdAt;
 
   let validated: EncoreDsl;
   try {
@@ -520,11 +535,33 @@ async function loadCycle(obligationId: string, cycleId: string): Promise<{ rel: 
  *  ticket) is no longer `open` AND no longer references this
  *  notificationId — set to null by closeStep/skipTarget/snoozeStep
  *  via cycle.ts. */
-async function clearPendingNotification(pendingId: string | undefined, dsl: EncoreDsl | null, mutatedState?: CycleState): Promise<void> {
+interface ExpectedTicketScope {
+  obligationId: string;
+  cycleId: string;
+}
+
+async function clearPendingNotification(
+  pendingId: string | undefined,
+  dsl: EncoreDsl | null,
+  expectedScope: ExpectedTicketScope | null,
+  mutatedState?: CycleState,
+): Promise<void> {
   if (!pendingId) return;
   const ticketRel = pendingClearPath(pendingId);
   const ticket = await readTicketOrCleanup(ticketRel, pendingId);
   if (!ticket) return;
+
+  // Verify the ticket belongs to the obligation+cycle that was
+  // just mutated. A mismatched pendingId (LLM passes the wrong
+  // one) would otherwise let us trim/clear an unrelated bundle.
+  if (expectedScope && (ticket.obligationId !== expectedScope.obligationId || ticket.cycleId !== expectedScope.cycleId)) {
+    log.warn("encore", "clearPendingNotification: pendingId scope mismatch; ignoring", {
+      pendingId,
+      ticketScope: { obligationId: ticket.obligationId, cycleId: ticket.cycleId },
+      expectedScope,
+    });
+    return;
+  }
 
   const state = await loadStateForTicket(ticket, mutatedState);
   if (!state) {
@@ -612,12 +649,32 @@ async function persistAndKickTick(rel: string, state: CycleState, body: string, 
   await tickUnlocked({ now: new Date() }, reason);
 }
 
+/** Reject calls referencing target/step ids that don't exist in
+ *  the DSL. Without this, a typo (`pat` vs `pay`) would succeed
+ *  silently — writing a record under the bogus id, leaving the
+ *  real step still un-closed, and surfacing as "I told the LLM
+ *  I paid but the bell didn't clear". */
+function assertKnownTargetAndStep(dsl: EncoreDsl | null, args: { obligationId: string; targetId: string; stepId?: string }): void {
+  if (!dsl) {
+    throw new EncoreError(404, `obligation ${JSON.stringify(args.obligationId)} not found`);
+  }
+  if (!dsl.targets.some((target) => target.id === args.targetId)) {
+    const known = dsl.targets.map((target) => target.id).join(", ");
+    throw new EncoreError(400, `unknown targetId ${JSON.stringify(args.targetId)} for obligation ${JSON.stringify(args.obligationId)}. Known: [${known}]`);
+  }
+  if (args.stepId !== undefined && !dsl.steps.some((step) => step.id === args.stepId)) {
+    const known = dsl.steps.map((step) => step.id).join(", ");
+    throw new EncoreError(400, `unknown stepId ${JSON.stringify(args.stepId)} for obligation ${JSON.stringify(args.obligationId)}. Known: [${known}]`);
+  }
+}
+
 async function handleMarkStepDone(args: z.infer<typeof MarkStepDoneArgs>): Promise<EncoreDispatchResult> {
   const dsl = await loadDsl(args.obligationId);
+  assertKnownTargetAndStep(dsl, args);
   const { rel, state, body } = await loadCycle(args.obligationId, args.cycleId);
   const nextState = recordStepDone(state, args.targetId, args.stepId, args.values);
   await persistAndKickTick(rel, nextState, body, `markStepDone ${args.obligationId}/${args.cycleId}/${args.targetId}/${args.stepId}`);
-  await clearPendingNotification(args.pendingId, dsl, nextState);
+  await clearPendingNotification(args.pendingId, dsl, { obligationId: args.obligationId, cycleId: args.cycleId }, nextState);
   log.info("encore", "markStepDone: step recorded", { obligationId: args.obligationId, cycleId: args.cycleId, targetId: args.targetId, stepId: args.stepId });
   return {
     ok: true,
@@ -632,10 +689,11 @@ async function handleMarkStepDone(args: z.infer<typeof MarkStepDoneArgs>): Promi
 
 async function handleMarkTargetSkipped(args: z.infer<typeof MarkTargetSkippedArgs>): Promise<EncoreDispatchResult> {
   const dsl = await loadDsl(args.obligationId);
+  assertKnownTargetAndStep(dsl, args);
   const { rel, state, body } = await loadCycle(args.obligationId, args.cycleId);
   const nextState = recordTargetSkip(state, args.targetId);
   await persistAndKickTick(rel, nextState, body, `markTargetSkipped ${args.obligationId}/${args.cycleId}/${args.targetId}`);
-  await clearPendingNotification(args.pendingId, dsl, nextState);
+  await clearPendingNotification(args.pendingId, dsl, { obligationId: args.obligationId, cycleId: args.cycleId }, nextState);
   log.info("encore", "markTargetSkipped: target skipped", { obligationId: args.obligationId, cycleId: args.cycleId, targetId: args.targetId });
   return {
     ok: true,
@@ -648,6 +706,8 @@ async function handleMarkTargetSkipped(args: z.infer<typeof MarkTargetSkippedArg
 }
 
 async function handleRecordValues(args: z.infer<typeof RecordValuesArgs>): Promise<EncoreDispatchResult> {
+  const dsl = await loadDsl(args.obligationId);
+  assertKnownTargetAndStep(dsl, args);
   const { rel, state, body } = await loadCycle(args.obligationId, args.cycleId);
   const nextState = applyValues(state, args.targetId, args.values);
   // No tick kick — recording partial values doesn't close anything
@@ -761,17 +821,28 @@ async function dropTargetFromMatchingTickets(obligationId: string, cycleId: stri
 }
 
 async function handleSnooze(args: z.infer<typeof SnoozeArgs>): Promise<EncoreDispatchResult> {
-  // Snooze under the data-only model = delete the pending-clear
-  // ticket(s) covering (obligation, cycle, step, target) + clear
-  // the matching bell entry. The cycle file is untouched (no status
-  // flags to flip). The next tick will re-evaluate from current-
-  // time anchors and may re-fire from a later phase.
+  const dsl = await loadDsl(args.obligationId);
+  assertKnownTargetAndStep(dsl, args);
+  // Snooze under the data-only model:
+  //   1. Clear the matching bell entry (the user clicked snooze;
+  //      the bell should go away now).
+  //   2. Write `snoozedSteps[stepId]` on the cycle file so the
+  //      tick skips this step until the snooze expires. Without
+  //      this marker the next tick would see "open step, no
+  //      ticket" → un-fired → republish the same bell entry
+  //      immediately. Default snooze = 24 hours; tunable later if
+  //      a real use case emerges.
+  //   3. DO NOT kick the tick — the bell is cleared and the
+  //      snooze marker is in place; running runTick now would
+  //      just check the marker and skip, so it's wasted work.
   const droppedCount = await dropTargetFromMatchingTickets(args.obligationId, args.cycleId, args.stepId, args.targetId);
-  // Kick the tick so the snoozed step's deadline math is re-
-  // evaluated under the current time. The handler doesn't touch
-  // the cycle file (data-only model), so no writeText here.
-  await tickUnlocked({ now: new Date() }, `snooze ${args.obligationId}/${args.cycleId}/${args.targetId}/${args.stepId}`);
-  await clearPendingNotification(args.pendingId, null);
+
+  const snoozeUntilIso = new Date(Date.now() + 24 * ONE_HOUR_MS).toISOString();
+  const { rel, state, body } = await loadCycle(args.obligationId, args.cycleId);
+  const nextState = recordStepSnooze(state, args.targetId, args.stepId, snoozeUntilIso);
+  await writeText(rel, serializeCycleFile(nextState, body));
+
+  await clearPendingNotification(args.pendingId, null, { obligationId: args.obligationId, cycleId: args.cycleId });
   log.info("encore", "snooze: step snoozed", {
     obligationId: args.obligationId,
     cycleId: args.cycleId,

@@ -84,8 +84,8 @@ Cross-field rules (validator will reject otherwise):
 ## Cadence
 
 ```yaml
-cadence: { type: annual,   cycles: [{ month: 5, day: 31 }] }
-cadence: { type: biannual, cycles: [{ month: 4, day: 30 }, { month: 11, day: 30 }] }
+cadence: { type: annual,   cycles: [{ month: 5, day: 28 }] }
+cadence: { type: biannual, cycles: [{ month: 4, day: 28 }, { month: 11, day: 28 }] }
 cadence: { type: monthly,  day: 10 }
 cadence: { type: weekly,   dayOfWeek: friday }  # mon|tue|wed|thu|fri|sat|sun
 cadence: { type: daily }
@@ -247,8 +247,8 @@ currency: JPY
 cadence:
   type: biannual
   cycles:
-    - { month: 4, day: 30 }
-    - { month: 11, day: 30 }
+    - { month: 4, day: 28 }
+    - { month: 11, day: 28 }
 targets:
   - id: hayama-house
     displayName: "Hayama house"
@@ -277,7 +277,7 @@ type: service
 cadence:
   type: annual
   cycles:
-    - { month: 5, day: 31 }
+    - { month: 5, day: 28 }
 targets:
   - id: satoshi
     displayName: "Satoshi"
