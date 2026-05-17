@@ -454,3 +454,104 @@ describe("requireSameOrigin (env-bound export) — smoke test", () => {
     assert.equal(res.statusCode, 403);
   });
 });
+
+// --- env-bound wiring: dynamic-import env.ts with MULMOCLAUDE_TRUSTED_ORIGINS
+
+// `env` is a frozen module-level snapshot taken at process boot, so
+// we re-import `server/system/env.ts` under different
+// `process.env` states (same cache-busting pattern as
+// test/server/test_env.ts) and compose the resulting
+// `env.trustedOrigins` through the `requireSameOriginWith` factory.
+// That mirrors exactly what `server/api/csrfGuard.ts` does at module
+// load (`export const requireSameOrigin = requireSameOriginWith(env.trustedOrigins)`),
+// so any wiring regression — env-key typo, missed `asCsv` call,
+// stale snapshot — is caught here.
+//
+// We can't simply re-import `csrfGuard.ts` with a query because
+// Node's ESM resolver caches `import { env } from "../system/env.js"`
+// by the un-queried URL, so the re-imported csrfGuard would still
+// capture the original env snapshot. Recomposing via the factory
+// from a freshly-loaded env is the equivalent assertion.
+
+const TRUSTED_ORIGINS_KEY = "MULMOCLAUDE_TRUSTED_ORIGINS";
+let csrfCacheBuster = 0;
+
+interface FreshEnvModule {
+  env: { readonly trustedOrigins: readonly string[] };
+}
+
+async function loadEnvBoundMiddleware(envValue: string | undefined): Promise<(req: Request, res: Response, next: NextFunction) => void> {
+  const prev = process.env[TRUSTED_ORIGINS_KEY];
+  if (envValue === undefined) {
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- key is a fixed string literal
+    delete process.env[TRUSTED_ORIGINS_KEY];
+  } else {
+    process.env[TRUSTED_ORIGINS_KEY] = envValue;
+  }
+  csrfCacheBuster++;
+  try {
+    const envMod = (await import(`../../server/system/env.ts?t=csrf-env-${csrfCacheBuster}`)) as FreshEnvModule;
+    return requireSameOriginWith(envMod.env.trustedOrigins);
+  } finally {
+    if (prev === undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- key is a fixed string literal
+      delete process.env[TRUSTED_ORIGINS_KEY];
+    } else {
+      process.env[TRUSTED_ORIGINS_KEY] = prev;
+    }
+  }
+}
+
+function callMiddleware(
+  middleware: (req: Request, res: Response, next: NextFunction) => void,
+  method: string,
+  origin?: string,
+): { nextCalled: boolean; statusCode: number } {
+  const res = makeRes();
+  let nextCalled = false;
+  const next: NextFunction = () => {
+    nextCalled = true;
+  };
+  middleware(makeReq(method, origin) as unknown as Request, res as unknown as Response, next);
+  return { nextCalled, statusCode: res.statusCode };
+}
+
+describe("requireSameOrigin (env-bound export) — env-binding integration", () => {
+  it("admits a POST whose Origin matches a single MULMOCLAUDE_TRUSTED_ORIGINS entry", async () => {
+    const LAN_IPAD = "http://192.168.1.42:5173";
+    const middleware = await loadEnvBoundMiddleware(LAN_IPAD);
+    const { nextCalled, statusCode } = callMiddleware(middleware, "POST", LAN_IPAD);
+    assert.equal(nextCalled, true, "listed LAN origin should be admitted by the env-bound middleware");
+    assert.equal(statusCode, 200);
+  });
+
+  it("admits a POST whose Origin matches any entry in a comma-separated list", async () => {
+    const LAN_IPAD = "http://192.168.1.42:5173";
+    const LAN_DESKTOP = "http://192.168.1.50:5173";
+    const middleware = await loadEnvBoundMiddleware(`${LAN_IPAD}, ${LAN_DESKTOP}`);
+    assert.equal(callMiddleware(middleware, "POST", LAN_IPAD).nextCalled, true);
+    assert.equal(callMiddleware(middleware, "POST", LAN_DESKTOP).nextCalled, true);
+  });
+
+  it("rejects a POST whose Origin is NOT in the configured list", async () => {
+    const middleware = await loadEnvBoundMiddleware("http://192.168.1.42:5173");
+    const { nextCalled, statusCode } = callMiddleware(middleware, "POST", "http://192.168.1.99:5173");
+    assert.equal(nextCalled, false);
+    assert.equal(statusCode, 403);
+  });
+
+  it("rejects a POST with `Origin: null` even when `null` is listed in the env var", async () => {
+    // Regression pin for the iteration-1 hardening: the literal
+    // `null` must never be admitted through the env path either.
+    const middleware = await loadEnvBoundMiddleware("null,http://192.168.1.42:5173");
+    const { nextCalled, statusCode } = callMiddleware(middleware, "POST", "null");
+    assert.equal(nextCalled, false);
+    assert.equal(statusCode, 403);
+  });
+
+  it("falls back to localhost-only behaviour when the env var is unset", async () => {
+    const middleware = await loadEnvBoundMiddleware(undefined);
+    assert.equal(callMiddleware(middleware, "POST", "http://localhost:5173").nextCalled, true);
+    assert.equal(callMiddleware(middleware, "POST", "http://192.168.1.42:5173").nextCalled, false);
+  });
+});
