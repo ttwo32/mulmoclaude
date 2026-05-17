@@ -434,6 +434,25 @@ describe("probeRuntimePlugins", () => {
     assert.equal(call, 1, "should fail fast on body-shape regression, not poll");
   });
 
+  // The `retryable` flag is an internal contract between the poll
+  // loop and the single-shot probe. Callers (smoke driver, anyone
+  // who imports `tarball.mjs`) MUST NOT see it. Pin both branches
+  // so a future refactor that drops `stripRetryable` fails the
+  // suite instead of silently leaking internal state.
+  it("never leaks the internal `retryable` flag on the success path", async () => {
+    const fetchImpl = fakeFetch(
+      () => new Response(JSON.stringify({ plugins: [{ name: "@x/y", version: "1.0.0" }] }), { status: 200, headers: { "content-type": "application/json" } }),
+    );
+    const result = await tarball.probeRuntimePlugins({ port: 3099, token: "tok", fetchImpl });
+    assert.equal(Object.prototype.hasOwnProperty.call(result, "retryable"), false, "public result must not expose `retryable`");
+  });
+
+  it("never leaks the internal `retryable` flag on the failure path", async () => {
+    const fetchImpl = fakeFetch(() => new Response("Unauthorized", { status: 401 }));
+    const result = await tarball.probeRuntimePlugins({ port: 3099, token: "tok", fetchImpl, expectedDevPlugin: "@smoke/dev-fixture", pollTimeoutMs: 0 });
+    assert.equal(Object.prototype.hasOwnProperty.call(result, "retryable"), false, "public result must not expose `retryable`");
+  });
+
   // Fetch failures ARE retryable: the boot poll already proved `/`
   // answered 200, so an immediate ECONNREFUSED on the next request
   // is a transient race against the server's shutdown / restart,
