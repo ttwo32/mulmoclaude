@@ -7,6 +7,7 @@ import { META as accountingMeta } from "../accounting/meta";
 import { META as canvasMeta } from "../canvas/meta";
 import { META as chartMeta } from "../chart/meta";
 import { META as editImagesMeta } from "../editImages/meta";
+import { META as encoreMeta } from "../encore/meta";
 import { META as generateImageMeta } from "../generateImage/meta";
 import { META as manageSkillsMeta } from "../manageSkills/meta";
 import { META as manageSourceMeta } from "../manageSource/meta";
@@ -28,6 +29,7 @@ export const GENERATED_PLUGIN_METAS = [
   canvasMeta,
   chartMeta,
   editImagesMeta,
+  encoreMeta,
   generateImageMeta,
   manageSkillsMeta,
   manageSourceMeta,
