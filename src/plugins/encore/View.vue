@@ -27,6 +27,8 @@
 import { computed, onMounted, ref } from "vue";
 import { pluginEndpoints } from "../api";
 import { apiCall } from "../../utils/api";
+import { META } from "./meta";
+import type { EncoreEndpoints } from "./definition";
 
 const status = ref<"starting" | "redirecting" | "error" | "orphan">("starting");
 const errorMessage = ref<string | null>(null);
@@ -65,10 +67,10 @@ async function resolveAndRedirect(): Promise<void> {
   }
 
   try {
-    const endpoints = pluginEndpoints<{ dispatch: { method: string; url: string } }>("encore");
+    const endpoints = pluginEndpoints<EncoreEndpoints>(META.apiNamespace);
     const { method, url } = endpoints.dispatch;
     const response = await apiCall<ResolveResult>(url, {
-      method: method as "POST",
+      method,
       body: {
         kind: "resolveNotification",
         pendingId: pendingId.value,

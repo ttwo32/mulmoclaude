@@ -690,7 +690,7 @@ const debugViewComponent = computed(() => getPlugin("manageDebug")?.viewComponen
 // Encore plugin View — built-in plugin under src/plugins/encore/.
 // Mounted at /encore — the chat-on-mount page after a notification-bell click
 // (View.vue dispatches resolveNotification on mount and redirects).
-const encoreViewComponent = computed(() => getPlugin("manageEncore")?.viewComponent ?? null);
+const encoreViewComponent = computed(() => getPlugin(TOOL_NAMES.manageEncore)?.viewComponent ?? null);
 
 // Google Maps API key from `AppSettings.googleMapsApiKey`. Fetched
 // once on mount and refreshed whenever Settings reports a save.

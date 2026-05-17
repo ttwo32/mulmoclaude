@@ -8,8 +8,19 @@
 // DSL to Claude").
 
 import type { ToolDefinition } from "gui-chat-protocol";
+import type { ResolvedRoute } from "../meta-types";
+import { META } from "./meta";
 
-export const TOOL_NAME = "manageEncore";
+// Derive TOOL_NAME from META so the schema, MCP-bridge dispatch,
+// and Vue executor can't drift apart. The host aggregators
+// (TOOL_NAMES, API_ROUTES, WORKSPACE_PATHS) read META; everything
+// downstream reads from here.
+export const TOOL_NAME = META.toolName;
+
+/** Resolved-route shape Encore exposes to the browser via
+ *  `pluginEndpoints("encore")`. Derived from META so adding a new
+ *  apiRoutes key flows into the type without manual edits. */
+export type EncoreEndpoints = { readonly [K in keyof typeof META.apiRoutes]: ResolvedRoute };
 
 /** Action kinds the LLM is allowed to invoke via the MCP tool.
  *

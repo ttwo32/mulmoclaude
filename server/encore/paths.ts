@@ -14,6 +14,8 @@
 // needs is unnecessary here. We still keep a safety assertion at
 // each join to catch any future regression.
 
+import path from "node:path";
+
 const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 
 function assertSafeSegment(label: string, value: string): void {
@@ -33,24 +35,24 @@ export function obligationsDir(): string {
 /** "obligations/<id>" — directory holding index.md + cycle files. */
 export function obligationDir(obligationId: string): string {
   assertSafeSegment("obligationId", obligationId);
-  return `${OBLIGATIONS_DIRNAME}/${obligationId}`;
+  return path.join(OBLIGATIONS_DIRNAME, obligationId);
 }
 
 /** "obligations/<id>/index.md" — the DSL document. */
 export function obligationIndexPath(obligationId: string): string {
-  return `${obligationDir(obligationId)}/index.md`;
+  return path.join(obligationDir(obligationId), "index.md");
 }
 
 /** "obligations/<id>/<cycleId>.md" — the per-cycle state file. */
 export function cycleFilePath(obligationId: string, cycleId: string): string {
   assertSafeSegment("cycleId", cycleId);
-  return `${obligationDir(obligationId)}/${cycleId}.md`;
+  return path.join(obligationDir(obligationId), `${cycleId}.md`);
 }
 
 /** "pending-clear/<pendingId>.json" — the chat-on-mount ticket. */
 export function pendingClearPath(pendingId: string): string {
   assertSafeSegment("pendingId", pendingId);
-  return `${PENDING_CLEAR_DIRNAME}/${pendingId}.json`;
+  return path.join(PENDING_CLEAR_DIRNAME, `${pendingId}.json`);
 }
 
 /** Slugify a display name into a kebab-case id. Deterministic,

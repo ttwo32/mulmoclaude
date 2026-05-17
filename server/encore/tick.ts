@@ -21,8 +21,10 @@
 // click on the bell, handled by Step 5's /encore page.
 
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 
 import { log as defaultLog } from "../system/logger/index.js";
+import { ONE_HOUR_MS } from "../utils/time.js";
 import { compareIsoDates, isoDate } from "./dsl/cadence.js";
 import { parseAtExpression } from "./dsl/at-expression.js";
 import { resolveAtExpression } from "./dsl/at-resolver.js";
@@ -33,7 +35,7 @@ import { obligationDir, obligationIndexPath, pendingClearPath, PENDING_CLEAR_DIR
 import { readDir, readTextOrNull, writeText, unlink } from "../utils/files/encore-io.js";
 import * as encoreNotifier from "./notifier.js";
 
-const ORPHAN_TICKET_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const ORPHAN_TICKET_AGE_MS = 30 * 24 * ONE_HOUR_MS; // 30 days
 
 export interface TickDeps {
   now: Date;
@@ -123,7 +125,7 @@ async function pickCurrentCycle(obligationId: string): Promise<string | null> {
   if (cycleFiles.length === 0) return null;
   // The latest file alphabetically is the current cycle (cycle ids
   // are zero-padded date-like strings: 2026-05, 2026-W19, 2026-h1).
-  return `${obligationDir(obligationId)}/${cycleFiles[cycleFiles.length - 1]}`;
+  return path.join(obligationDir(obligationId), cycleFiles[cycleFiles.length - 1]);
 }
 
 // ── escalation ────────────────────────────────────────────────────
@@ -450,7 +452,7 @@ async function readTicketForNotification(notificationId: string): Promise<Pendin
   const entries = await readDir(PENDING_CLEAR_DIRNAME);
   for (const entry of entries) {
     if (!entry.endsWith(".json")) continue;
-    const raw = await readTextOrNull(`${PENDING_CLEAR_DIRNAME}/${entry}`);
+    const raw = await readTextOrNull(path.join(PENDING_CLEAR_DIRNAME, entry));
     if (!raw) continue;
     try {
       const ticket = JSON.parse(raw) as PendingClearTicket;
@@ -466,7 +468,7 @@ async function pruneOrphanTickets(now: Date, log: typeof defaultLog): Promise<vo
   const entries = await readDir(PENDING_CLEAR_DIRNAME);
   for (const entry of entries) {
     if (!entry.endsWith(".json")) continue;
-    const rel = `${PENDING_CLEAR_DIRNAME}/${entry}`;
+    const rel = path.join(PENDING_CLEAR_DIRNAME, entry);
     const raw = await readTextOrNull(rel);
     if (!raw) continue;
     let ticket: PendingClearTicket;

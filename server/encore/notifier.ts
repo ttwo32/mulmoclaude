@@ -4,11 +4,14 @@
 //   - `pluginPkg`: a constant identity string so every Encore-owned
 //     bell entry is tagged uniformly, and `clearForPlugin` can
 //     enforce plugin-scoped clearing.
-//   - lifecycle derivation: severity=info → lifecycle=fyi, otherwise
-//     lifecycle=action. The host's `validateActionCoherence` rejects
-//     `action` + `info` pairs (see server/notifier/engine.ts), so we
-//     derive lifecycle from severity at publish time instead of
-//     accepting it as an arg from callers.
+//   - lifecycle: every Encore bell entry uses `lifecycle: "action"`
+//     so the host's NotificationBell.vue does NOT auto-clear on
+//     user click — clearing is owned by the LLM (markStepDone /
+//     markTargetSkipped close the underlying step which clears the
+//     bell). The host's `validateActionCoherence` rejects
+//     `action` + `info`, so the wrapper also maps DSL `info` (and
+//     `warning`) severities to host `nudge` at the publish
+//     boundary.
 //
 // Pure passthrough otherwise — no caching, no batching, no other
 // semantics. Tick + handlers import this module rather than

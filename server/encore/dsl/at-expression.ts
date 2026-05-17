@@ -39,6 +39,18 @@ export interface AtExpression {
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Validate that `yyyy-mm-dd` represents a real calendar date.
+ *  `ISO_DATE_RE` alone accepts "2026-02-30" or "2026-13-01" — Date
+ *  parsing wraps those silently into March / next-year, which would
+ *  shift firing schedules without surfacing as an error. */
+function isRealCalendarDate(iso: string): boolean {
+  const [year, month, day] = iso.split("-").map(Number);
+  if (month < 1 || month > 12) return false;
+  if (day < 1 || day > 31) return false;
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  return candidate.getUTCFullYear() === year && candidate.getUTCMonth() === month - 1 && candidate.getUTCDate() === day;
+}
+
 /** Parse a raw at-expression string. Throws on malformed input. */
 export function parseAtExpression(raw: string, opts: { allowStepDeadline: boolean }): AtExpression {
   if (typeof raw !== "string" || raw.length === 0) {
@@ -50,6 +62,9 @@ export function parseAtExpression(raw: string, opts: { allowStepDeadline: boolea
     const rest = raw.slice("schedule:".length);
     if (!ISO_DATE_RE.test(rest)) {
       throw new Error(`at-expression: "schedule:<YYYY-MM-DD>" expected, got ${JSON.stringify(raw)}`);
+    }
+    if (!isRealCalendarDate(rest)) {
+      throw new Error(`at-expression: ${JSON.stringify(raw)} is not a valid calendar date (Feb 30, Apr 31, month 13, etc. are rejected).`);
     }
     return { anchor: "schedule", offsetDays: 0, date: rest };
   }

@@ -226,6 +226,98 @@ describe("Encore dispatch — component tests", () => {
   // server/notifier/engine.ts and the NotificationBell.vue
   // navigateAndClose logic).
 
+  it("markStepDone on a bundled notification keeps the bell alive until ALL targets close", async () => {
+    // Two-target obligation → setup bundles into a single bell entry
+    // covering both. Closing one target must NOT clear the shared
+    // bell (the other target still needs a chat to resolve it).
+    // Caught in PR review by github-actions and codex.
+    const twoTargetDef = {
+      ...hisayoDefinition,
+      displayName: "Daily payments — bundled",
+      targets: [
+        { id: "alice", displayName: "Alice" },
+        { id: "bob", displayName: "Bob" },
+      ],
+    };
+    const setup = (await dispatch({ kind: "setup", definition: twoTargetDef })) as SetupResult;
+    const before = await listFor("encore");
+    assert.equal(before.length, 1, "two targets must bundle into one bell entry");
+
+    // Read the ticket — should list both targets.
+    const pendingDir = path.join(workspaceRoot, "data/plugins/encore/pending-clear");
+    const entries = await fsPromises.readdir(pendingDir);
+    const ticketRaw = await fsPromises.readFile(path.join(pendingDir, entries[0]), "utf8");
+    const ticket = JSON.parse(ticketRaw) as { pendingId: string; targets: string[] };
+    assert.deepEqual([...ticket.targets].sort(), ["alice", "bob"]);
+
+    const { cycleId } = setup;
+    if (!cycleId) throw new Error("setup should return cycleId");
+
+    // Close Alice. Bell MUST still have the entry; ticket MUST now
+    // list only Bob.
+    await dispatch({
+      kind: "markStepDone",
+      obligationId: setup.obligationId,
+      cycleId,
+      targetId: "alice",
+      stepId: "pay",
+      values: { amount: 1000, paidOn: "2026-05-16" },
+      pendingId: ticket.pendingId,
+    });
+    const afterAlice = await listFor("encore");
+    assert.equal(afterAlice.length, 1, `bell must persist after partial close; got ${afterAlice.length}`);
+    const ticketAfterAlice = JSON.parse(await fsPromises.readFile(path.join(pendingDir, entries[0]), "utf8")) as { targets: string[] };
+    assert.deepEqual(ticketAfterAlice.targets, ["bob"], "ticket must drop alice from the bundle");
+
+    // Close Bob — now everyone done, bell clears.
+    await dispatch({
+      kind: "markStepDone",
+      obligationId: setup.obligationId,
+      cycleId,
+      targetId: "bob",
+      stepId: "pay",
+      values: { amount: 2000, paidOn: "2026-05-16" },
+      pendingId: ticket.pendingId,
+    });
+    const afterBob = await listFor("encore");
+    assert.equal(afterBob.length, 0, "bell must clear when ALL targets are closed");
+  });
+
+  it("closing a cycle provisions the next cycle so recurrence continues", async () => {
+    // Daily obligation, one target, one step. After markStepDone
+    // the cycle closes — the next cycle file MUST exist so future
+    // ticks have something to fire against. Without this, recurring
+    // obligations stop after one cycle (caught in PR review by
+    // github-actions and codex; nextSlot was orphaned in the
+    // original landing).
+    const setup = (await dispatch({ kind: "setup", definition: hisayoDefinition })) as SetupResult;
+    const { cycleId } = setup;
+    if (!cycleId) throw new Error("setup should return cycleId");
+    const pendingDir = path.join(workspaceRoot, "data/plugins/encore/pending-clear");
+    const entries = await fsPromises.readdir(pendingDir);
+    const ticket = JSON.parse(await fsPromises.readFile(path.join(pendingDir, entries[0]), "utf8")) as { pendingId: string };
+
+    // Close the only step of the only target → cycle closes →
+    // provisionNextCycle should fire.
+    await dispatch({
+      kind: "markStepDone",
+      obligationId: setup.obligationId,
+      cycleId,
+      targetId: "hisayo",
+      stepId: "pay",
+      values: { amount: 5000, paidOn: "2026-05-16" },
+      pendingId: ticket.pendingId,
+    });
+
+    // List the obligation's cycle files — must be 2 now.
+    const obligDir = path.join(workspaceRoot, "data/plugins/encore/obligations", setup.obligationId ?? "");
+    const cycleFiles = (await fsPromises.readdir(obligDir)).filter((name) => name !== "index.md" && name.endsWith(".md")).sort();
+    assert.equal(cycleFiles.length, 2, `expected closed cycle + new next cycle, got ${cycleFiles.length}: ${cycleFiles.join(", ")}`);
+    // The next-cycle file should be lexicographically after the
+    // closed one (next day's ISO date for daily).
+    assert(cycleFiles[1] > cycleFiles[0], `next cycle should sort after the closed cycle (got ${cycleFiles.join(", ")})`);
+  });
+
   it("markStepDone closes the step and clears the bell", async () => {
     const setup = (await dispatch({ kind: "setup", definition: hisayoDefinition })) as SetupResult;
     // After setup, the tick fired and a pending-clear ticket exists.

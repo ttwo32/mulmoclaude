@@ -27,12 +27,8 @@ import { wrapWithScope } from "../scope";
 import { apiCall } from "../../utils/api";
 import { makeUuid } from "../../utils/id";
 import View from "./View.vue";
-import definition, { TOOL_NAME } from "./definition";
-
-export interface EncoreEndpoints {
-  [key: string]: string;
-  dispatch: string;
-}
+import definition, { TOOL_NAME, type EncoreEndpoints } from "./definition";
+import { META } from "./meta";
 
 export interface EncoreData {
   kind?: string;
@@ -42,9 +38,9 @@ export interface EncoreData {
 }
 
 const execute: ToolPlugin<EncoreData>["execute"] = async function execute(_context, args) {
-  const endpoints = pluginEndpoints<{ dispatch: { method: string; url: string } }>("encore");
+  const endpoints = pluginEndpoints<EncoreEndpoints>(META.apiNamespace);
   const { method, url } = endpoints.dispatch;
-  const result = await apiCall<ToolResult<EncoreData>>(url, { method: method as "POST", body: args });
+  const result = await apiCall<ToolResult<EncoreData>>(url, { method, body: args });
   if (!result.ok) {
     return {
       toolName: TOOL_NAME,
