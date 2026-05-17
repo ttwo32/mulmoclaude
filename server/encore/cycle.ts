@@ -151,7 +151,8 @@ export function parseCycleFile(raw: string): { state: CycleState; body: string }
     typeof meta.cycleStart !== "string" ||
     typeof meta.cycleDeadline !== "string" ||
     typeof meta.records !== "object" ||
-    meta.records === null
+    meta.records === null ||
+    Array.isArray(meta.records)
   ) {
     throw new Error("cycle file: frontmatter missing required fields (cycleId/cycleStart/cycleDeadline/records)");
   }
@@ -173,7 +174,7 @@ export function parseCycleFile(raw: string): { state: CycleState; body: string }
  *  `completedSteps` / `snoozedSteps` so a malformed object/boolean
  *  doesn't get treated as a truthy completion marker. */
 function pickStringMap(raw: unknown): Record<string, string> | undefined {
-  if (!raw || typeof raw !== "object") return undefined;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const filtered: Record<string, string> = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (typeof value === "string") filtered[key] = value;
@@ -190,7 +191,10 @@ function normaliseSkipped(raw: unknown): string | undefined {
 
 function normaliseOneRecord(raw: Record<string, unknown>): TargetRecord {
   const normalised: TargetRecord = {};
-  if (raw.values && typeof raw.values === "object") {
+  // Reject arrays here — `typeof [] === "object"` would otherwise
+  // accept a malformed `values: [...]` and normalize it into an
+  // invalid field-map.
+  if (raw.values && typeof raw.values === "object" && !Array.isArray(raw.values)) {
     normalised.values = raw.values as Record<string, unknown>;
   }
   const skipped = normaliseSkipped(raw.skipped);

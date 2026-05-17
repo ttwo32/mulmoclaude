@@ -26,6 +26,7 @@ import { WORKSPACE_PATHS } from "../../server/workspace/paths.js";
 import { dispatch, type EncoreDispatchResult } from "../../server/encore/dispatch.js";
 import { _setFilePathsForTesting, listFor } from "../../server/notifier/engine.js";
 import { _resetLockForTesting } from "../../server/encore/lock.js";
+import { runTick } from "../../server/encore/tick.js";
 
 let savedEncoreDescriptor: PropertyDescriptor | undefined;
 let workspaceRoot: string;
@@ -241,6 +242,46 @@ describe("Encore dispatch — component tests", () => {
     const cyclePath = path.join(workspaceRoot, "data/plugins/encore/obligations", setup.obligationId ?? "", `${cycleId}.md`);
     const cycleRaw = await fsPromises.readFile(cyclePath, "utf8");
     assert.match(cycleRaw, /snoozedSteps:[\s\S]*?pay:/, "cycle file should contain snoozedSteps.pay marker");
+  });
+
+  it("snooze re-fires at exactly T+24h, not the day after (lock for the date-vs-timestamp regression)", async () => {
+    // Drives runTick() directly with a fake `now` so we can assert
+    // the 24h boundary precisely. Without this, the previous bug
+    // (lexical compare of snoozedUntil ISO timestamp against
+    // date-only `todayIso`) wouldn't be caught — the over-block
+    // was by ~24h and only visible at sub-day clock granularity.
+    const setup = (await dispatch({ kind: "setup", definition: hisayoDefinition })) as SetupResult;
+    const { cycleId } = setup;
+    if (!cycleId) throw new Error("setup should return cycleId");
+    const pendingDir = path.join(workspaceRoot, "data/plugins/encore/pending-clear");
+    const initialPending = await fsPromises.readdir(pendingDir);
+    const initialTicket = JSON.parse(await fsPromises.readFile(path.join(pendingDir, initialPending[0]), "utf8")) as { pendingId: string };
+
+    // Snooze. The handler stamps `snoozedSteps.pay = now + 24h` on
+    // the cycle file; the bell clears. Capture `now` so we can
+    // construct precise boundary timestamps below.
+    const snoozedAt = new Date();
+    await dispatch({
+      kind: "snooze",
+      obligationId: setup.obligationId,
+      cycleId,
+      targetId: "hisayo",
+      stepId: "pay",
+      pendingId: initialTicket.pendingId,
+    });
+    assert.equal((await listFor("encore")).length, 0, "bell must clear immediately after snooze");
+
+    // Tick at T+23h — must still be snoozed.
+    const oneHour = 60 * 60 * 1000;
+    await runTick({ now: new Date(snoozedAt.getTime() + 23 * oneHour) });
+    const at23h = await listFor("encore");
+    assert.equal(at23h.length, 0, `bell must stay empty at T+23h (snooze hasn't expired); got ${at23h.length}`);
+
+    // Tick at T+24h+1s — snooze has expired, the tick must re-fire
+    // even though it's still calendar-the-same-day as the snooze.
+    await runTick({ now: new Date(snoozedAt.getTime() + 24 * oneHour + 1000) });
+    const at24h = await listFor("encore");
+    assert.equal(at24h.length, 1, `bell must re-fire at T+24h+1s; got ${at24h.length}`);
   });
 
   it("amendDefinition rejects a `type` change", async () => {

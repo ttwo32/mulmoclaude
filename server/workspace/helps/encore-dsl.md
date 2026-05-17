@@ -182,7 +182,7 @@ Writes partial values without closing the step. Use when the user has reported p
 { "kind": "snooze", "pendingId": "...", "obligationId": "...", "cycleId": "...", "targetId": "...", "stepId": "..." }
 ```
 
-Clears the current bell entry and resets the step's last-published-severity so the next tick re-fires from the appropriate phase.
+Clears the current bell entry and persists a `snoozedSteps[stepId]` marker (24h by default) on the cycle file. The tick skips this step until the snooze timestamp passes; after that, the next tick re-fires from the current phase.
 
 ### query
 
