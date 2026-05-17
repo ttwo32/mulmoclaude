@@ -140,13 +140,12 @@ function formatMemoryEntryForPrompt(entry: MemoryEntry): string {
 function readLegacyMemoryFile(workspacePath: string): string | null {
   const memoryPath = join(workspacePath, WORKSPACE_FILES.memory);
   if (!existsSync(memoryPath)) return null;
-  let content: string;
   try {
-    content = readFileSync(memoryPath, "utf-8").trim();
+    const content = readFileSync(memoryPath, "utf-8").trim();
+    return content.length > 0 ? content : null;
   } catch {
     return null;
   }
-  return content.length > 0 ? content : null;
 }
 
 export function buildWikiContext(workspacePath: string): string | null {
