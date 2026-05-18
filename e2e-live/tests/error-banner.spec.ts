@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { ONE_MINUTE_MS } from "../../server/utils/time.ts";
-import { deleteSession, getCurrentSessionId, sendChatMessage, startNewSession, waitForAssistantResponseComplete } from "../fixtures/live-chat.ts";
+import { deleteSession, sendChatMessage, startGuaranteedNewSession, waitForAssistantResponseComplete } from "../fixtures/live-chat.ts";
 
 const L_ERR_TIMEOUT_MS = 2 * ONE_MINUTE_MS;
 
@@ -18,9 +18,16 @@ test.describe("agent error banner (fake-echo forced error)", () => {
     test.setTimeout(L_ERR_TIMEOUT_MS);
     let sessionIdForCleanup: string | null = null;
     try {
-      await startNewSession(page);
-      await page.waitForURL(/\/chat\/[0-9a-f-]+/);
-      sessionIdForCleanup = getCurrentSessionId(page);
+      // Use startGuaranteedNewSession (not startNewSession) to dodge
+      // the SPA's bootstrap-resume race: page.goto("/") can land on
+      // /chat/<existing>, and if that session has an in-flight turn
+      // sendChatMessage hits POST /api/agent and gets 409 "Session
+      // is already running" — which then renders as the *wrong*
+      // [Error] card and the assertion on the fake-echo error
+      // message fails. The guarded variant baselines the server's
+      // existing session ids before clicking and only resolves once
+      // the URL settles on a brand-new id (#1345).
+      sessionIdForCleanup = await startGuaranteedNewSession(page);
 
       // The marker drives fake-echo's forced-error branch. We embed
       // it in an otherwise normal sentence so the detector's
