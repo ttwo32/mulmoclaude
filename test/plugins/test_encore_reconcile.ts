@@ -108,6 +108,11 @@ interface NotifierViolation {
 const NOTIFIER_BOUNDARY_ALLOWED_FILES = new Set(["reconcile.ts", "notifier.ts"]);
 const NOTIFIER_BOUNDARY_ALLOWED_FUNCTIONS = /async function (handleOrphanResolve|pruneOneTicket)\b/;
 const NOTIFIER_CALL = /encoreNotifier\.(publish|clear)\b/;
+// Skip single-line `//` and block-comment-continuation `*` lines so
+// that documentation legitimately mentioning the API symbol (e.g.
+// "calls `encoreNotifier.clear` directly because…") doesn't trip
+// the call detector. Only actual call sites should fail this guard.
+const COMMENT_LINE = /^\s*(?:\/\/|\*)/;
 
 function countBraces(line: string): { opens: number; closes: number } {
   let opens = 0;
@@ -160,6 +165,7 @@ function collectFileViolations(file: string, raw: string): NotifierViolation[] {
     const line = lines[lineIdx];
     advanceScope(scope, line);
     if (scope.inAllowedFn) continue;
+    if (COMMENT_LINE.test(line)) continue;
     if (NOTIFIER_CALL.test(line)) {
       out.push({ file, lineNumber: lineIdx + 1, line: line.trim() });
     }
@@ -384,10 +390,25 @@ describe("Encore reconciler — unit tests", () => {
     // the violation at PR time, not in a stale-bell bug report a
     // week later.
     const encoreDir = path.join(import.meta.dirname, "..", "..", "server", "encore");
-    const files = (await fsPromises.readdir(encoreDir)).filter((name) => name.endsWith(".ts"));
+    // Walk the top-level files AND the handlers/ subdirectory. The
+    // refactor that split dispatch.ts (PR for P0.1 of the Codex
+    // review) moved handleOrphanResolve into handlers/, so without
+    // scanning that subdir a smuggled encoreNotifier call there
+    // would slip past this guard.
+    const candidateFiles: string[] = [];
+    for (const name of await fsPromises.readdir(encoreDir)) {
+      if (name.endsWith(".ts")) candidateFiles.push(name);
+    }
+    const handlersDir = path.join(encoreDir, "handlers");
+    if ((await fsPromises.stat(handlersDir).catch(() => null))?.isDirectory()) {
+      for (const name of await fsPromises.readdir(handlersDir)) {
+        if (name.endsWith(".ts")) candidateFiles.push(path.join("handlers", name));
+      }
+    }
     const violations: NotifierViolation[] = [];
-    for (const file of files) {
-      if (NOTIFIER_BOUNDARY_ALLOWED_FILES.has(file)) continue;
+    for (const file of candidateFiles) {
+      const basename = path.basename(file);
+      if (NOTIFIER_BOUNDARY_ALLOWED_FILES.has(basename)) continue;
       const raw = await fsPromises.readFile(path.join(encoreDir, file), "utf8");
       violations.push(...collectFileViolations(file, raw));
     }
@@ -410,6 +431,24 @@ describe("Encore reconciler — unit tests", () => {
     const violations = collectFileViolations("fixture.ts", fixture);
     assert.equal(violations.length, 1, `expected exactly one violation (the smuggled call); got ${JSON.stringify(violations)}`);
     assert.match(violations[0].line, /smuggled/);
+  });
+
+  it("collectFileViolations: ignores documentation comments that mention encoreNotifier", () => {
+    // The guard regex matches the literal `encoreNotifier.publish/clear`
+    // string. Module-doc comments that legitimately reference the API
+    // by name (e.g. INVARIANTS pointers, "calls X directly because…")
+    // are NOT call sites and must not trip the guard.
+    const fixture = [
+      `// This handler may, in the orphan path, call encoreNotifier.clear directly.`,
+      `/*`,
+      ` * encoreNotifier.publish is the publish call; this is documentation only.`,
+      ` */`,
+      `async function someHandler() {`,
+      `  return ok;`,
+      `}`,
+    ].join("\n");
+    const violations = collectFileViolations("fixture.ts", fixture);
+    assert.deepEqual(violations, [], `comment lines must not be flagged; got ${JSON.stringify(violations)}`);
   });
 
   it("inactive status: clears every bell + ticket for the obligation, no republish", async () => {
