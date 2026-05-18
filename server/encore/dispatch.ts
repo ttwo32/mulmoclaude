@@ -165,16 +165,34 @@ const ResolveNotificationArgs = z.object({
   notificationId: z.string().optional(),
 });
 
+const DefineArgs = z.object({
+  kind: z.literal("defineEncore"),
+  dsl: z.unknown(),
+  /** Present → amend the named obligation; absent → setup a new one.
+   *  Discriminator chosen so the LLM never has to also pass a `kind`
+   *  inside the tool — "I have an id" / "I don't" is the intent. */
+  obligationId: z.string().optional(),
+});
+
 // ── path / id helpers ─────────────────────────────────────────────
 
-async function generateUniqueObligationId(displayName: string): Promise<string> {
-  const base = slugify(displayName);
-  if (!(await exists(obligationIndexPath(base)))) return base;
-  for (let i = 2; i < 1000; i++) {
-    const candidate = `${base}-${i}`;
-    if (!(await exists(obligationIndexPath(candidate)))) return candidate;
-  }
-  throw new EncoreError(500, `failed to generate a unique obligation id from displayName ${JSON.stringify(displayName)} (tried ${base} through ${base}-999)`);
+/** Setup-time id allocation. Reject with 409 if the slugified
+ *  `displayName` collides with an existing obligation — the LLM
+ *  almost certainly intended to amend an existing obligation but
+ *  forgot to pass `obligationId`. The previous behavior (silently
+ *  auto-number `-2`, `-3`) masked that mistake and produced
+ *  parallel duplicates. The reject message tells the LLM how to
+ *  recover (pass `obligationId` to make it an amend, or change
+ *  `displayName`). See plans/feat-encore-define-tool.md. */
+async function requireUniqueObligationId(displayName: string): Promise<string> {
+  const slug = slugify(displayName);
+  if (!(await exists(obligationIndexPath(slug)))) return slug;
+  throw new EncoreError(
+    409,
+    `Obligation ${JSON.stringify(slug)} already exists (displayName: ${JSON.stringify(displayName)}). ` +
+      `To modify it, call defineEncore with obligationId: ${JSON.stringify(slug)} (this becomes an amend). ` +
+      `To create a parallel obligation, change the displayName.`,
+  );
 }
 
 // ── handlers ──────────────────────────────────────────────────────
@@ -191,7 +209,7 @@ async function handleSetup(args: z.infer<typeof SetupArgs>): Promise<EncoreDispa
     throw err;
   }
 
-  const obligationId = await generateUniqueObligationId(dsl.displayName);
+  const obligationId = await requireUniqueObligationId(dsl.displayName);
   const fullDsl: EncoreDsl = {
     ...dsl,
     id: obligationId,
@@ -685,6 +703,25 @@ async function handleUnsnooze(args: z.infer<typeof UnsnoozeArgs>): Promise<Encor
   };
 }
 
+/** New unified entry point for DSL composition. The `defineEncore`
+ *  MCP tool exposes this; `manageEncore`'s setup / amendDefinition
+ *  kinds are kept on the wire for backward compat but no longer
+ *  surfaced in `LLM_ENCORE_KINDS`. Discriminates by `obligationId`
+ *  presence so the LLM never has to also pick between "kind: setup"
+ *  vs "kind: amendDefinition" — the parameter shape carries the
+ *  intent. See plans/feat-encore-define-tool.md. */
+async function handleDefineEncore(args: z.infer<typeof DefineArgs>): Promise<EncoreDispatchResult> {
+  if (args.obligationId !== undefined) {
+    // Amend path. EncoreDslInput.partial() validates each provided
+    // field individually; handleAmend merges onto the existing DSL
+    // and runs the full (non-partial) validator on the result.
+    return handleAmend({ kind: "amendDefinition", obligationId: args.obligationId, definition: args.dsl });
+  }
+  // Setup path. handleSetup will require the full DSL via
+  // EncoreDslInput.parse and 409 on slug collision.
+  return handleSetup({ kind: "setup", definition: args.dsl });
+}
+
 // ── shared helpers ────────────────────────────────────────────────
 
 function formatZodError(err: z.ZodError): string {
@@ -758,6 +795,7 @@ async function dispatchInner(body: EncoreDispatchBody): Promise<EncoreDispatchRe
   if (kind === "recordValues") return handleRecordValues(safeParse(RecordValuesArgs, body, kind));
   if (kind === "snooze") return handleSnooze(safeParse(SnoozeArgs, body, kind));
   if (kind === "unsnooze") return handleUnsnooze(safeParse(UnsnoozeArgs, body, kind));
+  if (kind === "defineEncore") return handleDefineEncore(safeParse(DefineArgs, body, kind));
   if (kind === "resolveNotification") return handleResolveNotification(safeParse(ResolveNotificationArgs, body, kind));
   throw new EncoreError(400, `unknown kind ${JSON.stringify(kind)}`);
 }

@@ -115,24 +115,30 @@ Days only — no `w` / `m`. Compute the math yourself.
 
 Three severities: `info`, `warning`, `urgent`. They drive the bell's visual prominence and the escalation log; the LLM also reads severity from the seed prompt and adjusts tone in conversation. Phases must be chronologically ordered but severities can be non-monotonic (rare).
 
-## manageEncore call shapes
+## Two MCP tools — defineEncore vs manageEncore
 
-Every action takes a `kind` discriminator. The handler validates the rest with Zod and 400s on shape mistakes — read the error message; it names the field.
+Encore exposes two MCP tools that share the same `/api/encore` endpoint:
 
-### setup
+- **`defineEncore`** — compose a new DSL document, or amend an existing one. Use this for ANY structural change (creating an obligation, renaming it, changing the firingPlan, adding a target, etc.).
+- **`manageEncore`** — operational kinds only: `markStepDone` / `markTargetSkipped` / `recordValues` / `query` / `appendNote` / `snooze` / `unsnooze`. Use these after the obligation exists, typically in the chat seeded by a bell click.
 
-```json
-{ "kind": "setup", "definition": { /* full DSL above */ } }
-```
+The split exists so the `defineEncore` tool can carry a fully typed JSON Schema for the `dsl` argument (you'll see field names, types, and oneOf branches in the tool definition), while `manageEncore` stays a thin discriminator on short flat arguments.
 
-`definition` is normally an **OBJECT** in the tool-call arguments. The handler also accepts a JSON-encoded string (it calls `JSON.parse` on the string before validating) so a `JSON.stringify`'d definition won't error — but the object form is preferred (one less parse step on the server, and easier for you to debug field-level Zod errors).
+## defineEncore — setup or amend
 
-Minimal concrete example — copy this exact wire shape (`definition` as an object literal):
+Discriminator: **`obligationId` presence**.
+
+- Absent → setup (server generates the id from `displayName`).
+- Present → amend the named obligation.
+
+This way the parameter shape carries the intent — no separate `kind: "setup" | "amend"` flag inside the tool.
+
+### setup — create a new obligation
 
 ```json
 {
-  "kind": "setup",
-  "definition": {
+  "kind": "defineEncore",
+  "dsl": {
     "version": 1,
     "displayName": "Daily check-in",
     "type": "service",
@@ -152,21 +158,41 @@ Minimal concrete example — copy this exact wire shape (`definition` as an obje
 }
 ```
 
-For richer obligations (payments with currency, escalation phases, bundled targets, multi-step) see the worked examples below; they're shown in YAML for readability but translate field-for-field to JSON.
+Returns `{ ok: true, obligationId, cycleId, cyclePath, indexPath }`. Encore writes `obligations/<id>/index.md` plus the first cycle file and reconciles (so a `cycle-start` phase fires immediately).
 
-Returns `{ ok: true, obligationId, cycleId, cyclePath, indexPath }`. Encore writes `obligations/<id>/index.md` plus the first cycle file and kicks the tick (so a `cycle-start` phase fires immediately).
+`dsl` is normally an **OBJECT** in the tool-call arguments. The handler also accepts a JSON-encoded string (it calls `JSON.parse` on the string before validating) so a `JSON.stringify`'d dsl won't error — but the object form is preferred.
 
-### amendDefinition
+### setup — 409 collision behavior
+
+If `slugify(dsl.displayName)` matches an existing obligation, the server rejects with `409 Conflict` and a recovery directive:
+
+> Obligation "daily-payment-hisayo" already exists (displayName: "Daily payment — Hisayo"). To modify it, call defineEncore with obligationId: "daily-payment-hisayo" (this becomes an amend). To create a parallel obligation, change the displayName.
+
+Read the message — it tells you the id to pass for amend. Don't auto-disambiguate by appending suffixes; the user almost always wants one of: (a) you forgot `obligationId` and meant amend, or (b) you genuinely want a new obligation under a different name.
+
+### amend — change one or more fields
 
 ```json
 {
-  "kind": "amendDefinition",
+  "kind": "defineEncore",
   "obligationId": "daily-payment-hisayo",
-  "definition": { "displayName": "Daily payment — Hisayo San" }
+  "dsl": { "displayName": "Daily payment — Hisayo San" }
 }
 ```
 
-`definition` is preferred as an **OBJECT** (a JSON-encoded string of one is also accepted, same as setup). Shallow-merge at the top level — for arrays (`targets`, `steps`, `formSchema.fields`, `firingPlan`) send the **full** replacement value, not just the field you want to change. Cannot change `type` / `currency` / `cadence.type`. Encore clears active bell entries on amend and re-fires with the new title/text.
+For amend, only fill the fields you want to change — the server shallow-merges onto the existing DSL. Array fields (`targets`, `steps`, `formSchema.fields`, `firingPlan`) replace whole; if you want to add a new step, send the full new `steps` array (existing + new).
+
+Cannot change `type` / `currency` / `cadence.type` — those are immutable. Path: retire the old obligation, create a new one.
+
+Encore clears active bell entries on amend and re-fires with the new title/text.
+
+## manageEncore call shapes
+
+Every operational action takes a `kind` discriminator. The handler validates the rest with Zod and 400s on shape mistakes — read the error message; it names the field.
+
+### setup / amendDefinition (legacy, still accepted)
+
+The dispatcher still accepts `{ "kind": "setup", "definition": {...} }` and `{ "kind": "amendDefinition", "obligationId": "...", "definition": {...} }` on the wire for backward compat with older clients and tests. New code should use `defineEncore` instead — its typed `dsl` argument is friendlier to compose against.
 
 ### markStepDone — CLOSE ONE STEP ON ONE TARGET
 

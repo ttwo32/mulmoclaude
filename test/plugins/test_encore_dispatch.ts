@@ -322,6 +322,64 @@ describe("Encore dispatch — component tests", () => {
     assert.equal(result.ok, true, `amend-from-string failed: ${result.message}`);
   });
 
+  it("defineEncore without obligationId creates a new obligation (setup path)", async () => {
+    // The new structural tool. No obligationId → server-side
+    // `handleDefineEncore` routes to `handleSetup`. End state matches
+    // the legacy `{ kind: "setup", definition }` flow.
+    const result = (await dispatch({ kind: "defineEncore", dsl: hisayoDefinition })) as SetupResult;
+    assert.equal(result.ok, true, `defineEncore (setup) failed: ${result.message}`);
+    assert.ok(result.obligationId, "defineEncore setup should return obligationId");
+    assert.ok(result.cycleId, "defineEncore setup should return cycleId");
+    const entries = await listFor("encore");
+    assert.equal(entries.length, 1, "first cycle's bell should have fired");
+  });
+
+  it("defineEncore with obligationId amends the named obligation (amend path)", async () => {
+    const created = (await dispatch({ kind: "defineEncore", dsl: hisayoDefinition })) as SetupResult;
+    const result = await dispatch({
+      kind: "defineEncore",
+      obligationId: created.obligationId,
+      dsl: { displayName: "Daily payment — Renamed via defineEncore" },
+    });
+    assert.equal(result.ok, true, `defineEncore (amend) failed: ${result.message}`);
+    const queried = (await dispatch({ kind: "query", obligationId: created.obligationId })) as QueryResult;
+    const { obligations } = queried;
+    if (!obligations) throw new Error("query should return obligations[]");
+    assert.equal(obligations[0].dsl.displayName, "Daily payment — Renamed via defineEncore");
+  });
+
+  it("defineEncore accepts dsl as a JSON-encoded string (same tolerance as setup/amend)", async () => {
+    // The coercion path from PR #1433 applies to defineEncore too,
+    // because handleDefineEncore reuses handleSetup/handleAmend
+    // which run the existing coerceDefinitionToObject helper.
+    const result = (await dispatch({ kind: "defineEncore", dsl: JSON.stringify(hisayoDefinition) })) as SetupResult;
+    assert.equal(result.ok, true, `defineEncore from string failed: ${result.message}`);
+    assert.ok(result.obligationId);
+  });
+
+  it("setup on a duplicate displayName rejects with 409 + recovery hint", async () => {
+    // Replaces the old auto-numbering (`-2`, `-3`) behavior. The
+    // recovery hint tells the LLM the exact obligationId to pass for
+    // amend — so if the LLM intended amend but forgot the id, it can
+    // self-correct without producing a duplicate.
+    await dispatch({ kind: "defineEncore", dsl: hisayoDefinition });
+    await assert.rejects(dispatch({ kind: "defineEncore", dsl: hisayoDefinition }), (err: unknown) => {
+      const error = err as { status?: number; message?: string };
+      assert.equal(error.status, 409, `expected 409, got status ${error.status}`);
+      assert.match(error.message ?? "", /already exists/);
+      assert.match(error.message ?? "", /defineEncore with obligationId/);
+      return true;
+    });
+  });
+
+  it('setup 409 also fires via the legacy `kind: "setup"` wire shape', async () => {
+    // Backward compat — the legacy entry point goes through the
+    // same `requireUniqueObligationId` helper, so the 409 is
+    // consistent regardless of which tool the call came from.
+    await dispatch({ kind: "setup", definition: hisayoDefinition });
+    await assert.rejects(dispatch({ kind: "setup", definition: hisayoDefinition }), /already exists/);
+  });
+
   // Note: there is intentionally NO test that invokes
   // `dispatch({ kind: "resolveNotification" })`. That path calls
   // `startChat`, which (a) writes a real session file under
