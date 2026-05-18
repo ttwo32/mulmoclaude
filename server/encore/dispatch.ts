@@ -3,7 +3,7 @@
 // Data-only on-disk model (PR #1416 follow-up): cycle files hold
 // only what the user recorded (values / skipped / completedSteps /
 // snoozedSteps). Closure is derived. Bell-entry tracking lives in
-// pending-clear tickets, not in the cycle file.
+// tickets, not in the cycle file.
 //
 // `dispatch(body)` is the single entry point; the Express adapter in
 // `server/api/routes/encore.ts` calls it. The dispatch wrapper
@@ -15,8 +15,8 @@
 // State-mutating handlers funnel through `persistAndReconcile`:
 // write the cycle file, then run the reconciler under the same lock.
 // The reconciler is the sole owner of bell state (see reconcile.ts)
-// — handlers don't touch notifier publish/clear or pending-clear
-// tickets directly. The one documented exception is
+// — handlers don't touch notifier publish/clear or tickets
+// directly. The one documented exception is
 // `handleOrphanResolve`, which clears a bell entry whose ticket was
 // already swept (the click landed too late).
 
@@ -39,15 +39,15 @@ import { isCycleClosed } from "./closure.js";
 import { parseIndexFile, serializeIndexFile } from "./obligation.js";
 import { currentCycleSlot } from "../../src/types/encore-dsl/cadence.js";
 import path from "node:path";
-import { obligationDir, obligationIndexPath, cycleFilePath, pendingClearPath, slugify, OBLIGATIONS_DIRNAME } from "./paths.js";
-import { exists, readDir, readTextOrNull, writeText } from "../utils/files/encore-io.js";
+import { obligationDir, obligationIndexPath, cycleFilePath, ticketPath, slugify, OBLIGATIONS_DIRNAME } from "./paths.js";
+import { exists, readDir, readDirSubdirs, readTextOrNull, writeText } from "../utils/files/encore-io.js";
 import { WORKSPACE_DIRS } from "../workspace/paths.js";
 import { log } from "../system/logger/index.js";
 import { withLock } from "./lock.js";
 import { reconcileCycleNotifications } from "./reconcile.js";
 import * as encoreNotifier from "./notifier.js";
 import { ENCORE_PLUGIN_PKG } from "./notifier.js";
-import type { PendingClearTicket } from "./tick.js";
+import type { Ticket } from "./tick.js";
 import { startChat } from "../api/routes/agent.js";
 import { PLUGIN_SESSION_ORIGIN_PREFIX } from "../../src/types/session.js";
 import { ENCORE_SEED_ROLE_ID } from "../../src/config/roles.js";
@@ -165,7 +165,7 @@ const ResolveNotificationArgs = z.object({
   pendingId: z.string(),
   /** Bell entry id, spliced onto the navigateTarget at click time
    *  by the host's NotificationBell.vue. Lets us clear orphan bell
-   *  entries whose pending-clear ticket was already swept. */
+   *  entries whose ticket was already swept. */
   notificationId: z.string().optional(),
 });
 
@@ -341,7 +341,7 @@ async function handleQuery(args: z.infer<typeof QueryArgs>): Promise<EncoreDispa
   if (args.obligationId) {
     obligationIds = [args.obligationId];
   } else {
-    obligationIds = (await readDir(OBLIGATIONS_DIRNAME)).sort();
+    obligationIds = (await readDirSubdirs(OBLIGATIONS_DIRNAME)).sort();
   }
 
   const results: QueryObligationResult[] = [];
@@ -598,12 +598,12 @@ async function handleOrphanResolve(args: z.infer<typeof ResolveNotificationArgs>
   return {
     ok: false,
     orphan: true,
-    message: `Encore: this notification has already been resolved (the pending-clear ticket is gone). Bell entry cleared.`,
-    error: "pending-clear ticket not found",
+    message: `Encore: this notification has already been resolved (the ticket is gone). Bell entry cleared.`,
+    error: "ticket not found",
   };
 }
 
-async function seedChatForTicket(ticket: PendingClearTicket, ticketRel: string, pendingId: string): Promise<string> {
+async function seedChatForTicket(ticket: Ticket, ticketRel: string, pendingId: string): Promise<string> {
   const chatSessionId = makeUuid();
   const result = await startChat({
     message: ticket.seedPrompt,
@@ -625,15 +625,15 @@ async function seedChatForTicket(ticket: PendingClearTicket, ticketRel: string, 
 }
 
 async function handleResolveNotification(args: z.infer<typeof ResolveNotificationArgs>): Promise<EncoreDispatchResult> {
-  const ticketRel = pendingClearPath(args.pendingId);
+  const ticketRel = ticketPath(args.pendingId);
   const raw = await readTextOrNull(ticketRel);
   if (raw === null) return handleOrphanResolve(args);
 
-  let ticket: PendingClearTicket;
+  let ticket: Ticket;
   try {
-    ticket = JSON.parse(raw) as PendingClearTicket;
+    ticket = JSON.parse(raw) as Ticket;
   } catch (err) {
-    throw new EncoreError(500, `pending-clear ticket ${JSON.stringify(args.pendingId)} is unparseable`, {
+    throw new EncoreError(500, `ticket ${JSON.stringify(args.pendingId)} is unparseable`, {
       error: err instanceof Error ? err.message : String(err),
     });
   }

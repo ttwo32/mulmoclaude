@@ -18,7 +18,7 @@
 // Notification clearing is NOT done here — that's the LLM's job
 // once it's talking to the user in the resulting chat (the LLM
 // calls markStepDone / markTargetSkipped with the pendingId; the
-// MCP handler reads the pending-clear ticket and calls
+// MCP handler reads the ticket and calls
 // notifier.clear). The only clear-here case is an orphan ticket
 // (already swept) — the server clears the bell entry by
 // notificationId and returns { orphan: true }, and we render the
@@ -42,7 +42,7 @@ const pendingId = computed<string | null>(() => {
 // The host's NotificationBell.vue splices `notificationId=<entryId>`
 // onto every navigateTarget at click time (see appendNotificationId
 // in src/components/NotificationBell.vue). Reading it lets the
-// server clear orphan bell entries whose pending-clear ticket was
+// server clear orphan bell entries whose ticket was
 // already swept.
 const notificationId = computed<string | null>(() => {
   if (typeof window === "undefined") return null;
