@@ -68,6 +68,8 @@ const frMessages = {
     clearAll: "Tout effacer",
     dismiss: "Ignorer",
     cancel: "Annuler",
+    showMore: "Voir plus ({count})",
+    showLess: "Réduire",
   },
   pluginDiagnostics: {
     title: "Problème de configuration du plugin",

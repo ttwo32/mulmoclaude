@@ -68,6 +68,8 @@ const ptBRMessages = {
     clearAll: "Limpar",
     dismiss: "Dispensar",
     cancel: "Cancelar",
+    showMore: "Mostrar mais ({count})",
+    showLess: "Mostrar menos",
   },
   pluginDiagnostics: {
     title: "Problema de configuração do plugin",

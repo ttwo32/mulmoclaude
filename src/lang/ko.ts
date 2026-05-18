@@ -75,6 +75,8 @@ const koMessages = {
     clearAll: "모두 지우기",
     dismiss: "닫기",
     cancel: "취소",
+    showMore: "더 보기 ({count})",
+    showLess: "접기",
   },
   pluginDiagnostics: {
     title: "플러그인 구성 문제",

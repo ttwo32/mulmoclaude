@@ -73,6 +73,8 @@ const esMessages = {
     clearAll: "Borrar",
     dismiss: "Descartar",
     cancel: "Cancelar",
+    showMore: "Mostrar más ({count})",
+    showLess: "Mostrar menos",
   },
   pluginDiagnostics: {
     title: "Problema de configuración del plugin",

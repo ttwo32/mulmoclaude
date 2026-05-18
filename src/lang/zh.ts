@@ -73,6 +73,8 @@ const zhMessages = {
     clearAll: "全部清除",
     dismiss: "关闭",
     cancel: "取消",
+    showMore: "显示更多 ({count})",
+    showLess: "收起",
   },
   pluginDiagnostics: {
     title: "插件配置问题",

@@ -247,3 +247,96 @@ test.describe("notification bell — dismiss", () => {
     await expect(page.getByTestId("notification-badge")).toHaveCount(0);
   });
 });
+
+interface NotifierHistoryFixture extends NotifierEntryFixture {
+  terminalType: "cleared" | "cancelled";
+  terminalAt: string;
+}
+
+function buildHistoryEntry(index: number): NotifierHistoryFixture {
+  const base = buildEntry(`notif-hist-${index}`, `History entry ${index}`, "");
+  return { ...base, navigateTarget: undefined, terminalType: "cleared", terminalAt: `2026-04-25T07:00:0${index}.000Z` };
+}
+
+async function primeNotifierHistory(page: Page, history: readonly NotifierHistoryFixture[]): Promise<void> {
+  await page.route(
+    (url) => url.pathname === "/api/notifier",
+    (route) => {
+      const body = route.request().postData();
+      const action = parseAction(body);
+      if (action === "listHistory") return route.fulfill({ json: { history } });
+      if (action === "clear" || action === "cancel") return route.fulfill({ json: { ok: true } });
+      return route.fulfill({ json: { entries: [] } });
+    },
+  );
+}
+
+test.describe("notification bell — history more / less toggle", () => {
+  const HISTORY_INITIAL_VISIBLE = 5;
+
+  test("hides entries beyond the initial cap behind a toggle", async ({ page }) => {
+    const history = Array.from({ length: 8 }, (_, index) => buildHistoryEntry(index));
+    await mockAllApis(page, { sessions: [] });
+    await primeNotifierHistory(page, history);
+
+    await page.goto("/todos");
+    await page.getByTestId("notification-bell").click();
+    await expect(page.getByTestId("notification-panel")).toBeVisible();
+
+    // First 5 entries render; the rest are hidden until expanded.
+    for (let index = 0; index < HISTORY_INITIAL_VISIBLE; index += 1) {
+      await expect(page.getByTestId(`notification-history-${history[index].id}`)).toBeVisible();
+    }
+    for (let index = HISTORY_INITIAL_VISIBLE; index < history.length; index += 1) {
+      await expect(page.getByTestId(`notification-history-${history[index].id}`)).toHaveCount(0);
+    }
+
+    const toggle = page.getByTestId("notification-history-toggle");
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toHaveText(/3/);
+
+    await toggle.click();
+    for (const entry of history) {
+      await expect(page.getByTestId(`notification-history-${entry.id}`)).toBeVisible();
+    }
+    await expect(toggle).not.toHaveText(/3/);
+
+    await toggle.click();
+    for (let index = HISTORY_INITIAL_VISIBLE; index < history.length; index += 1) {
+      await expect(page.getByTestId(`notification-history-${history[index].id}`)).toHaveCount(0);
+    }
+  });
+
+  test("collapses again after closing and reopening the popup", async ({ page }) => {
+    const history = Array.from({ length: 8 }, (_, index) => buildHistoryEntry(index));
+    await mockAllApis(page, { sessions: [] });
+    await primeNotifierHistory(page, history);
+
+    await page.goto("/todos");
+    await page.getByTestId("notification-bell").click();
+    await page.getByTestId("notification-history-toggle").click();
+    // Confirm we're expanded before the close-reopen cycle.
+    await expect(page.getByTestId(`notification-history-${history[7].id}`)).toBeVisible();
+
+    // Click outside the bell to close (App-level outside-click handler).
+    await page.mouse.click(10, 10);
+    await expect(page.getByTestId("notification-panel")).toHaveCount(0);
+
+    await page.getByTestId("notification-bell").click();
+    await expect(page.getByTestId("notification-panel")).toBeVisible();
+    // The hidden tail entry should be gone again — state reset on close.
+    await expect(page.getByTestId(`notification-history-${history[7].id}`)).toHaveCount(0);
+    await expect(page.getByTestId("notification-history-toggle")).toBeVisible();
+  });
+
+  test("toggle is absent when history is at or under the initial cap", async ({ page }) => {
+    const history = Array.from({ length: HISTORY_INITIAL_VISIBLE }, (_, index) => buildHistoryEntry(index));
+    await mockAllApis(page, { sessions: [] });
+    await primeNotifierHistory(page, history);
+
+    await page.goto("/todos");
+    await page.getByTestId("notification-bell").click();
+    await expect(page.getByTestId(`notification-history-${history[0].id}`)).toBeVisible();
+    await expect(page.getByTestId("notification-history-toggle")).toHaveCount(0);
+  });
+});

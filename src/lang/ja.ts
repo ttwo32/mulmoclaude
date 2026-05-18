@@ -75,6 +75,8 @@ const jaMessages = {
     clearAll: "すべてクリア",
     dismiss: "閉じる",
     cancel: "キャンセル",
+    showMore: "もっと見る ({count})",
+    showLess: "閉じる",
   },
   pluginDiagnostics: {
     title: "プラグイン設定の問題",

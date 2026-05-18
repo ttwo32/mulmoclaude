@@ -90,6 +90,8 @@ const enMessages = {
     clearAll: "Clear",
     dismiss: "Dismiss",
     cancel: "Cancel",
+    showMore: "Show more ({count})",
+    showLess: "Show less",
   },
   pluginDiagnostics: {
     title: "Plugin configuration issue",

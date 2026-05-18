@@ -42,6 +42,20 @@ const fyiCount = computed(() => entries.value.filter((entry) => (entry.lifecycle
 
 const badgeText = computed(() => (badgeCount.value > 99 ? "99+" : String(badgeCount.value)));
 
+// History collapses to N rows on open; everything beyond hides behind
+// the "Show more" toggle. Keeps the panel scannable when the 50-item
+// HISTORY_CAP fills with repetitive entries (e.g. recurring
+// "docker not running" notifications burying active items).
+const HISTORY_INITIAL_VISIBLE = 5;
+const historyExpanded = ref(false);
+const displayedHistory = computed(() => (historyExpanded.value ? visibleHistory.value : visibleHistory.value.slice(0, HISTORY_INITIAL_VISIBLE)));
+const hiddenHistoryCount = computed(() => Math.max(0, visibleHistory.value.length - HISTORY_INITIAL_VISIBLE));
+const canToggleHistory = computed(() => visibleHistory.value.length > HISTORY_INITIAL_VISIBLE);
+
+function toggleHistoryExpanded(): void {
+  historyExpanded.value = !historyExpanded.value;
+}
+
 // Hover state on the bulk-clear button — every fyi row's hover-check
 // icon renders while it's true, mirroring the debug popup's "this is
 // what's about to get swept" affordance.
@@ -71,6 +85,13 @@ watch(
     if (shouldClose && open.value) close();
   },
 );
+
+// Reset history expansion when the popup closes so the next open
+// starts from the collapsed 5-row view. Without this, an expanded
+// state persists across closes and the scroll position jumps.
+watch(open, (nowOpen: boolean) => {
+  if (!nowOpen) historyExpanded.value = false;
+});
 
 // ── Legacy pluginData typing ────────────────────────────────
 //
@@ -346,7 +367,7 @@ async function clearAllFyi(): Promise<void> {
         </p>
         <ul v-else class="divide-y divide-gray-100">
           <li
-            v-for="entry in visibleHistory"
+            v-for="entry in displayedHistory"
             :key="`${entry.id}-${entry.terminalAt}`"
             :data-testid="`notification-history-${entry.id}`"
             :role="entry.navigateTarget ? 'button' : undefined"
@@ -378,6 +399,15 @@ async function clearAllFyi(): Promise<void> {
             </div>
           </li>
         </ul>
+        <button
+          v-if="canToggleHistory"
+          type="button"
+          class="w-full px-3 py-1.5 text-gray-500 font-medium hover:text-gray-700 hover:bg-gray-50 border-t border-gray-100"
+          data-testid="notification-history-toggle"
+          @click="toggleHistoryExpanded"
+        >
+          {{ historyExpanded ? t("notificationBell.showLess") : t("notificationBell.showMore", { count: hiddenHistoryCount }) }}
+        </button>
       </div>
     </div>
   </div>

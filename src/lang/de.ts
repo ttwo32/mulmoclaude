@@ -68,6 +68,8 @@ const deMessages = {
     clearAll: "Alle löschen",
     dismiss: "Verwerfen",
     cancel: "Abbrechen",
+    showMore: "Mehr anzeigen ({count})",
+    showLess: "Weniger anzeigen",
   },
   pluginDiagnostics: {
     title: "Plugin-Konfigurationsproblem",
