@@ -916,8 +916,9 @@ const frMessages = {
   },
   todoKanban: {
     rename: "Renommer",
-    alreadyDoneColumn: "Déjà la colonne des terminées",
     markAsDoneColumn: "Définir comme colonne des terminées",
+    removeAllItems: "Supprimer tous les éléments",
+    removeAllItemsConfirm: "Supprimer les {count} éléments de « {column} » ? Cette action est irréversible.",
     deleteColumn: "Supprimer la colonne",
     columnActions: "Actions de colonne",
     addCard: "+ Ajouter une carte",

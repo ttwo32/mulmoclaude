@@ -907,8 +907,9 @@ const enMessages = {
   },
   todoKanban: {
     rename: "Rename",
-    alreadyDoneColumn: "Already done column",
     markAsDoneColumn: "Mark as done column",
+    removeAllItems: "Remove all items",
+    removeAllItemsConfirm: 'Remove all {count} item(s) in "{column}"? This cannot be undone.',
     deleteColumn: "Delete column",
     columnActions: "Column actions",
     addCard: "+ Add card",

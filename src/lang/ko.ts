@@ -908,8 +908,9 @@ const koMessages = {
   },
   todoKanban: {
     rename: "이름 바꾸기",
-    alreadyDoneColumn: "이미 완료 칼럼",
     markAsDoneColumn: "완료 칼럼으로 설정",
+    removeAllItems: "모든 항목 삭제",
+    removeAllItemsConfirm: '"{column}"의 모든 항목 {count}개를 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.',
     deleteColumn: "칼럼 삭제",
     columnActions: "칼럼 작업",
     addCard: "+ 카드 추가",
