@@ -45,8 +45,10 @@ const SHIM_READY_POLL_MS = ONE_SECOND_MS / 4;
 // non-shim `spawn(command, args)` path. Wrapping every token in single
 // quotes (and `'\''`-escaping embedded single quotes) neutralises ALL
 // shell metacharacters, which matters because this path runs
-// UNSANDBOXED on the host. (POSIX sh assumed: the Docker-shim path
-// only runs where the host can spawn Docker.)
+// UNSANDBOXED on the host. This is POSIX-shell-specific; on Windows
+// the default shell is cmd.exe where single-quote semantics differ,
+// so `startStdioHttpShim` refuses to run there (safe default: drop)
+// rather than risk a misparse on a sandbox-escaping path.
 function shellQuote(token: string): string {
   const escaped = token.replace(/'/g, "'\\''");
   return `'${escaped}'`;
@@ -112,6 +114,15 @@ function drainToDebug(child: ChildProcess, serverId: string): void {
  *  cwd so relative args / config-file discovery match the normal
  *  (non-Docker) stdio execution semantics. */
 export async function startStdioHttpShim(serverId: string, spec: McpStdioSpec, workspacePath: string): Promise<ShimHandle | null> {
+  // Windows host: the shell escaping below is POSIX-only and
+  // supergateway runs `--stdio` via cmd.exe here, so refuse rather
+  // than risk a misparse on an UNSANDBOXED path. Falls through to the
+  // safe default (server dropped + logged by the caller).
+  if (process.platform === "win32") {
+    log.warn("mcp-shim", "host-exec stdio shim is unsupported on Windows — dropping server", { serverId });
+    return null;
+  }
+
   const port = await findAvailablePort(SHIM_PORT_RANGE_START);
   if (port === null) {
     log.warn("mcp-shim", "no free port for stdio→http shim — dropping server", { serverId });
