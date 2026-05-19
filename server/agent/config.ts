@@ -408,13 +408,21 @@ export interface McpConfigPaths {
   argPath: string;
 }
 
+// `sessionId` reaches a filesystem path here. Strip anything that
+// isn't a plain id char so a crafted value can't inject `../` or a
+// path separator and escape the session dir (CodeQL js/path-injection).
+function safeSessionSegment(sessionId: string): string {
+  return sessionId.replace(/[^A-Za-z0-9_-]/g, "_");
+}
+
 export function resolveMcpConfigPaths(opts: { workspacePath: string; sessionId: string; useDocker: boolean }): McpConfigPaths {
+  const sid = safeSessionSegment(opts.sessionId);
   if (opts.useDocker) {
-    const hostPath = join(opts.workspacePath, ".mulmoclaude", `mcp-${opts.sessionId}.json`);
-    const argPath = `${CONTAINER_WORKSPACE_PATH}/.mulmoclaude/mcp-${opts.sessionId}.json`;
+    const hostPath = join(opts.workspacePath, ".mulmoclaude", `mcp-${sid}.json`);
+    const argPath = `${CONTAINER_WORKSPACE_PATH}/.mulmoclaude/mcp-${sid}.json`;
     return { hostPath, argPath };
   }
-  const hostPath = join(tmpdir(), `mulmoclaude-mcp-${opts.sessionId}.json`);
+  const hostPath = join(tmpdir(), `mulmoclaude-mcp-${sid}.json`);
   return { hostPath, argPath: hostPath };
 }
 

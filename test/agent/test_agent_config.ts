@@ -194,6 +194,19 @@ describe("resolveMcpConfigPaths", () => {
     });
     assert.notEqual(paths.hostPath, paths.argPath);
   });
+
+  it("sanitizes path-injecting sessionId (CodeQL js/path-injection)", async () => {
+    const evil = "../../etc/pwn";
+    for (const useDocker of [true, false]) {
+      const paths = resolveMcpConfigPaths({ workspacePath: "/ws", sessionId: evil, useDocker });
+      // No traversal / separators survive into either derived path.
+      for (const derivedPath of [paths.hostPath, paths.argPath]) {
+        assert.ok(!derivedPath.includes(".."), `traversal leaked into ${derivedPath}`);
+        assert.ok(!derivedPath.includes(`mcp-${evil}`), `raw sessionId leaked into ${derivedPath}`);
+      }
+      assert.ok(paths.hostPath.includes("etc_pwn"), "expected separators replaced in segment");
+    }
+  });
 });
 
 describe("buildDockerSpawnArgs", () => {
