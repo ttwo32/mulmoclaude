@@ -10,7 +10,9 @@
 
 > **[How AI-Native Applications Should Be Built](MANIFEST.md)** — the architecture, UX, and protocol thesis behind MulmoClaude.
 
-MulmoClaude is an open-source AI-native application that runs on your machine. You chat with Claude; Claude responds in markdown, charts, forms, wikis, spreadsheets, 3D scenes — whatever the content needs. Plugins (built-in or third-party npm packages) extend what Claude can do. All data lives as plain files in your workspace.
+MulmoClaude is an open-source, AI-native application platform that runs locally on your machine. Instead of siloed apps, capabilities are built as plugins within a single registry. Applications running on it today include a full accounting system (real server-side bookkeeping logic), the Encore obligation engine, a personal wiki, and an SEC-filings reader (Edgar). Claude acts as a universal controller that composes across these plugins.
+
+You interact in natural language, and Claude summons the right GUI for the task — replying in markdown, charts, forms, wikis, spreadsheets, or 3D scenes. All data lives as plain files in your workspace.
 
 ## Quick Start
 
