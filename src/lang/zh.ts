@@ -899,8 +899,9 @@ const zhMessages = {
   },
   todoKanban: {
     rename: "重命名",
-    alreadyDoneColumn: "已经是完成列",
     markAsDoneColumn: "设为完成列",
+    removeAllItems: "删除所有项目",
+    removeAllItemsConfirm: "确定要删除“{column}”中的所有 {count} 个项目吗？此操作无法撤销。",
     deleteColumn: "删除列",
     columnActions: "列操作",
     addCard: "+ 添加卡片",

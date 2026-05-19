@@ -925,8 +925,9 @@ const deMessages = {
   },
   todoKanban: {
     rename: "Umbenennen",
-    alreadyDoneColumn: 'Bereits Spalte „Erledigt"',
-    markAsDoneColumn: 'Als Spalte „Erledigt" markieren',
+    markAsDoneColumn: "Als Spalte „Erledigt“ markieren",
+    removeAllItems: "Alle Elemente entfernen",
+    removeAllItemsConfirm: "Alle {count} Elemente in „{column}“ entfernen? Diese Aktion kann nicht rückgängig gemacht werden.",
     deleteColumn: "Spalte löschen",
     columnActions: "Spaltenaktionen",
     addCard: "+ Karte hinzufügen",

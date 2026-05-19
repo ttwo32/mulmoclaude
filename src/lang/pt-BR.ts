@@ -912,8 +912,9 @@ const ptBRMessages = {
   },
   todoKanban: {
     rename: "Renomear",
-    alreadyDoneColumn: "Já é a coluna de concluídas",
     markAsDoneColumn: "Definir como coluna de concluídas",
+    removeAllItems: "Remover todos os itens",
+    removeAllItemsConfirm: 'Remover todos os {count} itens em "{column}"? Esta ação não pode ser desfeita.',
     deleteColumn: "Excluir coluna",
     columnActions: "Ações da coluna",
     addCard: "+ Adicionar cartão",

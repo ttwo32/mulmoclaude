@@ -907,8 +907,9 @@ const jaMessages = {
   },
   todoKanban: {
     rename: "名前を変更",
-    alreadyDoneColumn: "完了列",
     markAsDoneColumn: "完了列に指定",
+    removeAllItems: "すべての項目を削除",
+    removeAllItemsConfirm: "「{column}」のすべての項目（{count}件）を削除しますか？この操作は取り消せません。",
     deleteColumn: "列を削除",
     columnActions: "列のアクション",
     addCard: "+ カードを追加",

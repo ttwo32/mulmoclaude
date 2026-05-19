@@ -920,8 +920,9 @@ const esMessages = {
   },
   todoKanban: {
     rename: "Cambiar nombre",
-    alreadyDoneColumn: "Columna ya marcada como hecha",
     markAsDoneColumn: "Marcar como columna de hechas",
+    removeAllItems: "Eliminar todos los elementos",
+    removeAllItemsConfirm: '¿Eliminar los {count} elementos de "{column}"? Esta acción no se puede deshacer.',
     deleteColumn: "Eliminar columna",
     columnActions: "Acciones de columna",
     addCard: "+ Añadir tarjeta",
