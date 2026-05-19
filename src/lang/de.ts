@@ -326,6 +326,9 @@ const deMessages = {
     parseError: "Parse-Fehler",
     editJson: "JSON bearbeiten",
     jsonEditorLabel: "JSON-Editor",
+    invalidJson: "Ungültiges JSON",
+    undo: "Rückgängig",
+    redo: "Wiederholen",
   },
   filesView: {
     chatPlaceholder: "Frage zu dieser Datei stellen…",
