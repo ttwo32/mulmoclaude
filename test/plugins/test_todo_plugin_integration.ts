@@ -638,6 +638,34 @@ describe("Todo plugin — priority-alert notifications", () => {
     assert.equal(after[0].title, beforeEntry.title, "idempotent reconcile must not rewrite the title");
   });
 
+  it("removing the note from an alerting todo clears the bell's body", async (ctx) => {
+    if (!existsSync(PLUGIN_DIST_INDEX)) {
+      ctx.skip("dist not built");
+      return;
+    }
+    // Regression for the codex/sourcery/github-actions review findings:
+    // a previous build skipped the body field from `notifier.update`
+    // when desiredBody became undefined, but still wrote
+    // `body: undefined` to `urgent-tickets.json`. The bell kept the
+    // old note text forever while the ticket lied about being in
+    // sync. `buildBody` now returns "" rather than undefined so the
+    // patch always carries a concrete value through.
+    const plugin = await load();
+    const created = (await plugin.execute({}, { kind: "itemCreate", text: "Pay tax", note: "draft K-1 first", priority: "urgent" })) as TodoResult;
+    const itemId = created.data?.items?.[0]?.id;
+    assert.ok(itemId);
+    const [seed] = await notifierEngine.listFor(PKG_NAME);
+    assert.ok(seed);
+    assert.equal(seed.body, "draft K-1 first", "initial publish should carry the note as body");
+
+    // Remove the note. itemPatch treats `note: ""` / `null` as a
+    // clear (see applyNotePatch in handlers/items.ts).
+    await plugin.execute({}, { kind: "itemPatch", id: itemId, note: null });
+    const [after] = await notifierEngine.listFor(PKG_NAME);
+    assert.equal(after.id, seed.id, "in-place update — id is stable");
+    assert.equal(after.body, "", "bell's body must drop to empty, not stay as the old note");
+  });
+
   it("checking (completed=true via itemPatch) clears the entry", async (ctx) => {
     if (!existsSync(PLUGIN_DIST_INDEX)) {
       ctx.skip("dist not built");

@@ -118,19 +118,32 @@ function isTicket(value: unknown): value is Ticket {
   return true;
 }
 
-async function loadTickets(files: FileOps): Promise<TicketsFile> {
+async function loadTickets(files: FileOps, log?: ReconcileLog): Promise<TicketsFile> {
   if (!(await files.exists(TICKETS_FILE))) return { tickets: {} };
   let raw: unknown;
   try {
     raw = JSON.parse(await files.read(TICKETS_FILE));
-  } catch {
+  } catch (err) {
+    // Treat malformed JSON as "no tickets" rather than crashing the
+    // reconcile, but log a warning so this is diagnosable from logs
+    // if it ever happens (e.g. partial write from a crash, manual
+    // hand-edit that broke the syntax).
+    log?.warn("priority reconcile: tickets file unparseable; treating as empty", { file: TICKETS_FILE, error: String(err) });
     return { tickets: {} };
   }
-  if (!raw || typeof raw !== "object") return { tickets: {} };
-  const rawTickets = (raw as { tickets?: unknown }).tickets;
-  if (!rawTickets || typeof rawTickets !== "object") return { tickets: {} };
+  if (
+    !raw ||
+    typeof raw !== "object" ||
+    !("tickets" in raw) ||
+    typeof (raw as { tickets?: unknown }).tickets !== "object" ||
+    (raw as { tickets?: unknown }).tickets === null
+  ) {
+    log?.warn("priority reconcile: tickets file has unexpected shape; treating as empty", { file: TICKETS_FILE });
+    return { tickets: {} };
+  }
+  const rawTickets = (raw as { tickets: Record<string, unknown> }).tickets;
   const out: Record<string, Ticket> = {};
-  for (const [key, value] of Object.entries(rawTickets as Record<string, unknown>)) {
+  for (const [key, value] of Object.entries(rawTickets)) {
     if (!isTicket(value)) continue;
     if (value.todoId !== key) continue;
     out[key] = value;
@@ -165,11 +178,18 @@ function buildTitle(item: TodoItem): string {
   return truncate(item.text, TITLE_MAX);
 }
 
-function buildBody(item: TodoItem): string | undefined {
+// Returns the empty string (NOT undefined) when there is no note /
+// dueDate. The empty-string contract is what lets "removed body"
+// flow through the notifier's patch API: the engine treats an
+// absent patch field as "leave alone", so we need a concrete value
+// to push. Empty body renders identically to no body in the bell
+// UI's v-if templates, so this is a presentation-equivalent
+// representation we can compare and persist without ambiguity.
+function buildBody(item: TodoItem): string {
   const note = item.note?.trim();
   if (note) return note;
   if (item.dueDate) return `Due ${item.dueDate}`;
-  return undefined;
+  return "";
 }
 
 // ── Reconcile (the IO-bound entry point) ──────────────────────────
@@ -178,11 +198,17 @@ interface ReconcileLog {
   warn: (msg: string, data?: object) => void;
 }
 
-async function safeClear(notifier: PriorityNotifierApi, notificationId: string, todoId: string, log?: ReconcileLog): Promise<void> {
+async function safeClear(notifier: PriorityNotifierApi, notificationId: string, todoId: string, log?: ReconcileLog): Promise<boolean> {
   try {
     await notifier.clear(notificationId);
+    return true;
   } catch (err) {
+    // Caller MUST consult the return value before destructive ticket
+    // cleanup — swallowing a clear failure and dropping the ticket
+    // would orphan the bell forever (no ticket means the next
+    // reconcile has nothing to retry).
     log?.warn("priority reconcile: clear failed", { notificationId, todoId, error: String(err) });
+    return false;
   }
 }
 
@@ -197,22 +223,27 @@ async function safeUpdate(
   },
   todoId: string,
   log?: ReconcileLog,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await notifier.update(notificationId, patch);
+    return true;
   } catch (err) {
+    // Caller MUST consult the return value — committing a ticket
+    // rewrite after a failed update would erase the drift signal,
+    // so the next reconcile would think the bell is in sync while
+    // it's actually still stale.
     log?.warn("priority reconcile: update failed", { notificationId, todoId, error: String(err) });
+    return false;
   }
 }
 
 async function safePublish(notifier: PriorityNotifierApi, item: TodoItem, priority: NotifiablePriority, log?: ReconcileLog): Promise<string | null> {
-  const body = buildBody(item);
   try {
     const { id } = await notifier.publish({
       severity: severityFor(priority),
       lifecycle: "action",
       title: buildTitle(item),
-      ...(body !== undefined ? { body } : {}),
+      body: buildBody(item),
       navigateTarget: NAVIGATE_TARGET,
       pluginData: { kind: PLUGIN_DATA_KIND, todoId: item.id, priority },
     });
@@ -236,20 +267,24 @@ async function safePublish(notifier: PriorityNotifierApi, item: TodoItem, priori
  *  or update; an item rename flows through `notifier.update` rather
  *  than clear-then-publish, preserving the notificationId. */
 export async function reconcilePriorityNotifications(items: TodoItem[], notifier: PriorityNotifierApi, files: FileOps, log?: ReconcileLog): Promise<void> {
-  const ticketsFile = await loadTickets(files);
+  const ticketsFile = await loadTickets(files, log);
   const itemsById = new Map(items.map((item) => [item.id, item]));
   let dirty = false;
 
   // Phase 1: walk existing tickets — clear stale, update in place
-  // on drift, leave alone on exact match.
+  // on drift, leave alone on exact match. Each notifier op is gated
+  // on success: a failed clear/update keeps the ticket as-is so the
+  // next reconcile retries from the same drift signal.
   for (const [todoId, ticket] of Object.entries(ticketsFile.tickets)) {
     const item = itemsById.get(todoId);
     const stillNotifiable = item !== undefined && !item.completed && isNotifiablePriority(item.priority);
 
     if (!stillNotifiable) {
-      await safeClear(notifier, ticket.notificationId, todoId, log);
-      delete ticketsFile.tickets[todoId];
-      dirty = true;
+      const cleared = await safeClear(notifier, ticket.notificationId, todoId, log);
+      if (cleared) {
+        delete ticketsFile.tickets[todoId];
+        dirty = true;
+      }
       continue;
     }
 
@@ -261,34 +296,29 @@ export async function reconcilePriorityNotifications(items: TodoItem[], notifier
     const titleDrift = ticket.title !== desiredTitle;
     const bodyDrift = ticket.body !== desiredBody;
 
-    if (priorityDrift || titleDrift || bodyDrift) {
-      // In-place update: same notificationId, no flicker, no
-      // history record. The bell's content is rewritten to match
-      // the item's current state.
-      await safeUpdate(
-        notifier,
-        ticket.notificationId,
-        {
-          ...(priorityDrift ? { severity: severityFor(currentPriority) } : {}),
-          ...(titleDrift ? { title: desiredTitle } : {}),
-          // body drift includes "became undefined" — the engine's
-          // update API doesn't honour explicit-undefined-clears
-          // today, so when the desired body is absent we just
-          // leave the old body on the bell rather than try to
-          // un-set it. The on-disk ticket tracks the latest desired
-          // body so re-runs don't re-fire this branch.
-          ...(bodyDrift && desiredBody !== undefined ? { body: desiredBody } : {}),
-          ...(priorityDrift ? { pluginData: { kind: PLUGIN_DATA_KIND, todoId, priority: currentPriority } } : {}),
-        },
-        todoId,
-        log,
-      );
+    if (!priorityDrift && !titleDrift && !bodyDrift) continue;
+
+    // In-place update: same notificationId, no flicker, no history
+    // record. Body is sent on every drift (including the "note
+    // removed" case): `buildBody` returns "" rather than undefined
+    // so this branch can always push a concrete value through the
+    // notifier's patch API.
+    const updated = await safeUpdate(
+      notifier,
+      ticket.notificationId,
+      {
+        ...(priorityDrift ? { severity: severityFor(currentPriority) } : {}),
+        ...(titleDrift ? { title: desiredTitle } : {}),
+        ...(bodyDrift ? { body: desiredBody } : {}),
+        ...(priorityDrift ? { pluginData: { kind: PLUGIN_DATA_KIND, todoId, priority: currentPriority } } : {}),
+      },
+      todoId,
+      log,
+    );
+    if (updated) {
       ticketsFile.tickets[todoId] = { todoId, notificationId: ticket.notificationId, priority: currentPriority, title: desiredTitle, body: desiredBody };
       dirty = true;
-      continue;
     }
-
-    // Exact match: no work to do.
   }
 
   // Phase 2: publish bells for notifiable items that don't have a
