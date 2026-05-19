@@ -56,14 +56,33 @@ export function buildStdioCommand(spec: McpStdioSpec): string {
   return [spec.command, ...(spec.args ?? [])].map(shellQuote).join(" ");
 }
 
-async function waitUntilListening(child: ChildProcess, port: number): Promise<boolean> {
+const SHIM_PROBE_TIMEOUT_MS = 2 * ONE_SECOND_MS;
+
+async function probeOnce(port: number): Promise<boolean> {
+  // Per-request timeout: a half-open TCP connection (port accepts but
+  // never responds) would otherwise hang past the overall deadline.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SHIM_PROBE_TIMEOUT_MS);
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/sse`, { method: "GET", signal: controller.signal });
+    // 405 / 400 = server is up but rejects a bare GET on the SSE
+    // endpoint — that still proves the gateway is listening.
+    return res.ok || res.status === 405 || res.status === 400;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function waitUntilListening(child: ChildProcess, port: number, hasSpawnFailed: () => boolean): Promise<boolean> {
   const deadline = Date.now() + SHIM_READY_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    if (child.exitCode !== null || child.signalCode !== null) return false;
-    const probe = await fetch(`http://127.0.0.1:${port}/sse`, { method: "GET" })
-      .then((res) => res.ok || res.status === 405 || res.status === 400)
-      .catch(() => false);
-    if (probe) return true;
+    // Bail immediately on a dead/failed child instead of burning the
+    // full timeout: spawn 'error' can fire after the caller's initial
+    // check, so re-test the flag (and exit/signal) every iteration.
+    if (hasSpawnFailed() || child.exitCode !== null || child.signalCode !== null) return false;
+    if (await probeOnce(port)) return true;
     await new Promise((resolve) => setTimeout(resolve, SHIM_READY_POLL_MS));
   }
   return false;
@@ -122,7 +141,7 @@ export async function startStdioHttpShim(serverId: string, spec: McpStdioSpec, w
     if (!child.killed) child.kill("SIGTERM");
   };
 
-  const ready = !spawnFailed && (await waitUntilListening(child, port));
+  const ready = !spawnFailed && (await waitUntilListening(child, port, () => spawnFailed));
   if (!ready) {
     close();
     log.warn("mcp-shim", "stdio→http shim did not become ready — dropping server", { serverId, port });
