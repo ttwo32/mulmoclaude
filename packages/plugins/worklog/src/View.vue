@@ -40,14 +40,45 @@
     <div class="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
       <!-- TAB 1: WEEKLY SUMMARY ROLLUP GRID -->
       <div v-if="activeTab === 'rollup'" class="flex flex-col gap-6 animate-fadeIn">
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between flex-wrap gap-3">
           <h2 class="text-sm font-bold text-gray-900 flex items-center gap-1.5">
             <span class="material-icons text-base text-gray-500">analytics</span>
             <span>{{ t.weeklyRollup }} Summary</span>
           </h2>
-          <span class="text-xs text-gray-500 font-medium bg-gray-50 border border-gray-100 px-2 py-0.5 rounded-full">
-            {{ formatWeekRange() }}
-          </span>
+          
+          <div class="flex items-center gap-1.5">
+            <button
+              type="button"
+              @click="weekOffset--"
+              class="h-7 w-7 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50/40 active:scale-95 transition-all duration-150"
+              title="Previous Week"
+            >
+              <span class="material-icons text-base leading-none">chevron_left</span>
+            </button>
+            
+            <button
+              v-if="weekOffset !== 0"
+              type="button"
+              @click="weekOffset = 0"
+              class="h-7 px-2.5 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-[10px] font-bold text-gray-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50/40 active:scale-95 transition-all duration-150 uppercase tracking-wider"
+              title="Current Week"
+            >
+              This Week
+            </button>
+
+            <span class="text-xs text-gray-600 font-semibold bg-gray-50 border border-gray-200/60 px-3 py-1 rounded-lg shadow-sm">
+              {{ formatWeekRange() }}
+            </span>
+
+            <button
+              type="button"
+              @click="weekOffset++"
+              class="h-7 w-7 flex items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50/40 active:scale-95 transition-all duration-150"
+              title="Next Week"
+            >
+              <span class="material-icons text-base leading-none">chevron_right</span>
+            </button>
+          </div>
         </div>
 
         <!-- Spreadsheet rollup grid -->
@@ -380,6 +411,7 @@ const t = useT();
 
 // Tabs: 'rollup' (Weekly summary) or 'review' (Candidate board)
 const activeTab = ref("rollup");
+const weekOffset = ref(0);
 
 const committed = ref<WorklogEntry[]>(props.selectedResult.data?.committed ?? []);
 const candidates = ref<CandidateEntry[]>(props.selectedResult.data?.candidates ?? []);
@@ -437,6 +469,7 @@ watch(
   () => {
     committed.value = props.selectedResult.data?.committed ?? [];
     candidates.value = props.selectedResult.data?.candidates ?? [];
+    weekOffset.value = 0;
     void refresh();
   },
 );
@@ -452,7 +485,7 @@ function getStartOfWeek(offsetWeeks = 0): Date {
 }
 
 const weekDays = computed(() => {
-  const base = getStartOfWeek(0);
+  const base = getStartOfWeek(weekOffset.value);
   const days: { dateStr: string; label: string }[] = [];
   const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   for (let i = 0; i < 7; i++) {
@@ -470,8 +503,14 @@ function formatDateLabel(dateStr: string): string {
   return dateStr.substring(5).replace("-", "/");
 }
 
+// Watch week offset to trigger fetch or local calculations if needed
+// Note: We also refresh the whole dataset from store whenever they navigate
+watch(weekOffset, () => {
+  void refresh();
+});
+
 function formatWeekRange(): string {
-  const start = getStartOfWeek(0);
+  const start = getStartOfWeek(weekOffset.value);
   const end = new Date(start.getTime() + 6 * 24 * 3600 * 1000);
   return `${start.toLocaleDateString(undefined, { month: "short", day: "numeric" })} - ${end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
 }
@@ -487,8 +526,8 @@ function formatTimeRange(startIso: string, endIso: string): string {
 
 // Group entries in current week
 const thisWeekCommitted = computed(() => {
-  const start = getStartOfWeek(0).toISOString().substring(0, 10);
-  const end = new Date(getStartOfWeek(0).getTime() + 7 * 24 * 3600 * 1000).toISOString().substring(0, 10);
+  const start = getStartOfWeek(weekOffset.value).toISOString().substring(0, 10);
+  const end = new Date(getStartOfWeek(weekOffset.value).getTime() + 7 * 24 * 3600 * 1000).toISOString().substring(0, 10);
   return committed.value
     .filter((e) => {
       const dStr = e.startTime.substring(0, 10);
