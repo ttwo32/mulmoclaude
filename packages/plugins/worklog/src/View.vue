@@ -167,6 +167,7 @@
                     <input
                       v-model="editForm.clientId"
                       type="text"
+                      :aria-label="t.client"
                       class="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                     />
                   </div>
@@ -175,13 +176,14 @@
                     <input
                       v-model="editForm.projectId"
                       type="text"
+                      :aria-label="t.project"
                       class="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                     />
                   </div>
                   <div>
                     <label class="block text-[10px] uppercase font-bold text-gray-400 mb-1">{{ t.billable }}</label>
                     <label class="inline-flex items-center mt-1 cursor-pointer">
-                      <input v-model="editForm.billable" type="checkbox" class="sr-only peer" />
+                      <input v-model="editForm.billable" type="checkbox" class="sr-only peer" :aria-label="t.billable" />
                       <div
                         class="relative w-7 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"
                       ></div>
@@ -192,6 +194,7 @@
                     <input
                       v-model="editForm.startTime"
                       type="text"
+                      :aria-label="t.startTime"
                       class="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                     />
                   </div>
@@ -200,6 +203,7 @@
                     <input
                       v-model="editForm.endTime"
                       type="text"
+                      :aria-label="t.endTime"
                       class="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                     />
                   </div>
@@ -209,6 +213,7 @@
                   <textarea
                     v-model="editForm.notes"
                     rows="2"
+                    :aria-label="t.notes"
                     class="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                   ></textarea>
                 </div>
@@ -314,12 +319,14 @@
                   type="text"
                   class="font-bold text-gray-900 bg-transparent border-b border-dashed border-gray-300 focus:border-indigo-500 focus:outline-none text-sm px-1 py-0.5"
                   :placeholder="t.clientPlaceholder"
+                  :aria-label="t.clientPlaceholder"
                 />
                 <input
                   v-model="candidate.projectId"
                   type="text"
                   class="text-xs text-gray-500 bg-transparent border-b border-dashed border-gray-300 focus:border-indigo-500 focus:outline-none px-1 py-0.5 w-32"
                   :placeholder="t.projectOptionalPlaceholder"
+                  :aria-label="t.projectOptionalPlaceholder"
                 />
               </div>
 
@@ -342,6 +349,7 @@
                 <input
                   v-model="candidate.startTime"
                   type="text"
+                  :aria-label="t.startTime"
                   class="w-full bg-transparent border-b border-transparent focus:border-indigo-500 focus:outline-none font-medium px-0.5 text-gray-800"
                   @change="updateCandidateDuration(candidate)"
                 />
@@ -351,6 +359,7 @@
                 <input
                   v-model="candidate.endTime"
                   type="text"
+                  :aria-label="t.endTime"
                   class="w-full bg-transparent border-b border-transparent focus:border-indigo-500 focus:outline-none font-medium px-0.5 text-gray-800"
                   @change="updateCandidateDuration(candidate)"
                 />
@@ -367,6 +376,7 @@
               <textarea
                 v-model="candidate.notes"
                 rows="2"
+                :aria-label="t.notes"
                 class="w-full bg-gray-50/50 border border-gray-200 rounded-lg p-2 text-xs focus:ring-1 focus:ring-indigo-500 focus:outline-none text-gray-800"
               ></textarea>
             </div>
