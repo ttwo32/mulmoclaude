@@ -36,12 +36,38 @@ function makeRecordingPubSub(): { pubsub: IPubSub; published: { channel: string;
   };
 }
 
+interface CommittedOrCandidateEntry {
+  id: string;
+  clientId: string;
+  projectId?: string;
+  startTime: string;
+  endTime: string;
+  notes?: string;
+  billable?: boolean;
+  supersedes?: string;
+}
+
+interface ListAllResult {
+  data: {
+    committed: CommittedOrCandidateEntry[];
+    candidates: CommittedOrCandidateEntry[];
+  };
+}
+
 interface WorklogActionResult {
   error?: string;
   status?: number;
   message?: string;
-  jsonData?: Record<string, any>;
-  data?: Record<string, any>;
+  jsonData?: {
+    candidateId?: string;
+    worklogId?: string;
+    entries?: { id: string; [key: string]: unknown }[];
+    deleted?: boolean;
+  } & Record<string, unknown>;
+  data?: {
+    committed?: CommittedOrCandidateEntry[];
+    candidates?: CommittedOrCandidateEntry[];
+  } & Record<string, unknown>;
   instructions?: string;
 }
 
@@ -89,7 +115,7 @@ describe("Worklog plugin — end-to-end integration through the loader", () => {
     assert.ok(plugin.execute, "execute handler must be present");
 
     // 1. Initial UI listAll is empty.
-    let uiRes = (await plugin.execute({}, { kind: "listAll" })) as any;
+    let uiRes = (await plugin.execute({}, { kind: "listAll" })) as unknown as ListAllResult;
     assert.deepEqual(uiRes.data.committed, []);
     assert.deepEqual(uiRes.data.candidates, []);
 
@@ -115,7 +141,7 @@ describe("Worklog plugin — end-to-end integration through the loader", () => {
     assert.equal(published[0].channel, `plugin:${PKG_NAME}:changed`);
 
     // 3. UI listAll shows the candidate.
-    uiRes = (await plugin.execute({}, { kind: "listAll" })) as any;
+    uiRes = (await plugin.execute({}, { kind: "listAll" })) as unknown as ListAllResult;
     assert.equal(uiRes.data.candidates.length, 1);
     assert.equal(uiRes.data.candidates[0].id, candidateId);
     assert.equal(uiRes.data.candidates[0].clientId, "Acme Corp");
@@ -130,7 +156,7 @@ describe("Worklog plugin — end-to-end integration through the loader", () => {
     assert.equal(published[1].channel, `plugin:${PKG_NAME}:changed`);
 
     // 5. UI listAll shows no candidates, and 1 committed entry.
-    uiRes = (await plugin.execute({}, { kind: "listAll" })) as any;
+    uiRes = (await plugin.execute({}, { kind: "listAll" })) as unknown as ListAllResult;
     assert.equal(uiRes.data.candidates.length, 0);
     assert.equal(uiRes.data.committed.length, 1);
     assert.equal(uiRes.data.committed[0].id, worklogId);
@@ -139,8 +165,8 @@ describe("Worklog plugin — end-to-end integration through the loader", () => {
     // 6. MCP List action shows active log.
     res = (await plugin.execute({}, { action: "list", clientId: "Acme Corp" })) as WorklogActionResult;
     assert.ok(!res.error);
-    assert.equal(res.jsonData?.entries.length, 1);
-    assert.equal(res.jsonData.entries[0].id, worklogId);
+    assert.equal(res.jsonData?.entries?.length, 1);
+    assert.equal(res.jsonData?.entries?.[0]?.id, worklogId);
 
     // 6a. MCP Present action returns visual data payload.
     const presentRes = (await plugin.execute({}, { action: "present" })) as WorklogActionResult;
@@ -174,7 +200,7 @@ describe("Worklog plugin — end-to-end integration through the loader", () => {
     assert.equal(published.length, 3, "Should publish on edit");
 
     // 8. UI listAll resolves the supersedes graph, showing ONLY the edited version.
-    uiRes = (await plugin.execute({}, { kind: "listAll" })) as any;
+    uiRes = (await plugin.execute({}, { kind: "listAll" })) as unknown as ListAllResult;
     assert.equal(uiRes.data.committed.length, 1);
     assert.equal(uiRes.data.committed[0].id, editedWorklogId);
     assert.equal(uiRes.data.committed[0].notes, "Initial coding session with minor bug fixes");
@@ -188,7 +214,7 @@ describe("Worklog plugin — end-to-end integration through the loader", () => {
     assert.equal(published.length, 4, "Should publish on delete");
 
     // 10. UI listAll resolves the deletion, returning 0 active entries.
-    uiRes = (await plugin.execute({}, { kind: "listAll" })) as any;
+    uiRes = (await plugin.execute({}, { kind: "listAll" })) as unknown as ListAllResult;
     assert.equal(uiRes.data.committed.length, 0);
   });
 
@@ -206,7 +232,7 @@ describe("Worklog plugin — end-to-end integration through the loader", () => {
     if (!plugin || !plugin.execute) {
       throw new Error("Plugin failed to load or execute method is missing");
     }
-    const execute = plugin.execute;
+    const { execute } = plugin;
 
     // Launch multiple create requests concurrently.
     const CONCURRENCY = 5;
@@ -225,7 +251,7 @@ describe("Worklog plugin — end-to-end integration through the loader", () => {
 
     await Promise.all(promises);
 
-    const uiRes = (await plugin.execute({}, { kind: "listAll" })) as any;
+    const uiRes = (await plugin.execute({}, { kind: "listAll" })) as unknown as ListAllResult;
     assert.equal(uiRes.data.candidates.length, CONCURRENCY);
   });
 });

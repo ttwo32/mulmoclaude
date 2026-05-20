@@ -1,6 +1,19 @@
 import type { FileOps } from "gui-chat-protocol";
 import { type WorklogEntry, type CandidateEntry, WorklogEntrySchema, CandidateEntrySchema } from "./types";
 
+const YEAR_MONTH_RE = /^\d{4}-\d{2}$/;
+const SAFE_ID_RE = /^[A-Za-z0-9_-]+$/;
+
+function assertYearMonth(value: string): string {
+  if (!YEAR_MONTH_RE.test(value)) throw new Error(`Invalid year-month segment: "${value}"`);
+  return value;
+}
+
+function assertSafeId(value: string): string {
+  if (!SAFE_ID_RE.test(value)) throw new Error(`Invalid id segment: "${value}"`);
+  return value;
+}
+
 /**
  * Reads and parses a monthly append-only JSONL file.
  * Gracefully ignores the metadata header `{"schema": "v1"}` and any corrupted lines.
@@ -96,7 +109,7 @@ export async function loadAllCommittedEntries(files: FileOps): Promise<WorklogEn
 export async function appendCommittedEntries(files: FileOps, entries: WorklogEntry[]): Promise<void> {
   const groups: Record<string, WorklogEntry[]> = {};
   for (const entry of entries) {
-    const yearMonth = entry.startTime.substring(0, 7); // Extract "YYYY-MM"
+    const yearMonth = assertYearMonth(entry.startTime.substring(0, 7)); // Extract "YYYY-MM"
     if (!groups[yearMonth]) {
       groups[yearMonth] = [];
     }
@@ -133,7 +146,8 @@ export async function loadAllCandidates(files: FileOps): Promise<CandidateEntry[
     for (const name of fileNames) {
       if (name.endsWith(".json")) {
         try {
-          const raw = await files.read(`candidates/${name}`);
+          const rel = `candidates/${name}`;
+          const raw = await files.read(rel);
           const parsed = JSON.parse(raw);
           const list = Array.isArray(parsed) ? parsed : [parsed];
           for (const item of list) {
@@ -155,14 +169,17 @@ export async function loadAllCandidates(files: FileOps): Promise<CandidateEntry[
  * Saves a single candidate entry to its own candidate JSON file.
  */
 export async function saveCandidate(files: FileOps, candidate: CandidateEntry): Promise<void> {
-  await files.write(`candidates/${candidate.id}.json`, JSON.stringify([candidate], null, 2));
+  const safeId = assertSafeId(candidate.id);
+  const rel = `candidates/${safeId}.json`;
+  await files.write(rel, JSON.stringify([candidate], null, 2));
 }
 
 /**
  * Deletes a candidate entry file.
  */
 export async function deleteCandidate(files: FileOps, id: string): Promise<void> {
-  const rel = `candidates/${id}.json`;
+  const safeId = assertSafeId(id);
+  const rel = `candidates/${safeId}.json`;
   if (await files.exists(rel)) {
     await files.unlink(rel);
   }

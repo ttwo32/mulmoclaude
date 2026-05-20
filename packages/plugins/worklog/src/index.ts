@@ -198,12 +198,17 @@ export default definePlugin((runtime) => {
   return {
     TOOL_DEFINITION,
     async manageWorklog(rawArgs: unknown) {
-      if (isLlmArgs(rawArgs)) return handleLlm(rawArgs);
-      if (isUiArgs(rawArgs)) return handleUi(rawArgs);
-      return {
-        error: "unknown args shape — expected { action: ... } or { kind: ... }",
-        status: 400,
-      };
+      try {
+        if (isLlmArgs(rawArgs)) return await handleLlm(rawArgs);
+        if (isUiArgs(rawArgs)) return await handleUi(rawArgs);
+        return {
+          error: "unknown args shape — expected { action: ... } or { kind: ... }",
+          status: 400,
+        };
+      } catch (error) {
+        log.error("manageWorklog failed", { error });
+        return { error: String(error || "internal error"), status: 500 };
+      }
     },
   };
 });
