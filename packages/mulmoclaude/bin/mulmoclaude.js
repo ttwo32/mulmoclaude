@@ -115,7 +115,7 @@ ${cliFlagHelpLines()}
 }
 
 if (args.includes("--version")) {
-  console.log("mulmoclaude 0.6.3");
+  console.log("mulmoclaude 0.6.4");
   process.exit(0);
 }
 
