@@ -30,8 +30,10 @@ export async function handleManageClient(
       "update",
       "list",
       "show",
+      "get",
       "createProject",
       "showProject",
+      "getProject",
       "listProjects",
       "approveClient",
       "approveProject",
@@ -216,14 +218,16 @@ export async function handleManageClient(
       return {
         ok: true,
         data: {},
+        args: { action: "present", id: args.id ? slugify(args.id) : undefined },
         message: "Presented the client dashboard.",
         instructions: "Show the Client/CRM dashboard with active clients, projects, and pending drafts.",
       };
     }
 
+    case "get":
     case "show": {
       if (!args.id) {
-        return { ok: false, error: "missing_id", message: "Client slug 'id' is required for show." };
+        return { ok: false, error: "missing_id", message: "Client slug 'id' is required." };
       }
       const slug = slugify(args.id);
       const filePath = `${slug}.md`;
@@ -260,6 +264,10 @@ export async function handleManageClient(
         ok: true,
         client,
         projects,
+        args: { action: args.action, id: slug },
+        message: `Retrieved details for client "${client.name}" (status: ${client.status}).`,
+        jsonData: { client, projects },
+        instructions: `Open details page for client ${client.name}.`,
       };
     }
 
@@ -322,9 +330,10 @@ export async function handleManageClient(
       };
     }
 
+    case "getProject":
     case "showProject": {
       if (!args.id) {
-        return { ok: false, error: "missing_client_id", message: "Client slug 'id' is required for showProject." };
+        return { ok: false, error: "missing_client_id", message: "Client slug 'id' is required." };
       }
       if (!args.projectId) {
         return { ok: false, error: "missing_project_id", message: "Project slug 'projectId' is required." };
@@ -346,6 +355,10 @@ export async function handleManageClient(
       return {
         ok: true,
         project,
+        args: { action: args.action, id: clientSlug, projectId: projectSlug },
+        message: `Retrieved details for project "${project.name}" under client "${clientSlug}" (status: ${project.status}).`,
+        jsonData: { project },
+        instructions: `Open project details page for project ${project.name} under client ${clientSlug}.`,
       };
     }
 

@@ -591,6 +591,14 @@ interface ShowClientResponse {
   ok: boolean;
   client?: Client;
   projects?: Project[];
+  jsonData?: {
+    client?: Client;
+    projects?: Project[];
+  };
+  data?: {
+    client?: Client;
+    projects?: Project[];
+  };
 }
 
 interface ActionResponse {
@@ -687,19 +695,26 @@ const renderedNotes = computed(() => {
 });
 
 function syncActiveTab(action: string | undefined, candidateCount: number) {
-  if (action === "create" || action === "createProject" || (activeTab.value === "spreadsheet" && candidateCount > 0)) {
+  if (
+    (action === "show" || action === "get" || action === "showProject" || action === "getProject" || action === "present") &&
+    props.selectedResult?.args?.id
+  ) {
+    void selectClient(props.selectedResult.args.id);
+  } else if (action === "present") {
+    activeTab.value = "spreadsheet";
+  } else if (action === "create" || action === "createProject" || (activeTab.value === "spreadsheet" && candidateCount > 0)) {
     activeTab.value = "review";
   }
 }
 
 // Auto-select first client or candidates if passed via props
 watch(
-  () => props.selectedResult,
-  (next) => {
-    if (next) {
-      syncActiveTab(next.args?.action, pendingReviewCount.value);
+  () => props.selectedResult?.uuid,
+  () => {
+    if (props.selectedResult) {
+      syncActiveTab(props.selectedResult.args?.action, pendingReviewCount.value);
       void refreshAll().then(() => {
-        syncActiveTab(next.args?.action, pendingReviewCount.value);
+        syncActiveTab(props.selectedResult?.args?.action, pendingReviewCount.value);
       });
     }
   },
@@ -756,13 +771,15 @@ async function selectClient(clientId: string) {
 
 async function loadClientDetails(clientId: string) {
   try {
-    const res = await dispatch<ShowClientResponse>({ action: "show", id: clientId });
-    if (res?.ok && res.client) {
-      selectedClient.value = res.client;
-      clientProjects.value = res.projects ?? [];
+    const res = await dispatch<ShowClientResponse>({ action: "get", id: clientId });
+    const clientData = res?.client || res?.jsonData?.client || res?.data?.client;
+    const projectsData = res?.projects || res?.jsonData?.projects || res?.data?.projects;
+    if (res?.ok && clientData) {
+      selectedClient.value = clientData;
+      clientProjects.value = projectsData ?? [];
 
       // Load deep copy into editable form
-      editClientForm.value = JSON.parse(JSON.stringify(res.client));
+      editClientForm.value = JSON.parse(JSON.stringify(clientData));
     }
   } catch (err) {
     errorMsg.value = format(t("errorLoadClientDetails"), { clientId });
