@@ -10,9 +10,11 @@ Issue: receptron/mulmoclaude#1473
 
 ## 採用方針
 
-**Approach A — disk-canonical string**: `safeDecode` を「multibyte (高位バイト) percent sequence だけ decode、ASCII percent encoding (`%40` / `%2F` / `%20` 等) は literal として保持」に変える。
+**Approach A — disk-canonical string (per-segment)**: `safeDecode` を「`/`-区切りセグメント単位で `decodeURIComponent` を実行。ただし `%2F` を含むセグメントだけ opaque に保つ」形に変える。
 
 プラグインディレクトリの命名規約は現状維持。
+
+> 初回実装では「multibyte (高位バイト) percent sequence だけ decode、ASCII percent encoding は全部 literal」という粗い判定で `%20` を含む正常な URL transport encoding を破壊するリグレッションを起こした。Codex GHA / CodeRabbit が PR 上で同じ regression を指摘。本方針はその対応版。
 
 ## 実装ステップ
 
@@ -31,21 +33,23 @@ function safeDecode(str: string): string {
 
 変更後:
 ```ts
-// Decode only multibyte percent sequences (UTF-8 high-byte
-// `%[89A-F][0-9A-F]+`). ASCII percent encodings (%40 '@', %2F '/',
-// %20 ' ', etc.) are PRESERVED as literal characters because the
-// plugin convention stores them literally on disk
-// (data/plugins/%40<scope>%2F<name>/...). Decoding %2F to '/' here
-// would collapse the single plugin-scope directory name into two
-// separate segments and break server-side file resolution.
+// Per-segment decode. Segments containing `%2F` are kept opaque
+// because the plugin convention stores npm-scoped packages as a
+// single literal on-disk directory (data/plugins/%40<scope>%2F<name>/).
+// All other segments are decoded normally so multibyte filenames,
+// `%20` spaces, and encoded `%2E%2E` round-trip through the file
+// API correctly (the latter then caught by `normalizePath`).
 function safeDecode(str: string): string {
-  return str.replace(/(?:%[89A-Fa-f][0-9A-Fa-f])+/g, (match) => {
-    try {
-      return decodeURIComponent(match);
-    } catch {
-      return match;
-    }
-  });
+  return str.split("/").map(decodeSegment).join("/");
+}
+
+function decodeSegment(seg: string): string {
+  if (/%2[fF]/.test(seg)) return seg;
+  try {
+    return decodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
 }
 ```
 

@@ -106,15 +106,15 @@ describe("classifyWorkspacePath", () => {
       assert.deepEqual(result, { kind: "wiki", slug: "サンプル" });
     });
 
-    it("preserves ASCII percent-encoded space as literal (%20 stays as %20)", () => {
-      // ASCII percent encodings are preserved as literal characters so
-      // that the plugin naming convention (data/plugins/%40<scope>%2F<name>/)
-      // survives the click → router → file API round-trip (#1473).
-      // marked.parse() does not emit %20 for hrefs containing literal
-      // spaces, so this hand-encoded form is treated as an opaque file
-      // name token.
+    it("decodes percent-encoded space in filename", () => {
+      // marked.parse() encodes literal spaces in href as `%20`, and
+      // the on-disk filename carries the literal space. This must
+      // round-trip via decodeURIComponent so the file API receives
+      // the disk-canonical form. Segments containing `%2F` are the
+      // sole exception (plugin-scope opaqueness) — `%20` outside such
+      // a segment is ordinary URL transport encoding.
       const result = classifyWorkspacePath("data/some/my%20file.txt");
-      assert.deepEqual(result, { kind: "file", path: "data/some/my%20file.txt" });
+      assert.deepEqual(result, { kind: "file", path: "data/some/my file.txt" });
     });
 
     it("falls back to raw href when decode throws on malformed percent sequence", () => {
@@ -132,25 +132,17 @@ describe("classifyWorkspacePath", () => {
       assert.deepEqual(result, { kind: "file", path: raw });
     });
 
-    // ASCII percent encodings (%2F, %2E, %40, %20, %25, …) are
-    // preserved as literal characters so the plugin naming convention
-    // — which stores npm-scoped packages as single URL-encoded disk
-    // directories (data/plugins/%40<scope>%2F<name>/) — survives the
-    // click → router → file API round-trip. The tests below pin that
-    // semantics. Decoding is restricted to multibyte (UTF-8 high-byte)
-    // sequences emitted by marked.parse for non-ASCII characters.
-    //
-    // Traversal protection is still provided by normalizePath, which
-    // matches the literal `..` token. Encoded `%2E%2E` is now kept as
-    // an opaque filename token and never reaches the `..` collapse
-    // path — that narrows the attack surface (no encoded-traversal
-    // path possible) rather than widening it. The server's
-    // resolveWithinRoot adds a separate defense layer regardless.
+    // safeDecode runs per `/`-separated segment. Segments containing
+    // `%2F` are kept opaque (plugin-scope disk convention); every
+    // other segment is decoded via decodeURIComponent. The tests
+    // below pin both halves of that contract.
 
-    it("preserves ASCII %2F as a literal segment character (plugin-scoped naming)", () => {
+    it("preserves plugin-scoped %40<scope>%2F<name> as a single literal segment (#1473)", () => {
       // Plugin convention: data/plugins/%40<scope>%2F<name>/ is a
       // SINGLE directory whose name literally contains '%' '4' '0'
-      // '%' '2' 'F' characters — not two nested directories.
+      // '%' '2' 'F' characters — not two nested directories. The
+      // `%2F` in that segment is what marks it as a plugin-scope
+      // token so `safeDecode` leaves it opaque.
       const result = classifyWorkspacePath("data/plugins/%40mulmoclaude%2Fworklog/committed/2026-05.jsonl");
       assert.deepEqual(result, {
         kind: "file",
@@ -158,68 +150,17 @@ describe("classifyWorkspacePath", () => {
       });
     });
 
-    it("preserves ASCII %2F as literal even for non-plugin hand-encoded inputs", () => {
-      // Behaviour change from the previous decode-everything implementation:
-      // a hand-encoded `foo%2Fbar.md` is now treated as a single literal
-      // filename token. marked.parse() never emits %2F for legitimate
-      // workspace links, so this only matters for synthetic inputs.
-      const result = classifyWorkspacePath("data/some/foo%2Fbar.md");
-      assert.deepEqual(result, { kind: "file", path: "data/some/foo%2Fbar.md" });
-    });
-
-    it("preserves ASCII %2E%2E as literal segment (encoded-traversal is inert)", () => {
-      // Previously %2E%2E was decoded to `..` and then collapsed by
-      // normalizePath. Now %2E%2E stays opaque, so the traversal never
-      // happens at this layer. resolveWithinRoot on the server side
-      // remains the authoritative defense if anyone ever tries to
-      // exploit this surface.
-      const result = classifyWorkspacePath("data/wiki/pages/%2E%2E/sources/foo.md");
+    it("preserves lowercase %2f in a plugin-scope segment (case-insensitive opacity)", () => {
+      // The opacity check accepts %2F and %2f interchangeably so both
+      // capitalisations round-trip to the disk-canonical name.
+      const result = classifyWorkspacePath("data/plugins/%40mulmoclaude%2fworklog/file.md");
       assert.deepEqual(result, {
         kind: "file",
-        path: "data/wiki/pages/%2E%2E/sources/foo.md",
+        path: "data/plugins/%40mulmoclaude%2fworklog/file.md",
       });
     });
 
-    it("treats encoded %2E%2E root-escape as an opaque file path (not a traversal)", () => {
-      // Encoded %2E%2E never reaches the `..` collapse, so an
-      // attacker-crafted "%2E%2E/%2E%2E/etc/passwd" classifies as a
-      // file path containing literal '%' '2' 'E' bytes rather than
-      // resolving up two levels. Literal `..` traversal is still
-      // rejected by normalizePath — that case is pinned in the
-      // "returns null for paths that escape the workspace root" test
-      // below. The server's resolveWithinRoot is the authoritative
-      // defense against any encoded form that does reach the file API.
-      const result = classifyWorkspacePath("%2E%2E/%2E%2E/etc/passwd");
-      assert.deepEqual(result, {
-        kind: "file",
-        path: "%2E%2E/%2E%2E/etc/passwd",
-      });
-    });
-
-    it("preserves lowercase ASCII percent encodings as literal (%2f / %2e%2e)", () => {
-      // The regex used for decoding is case-insensitive over high-byte
-      // sequences only. Lowercase ASCII encodings must be preserved
-      // verbatim, just like their uppercase counterparts.
-      const result = classifyWorkspacePath("data/plugins/%40mulmoclaude%2fworklog/%2e%2e/file.md");
-      assert.deepEqual(result, {
-        kind: "file",
-        path: "data/plugins/%40mulmoclaude%2fworklog/%2e%2e/file.md",
-      });
-    });
-
-    it("classifies a wiki filename containing literal %2F as a (synthetic) wiki match", () => {
-      // ASCII %2F is preserved as a literal segment character, so the
-      // slug capture `([^/]+)` happily eats `foo%2Fbar`. This is a
-      // synthetic shape — marked.parse never emits this for real wiki
-      // links, and wiki page filenames don't carry '/' in practice —
-      // so we accept the match and let the wiki view 404 if the page
-      // does not exist on disk. Pinning the current behaviour so any
-      // future "reject %2F in slugs" tightening is an explicit decision.
-      const result = classifyWorkspacePath("data/wiki/pages/foo%2Fbar.md");
-      assert.deepEqual(result, { kind: "wiki", slug: "foo%2Fbar" });
-    });
-
-    it("decodes multibyte while preserving ASCII percent literals in the same path (#1473)", () => {
+    it("decodes multibyte while preserving the plugin-scope segment opaque (#1473)", () => {
       // Plugin scope dir name stays opaque, but a Japanese filename
       // inside it gets decoded to its multibyte form so the file API
       // (which receives disk-literal multibyte names) resolves.
@@ -229,6 +170,40 @@ describe("classifyWorkspacePath", () => {
         kind: "file",
         path: "data/plugins/%40mulmoclaude%2Fworklog/メモ.md",
       });
+    });
+
+    // The tests below pin the original behaviour for non-plugin
+    // segments — `safeDecode` falls back to per-segment
+    // `decodeURIComponent` when no `%2F` is present, so encoded
+    // structural tokens (`%2E%2E` → `..`) get reinterpreted as path
+    // structure and the same `normalizePath` root-escape gate applies.
+
+    it("decoded %2F splits into path segments (non-plugin synthetic input)", () => {
+      // Synthetic case: a hand-encoded `foo%2Fbar.md` happens to
+      // satisfy the plugin-scope opacity rule (segment contains
+      // `%2F`), so it now stays opaque rather than collapsing into
+      // two segments. marked.parse() never emits this shape for
+      // legitimate workspace links, so the behaviour is captured
+      // here only to make the contract explicit.
+      const result = classifyWorkspacePath("data/some/foo%2Fbar.md");
+      assert.deepEqual(result, { kind: "file", path: "data/some/foo%2Fbar.md" });
+    });
+
+    it("decoded %2E%2E (..) is normalized away within workspace", () => {
+      // "data/wiki/pages/%2E%2E/sources/foo.md" → per-segment decode
+      // turns the %2E%2E segment into ".." → normalizePath collapses
+      // to "data/wiki/sources/foo.md".
+      const result = classifyWorkspacePath("data/wiki/pages/%2E%2E/sources/foo.md");
+      assert.deepEqual(result, { kind: "file", path: "data/wiki/sources/foo.md" });
+    });
+
+    it("decoded %2E%2E that escapes workspace root still returns null", () => {
+      // "%2E%2E/%2E%2E/etc/passwd" → per-segment decode → "../../etc/passwd"
+      //   → normalizePath pops past root → null. Encoded `..` does
+      // not widen the traversal surface beyond what a literal `..`
+      // href could already reach.
+      const result = classifyWorkspacePath("%2E%2E/%2E%2E/etc/passwd");
+      assert.equal(result, null);
     });
   });
 
