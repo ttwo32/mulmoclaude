@@ -167,6 +167,9 @@ e2e-live/
 | L-SETTINGS-EFFORT | settings | Settings → Model effortLevel 双方向同期 (#1323) | ✅ |
 | L-SETTINGS-EFFORT-SPAWN | settings | settings.json → claude `--effort` 引数到達 (#1323) | ✅ |
 | L-W-S-03 | wiki | `<picture><source srcset>` rewriter (#1275) | ✅ |
+| L-FRESH-BOOT | fresh-user | 新規ユーザー: 空 workspace + 空 HOME から起動して 1 ターン完走 | 未実装 |
+| L-FRESH-SANDBOX-BUILD | fresh-user | 新規ユーザー: sandbox image 不在から auto-build 経由で起動 | 未実装 |
+| L-FRESH-PRESET-SKILL | fresh-user | 新規ユーザー: preset skill が catalog → `.claude/skills/` に bridge mirror | 未実装 |
 
 ## 未実装シナリオ詳細
 
@@ -241,6 +244,43 @@ e2e-live/
 - 検証: skill が表示され、各 sample query が実行可能
 - 注: 階層 1 (spec scope 局所 seed) で再現可能 — host `~/.claude/skills/` を触らず、 共有 workspace の `.claude/skills/<test-nonce>` を broken symlink で seed → finally で削除。 「未実装シナリオの再評価」 + 「環境を壊さず再現する設計指針」 を参照
 
+### fresh-user (新規ユーザー smoke)
+
+> 既存ユーザー / tester の host 環境 (`~/mulmoclaude/` / `~/.claude/skills/` 等) を一切汚さずに、 「mulmoclaude を初めて起動するユーザー」 が体験する first-run 経路を e2e-live で検証する枠。 個別の boot 経路 (sandbox image build / preset skill mirror / 認証 token 注入 等) は unit / integration test で部分 cover されているが、 これらが **連動して 1 つの flow として動く** ことを保証する net がない。
+
+#### 再現の設計指針 (fresh-user 共通)
+
+階層 2 (test 専用 dev server) + 階層 3 (env 新設) の組合せ:
+
+1. **HOME + workspace env で host を隔離** — `HOME=/tmp/mc-fresh-home MULMOCLAUDE_WORKSPACE_PATH=/tmp/mc-fresh-ws MULMOCLAUDE_PORT=5176 yarn dev:server &` で別 port + 別 workspace + 別 HOME の test 専用 dev server を spawn。 `os.homedir()` (`server/system/docker.ts:20` の `assertClaudeFiles`、 `server/agent/config.ts:479` の `homeDir` デフォルト) は Node.js の規約上 `HOME` env を first priority で読むため、 host の `~/.claude/` / `~/mulmoclaude/` は一切触られない
+2. **認証は host から copy で持ち越し** — `~/.claude/.credentials.json` を `/tmp/mc-fresh-home/.claude/.credentials.json` に pre-test で copy。 spec 内で `claude login` を再現不能なので、 host で認証済の credential を read-only 流用
+3. **cleanup** — dev server kill (`MULMOCLAUDE_PORT=5176` で識別) + `/tmp/mc-fresh-*` 削除
+
+前提となる infra は Docker on/off 案 C (test 専用 dev server spawn 機構) と artifact mode (`/e2e-live-pre-release`) と launcher 抽象化を共有する。 1 つの `/e2e-live-matrix` skill が dev mode / artifact mode × Docker on/off × fresh-user の 3 軸を捌く形が最終形 (未着手、 別 PR で詰める)。
+
+#### L-FRESH-BOOT: 空状態から起動して 1 ターン完走
+
+- カバー: first-run UX 全体 (boot path 連動性)
+- 重要度: **A** / Docker: `both` / 画像: 不要
+- 操作: 空の `/tmp/mc-fresh-{ws,home}` を作る → host `~/.claude/.credentials.json` を copy → test 専用 dev server を上記設計で spawn → SPA に navigate → 新規セッション 1 ターン (`Reply with the single word: ok-<nonce>`) 送信
+- 検証: (a) `/api/health` が応答、 (b) workspace dir 構造が auto-init される (`conversations/` / `data/wiki/` / `artifacts/` / `config/settings.json` が存在)、 (c) SPA index.html serve 時に `<meta name="mulmoclaude-auth">` token が注入されている、 (d) 1 ターン response の最終 assistant message に `ok-<nonce>` が含まれる、 (e) cleanup 後に host `~/mulmoclaude/` / `~/.claude/skills/` の mtime が test 前と変わらない (副作用なしの sanity)
+- 前提: HOME override の全 path 検証 (mulmoclaude 起動経路で `HOME` env が伝播するか — `os.homedir()` 経由は OK と推測、 hardcode 経路がないか実機検証必要)、 test 専用 dev server spawn infra
+
+#### L-FRESH-SANDBOX-BUILD: sandbox image 不在から auto-build 経由で起動
+
+- カバー: B-10 / B-11 系の 「image 不在 → 自動 build 失敗」 退行
+- 重要度: **B** / Docker: `docker-only` / 画像: 不要
+- 操作: L-FRESH-BOOT と同じ HOME / workspace 隔離 + `MULMOCLAUDE_SANDBOX_IMAGE=mulmoclaude-sandbox-e2e-fresh` env で image 名を test 専用名に差し替える (= 「image が存在しない」 状態を host の `mulmoclaude-sandbox:latest` を消さずに疑似再現) → dev server 起動 → 1 ターン送信
+- 検証: (a) `docker images mulmoclaude-sandbox-e2e-fresh` が起動後に存在、 (b) `ensureSandboxImage` の auto-build 経路 (`server/system/docker.ts:86`) が走ったログを確認、 (c) 1 ターン response が成立、 (d) cleanup: spec 終了時に `docker rmi mulmoclaude-sandbox-e2e-fresh`
+- 前提: **`MULMOCLAUDE_SANDBOX_IMAGE` env 新設** (現在 `server/system/docker.ts:13` と `server/agent/config.ts:553` でハードコード)。 build は分単位かかるので timeout 余裕、 通常 CI には載せず手動 skill 推奨
+
+#### L-FRESH-PRESET-SKILL: preset skill が catalog → `.claude/skills/` に bridge mirror
+
+- カバー: preset skill seed → discovery → dispatch の chain (L-32 が同 chain の中盤を見るのに対し、 L-FRESH-PRESET-SKILL は first-boot 起点の rehydrate を見る)
+- 重要度: **B** / Docker: `both` / 画像: 不要
+- 操作: L-FRESH-BOOT と同じ隔離で空 workspace を起動 → `data/skills/catalog/preset/` 配下に preset skill (`mc-cooking-coach` 等) が auto-seed される (server boot 時の `migratePresets` 経路) → bridge hook で `.claude/skills/<slug>/SKILL.md` に mirror → SPA `/skills` に navigate
+- 検証: (a) `/api/skills` 取得結果に preset slug が含まれる、 (b) `data/skills/catalog/preset/<slug>/SKILL.md` が存在、 (c) `.claude/skills/<slug>/SKILL.md` も存在、 (d) `/skills` UI で row が visible
+
 ## メンテ skill 化済 — `/make-e2e-live` を起点にする
 
 このスイートを継続メンテするための skill `/make-e2e-live` を `.claude/skills/make-e2e-live/SKILL.md` に用意した。 次セッション以降、 未実装シナリオの追加・main 動向への追従（webkit project, self-repair 緩和等）・既存 spec 修正は **このファイルを起点にして** Phase 1〜6 のフロー（状況把握 → 着手項目合意 → ブランチ → 実装 → PR → plans 反映）で進める。 1 PR の規模は 1〜3 シナリオ or 1 config 改善に絞ること。 実行用 `/e2e-live` skill とは別物（実行 = 既存スイートを回す、 メンテ = スイートを育てる）。
@@ -304,6 +344,9 @@ e2e-live/
 | **L-27** Mac Keychain credential expire | manual-l4 | 同上 |
 | **L-29** MCP server Docker crash (B-07) | **対象外推奨** | PR #429 で fix 済、 現コードで crash 再現不能。 既存 unit test (`test/agent/test_agent_config.ts` の `buildDockerSpawnArgs` 11 cases) で構造的退行は cover 済。 「tautology spec」 (修正済 PR の再発検出だけを書く) は機能別 unit test の責務、 e2e-live に乗せる価値が薄い。 実装ステータス表からは 「対象外」 ラベルで除外することを推奨 (上記 「機能別 unit test / mock e2e との分担」 の e2e-live 除外基準と整合) |
 | **L-30** skill + symlink dangling | **実装可能** | 「環境を壊さず再現する設計指針」 階層 1 で局所再現可。 共有 workspace の `.claude/skills/<test-nonce>` を broken symlink で seed → sandbox 起動状態で `/api/config/refresh` 後に対象 slug が skill list に出ないことを assert → finally で symlink 削除。 host `~/.claude/skills/` は触らない |
+| **L-FRESH-BOOT** 新規ユーザー smoke | **実装可能** (要 infra) | 「環境を壊さず再現する設計指針」 階層 2 + 3。 host 環境 (`~/.claude/` / `~/mulmoclaude/`) を `HOME` + `MULMOCLAUDE_WORKSPACE_PATH` env で test 専用 dir に振り、 認証だけ host から copy で持ち越し。 test 専用 dev server spawn infra (Docker on/off 案 C と launcher 共通化) が前提。 詳細は 「未実装シナリオ詳細 → fresh-user」 を参照 |
+| **L-FRESH-SANDBOX-BUILD** image 不在 → auto-build | **実装可能** (要 env 新設) | L-FRESH-BOOT の枠 + `MULMOCLAUDE_SANDBOX_IMAGE` env 新設 (階層 3)。 sandbox image を test 専用名で参照させて 「image が無い」 状態を疑似、 host の `mulmoclaude-sandbox:latest` を消さずに済む |
+| **L-FRESH-PRESET-SKILL** preset skill mirror | **実装可能** (要 infra) | L-FRESH-BOOT と同じ infra で空 workspace 起動 → preset migration 経路 (catalog → bridge mirror) を end-to-end で検証 |
 
 ## 実装順 (2026-05-23 時点)
 
@@ -317,17 +360,21 @@ e2e-live/
 ### Phase 2: 前提 PR + 本体 PR (中〜高重要度、 要 infra 整備)
 
 3. **L-17 二重通知 (B-50)** — 重要度 **B** だがユーザー報告が継続。 (a) `server/api/routes/notifier.ts` に env-gated test inject endpoint を追加する source PR → (b) spec PR の 2 段。 PR #1451 (notifier-update-op) で notifier 拡張済の今、 inject 経路を端的に復活させやすい
-4. **L-10 Gemini key 未設定 / L-13 bridge 再接続** — 共通の前提 (test 専用 dev server 起動 infra、 案 C 拡張) を立てる別 PR が先。 infra PR は中規模、 立てば後続 (L-10 / L-13) を同 PR or 連続 PR で拾える
+4. **test 専用 dev server spawn infra** — 共通の前提となる launcher 抽象化 (Docker on/off 案 C / artifact mode `/e2e-live-pre-release` / fresh-user smoke と launcher 共通化、 `MULMOCLAUDE_WORKSPACE_PATH` + `MULMOCLAUDE_PORT` で隔離)。 1 つの `/e2e-live-matrix` skill に集約する形が最終形。 infra PR が立てば 後続 (L-10 / L-13 / L-FRESH-*) を連続 PR で拾える
+5. **L-FRESH-BOOT 新規ユーザー smoke** — 重要度 **A** (first-run UX はユーザー獲得の最初の関門)。 infra (4.) の上で 1 PR で完結。 HOME + workspace + credential copy の 3 階層で host 環境を一切汚さない設計。 「未実装シナリオ詳細 → fresh-user」 参照
+6. **L-10 Gemini key 未設定 / L-13 bridge 再接続** — infra (4.) の上で 同 PR or 連続 PR で拾える
 
 ### Phase 3: 中重要度 (個別、 1 PR 完結)
 
-5. **mc-cooking-coach preset skill canary (#1287)** — 重要度 **B**、 L-32 shape を copy。 preset skill の chain net を密にする
-6. **solopreneur runtime plugins (client / worklog / plans、 #1471 / #1464 / #1465 / #1475)** — 重要度 **B**、 plugin 数増加トレンドの先頭で 1 plugin (client 推奨) でまず 1 PR 書き、 helper 抽出 / parameterized 化の機会を見極める
+7. **mc-cooking-coach preset skill canary (#1287)** — 重要度 **B**、 L-32 shape を copy。 preset skill の chain net を密にする
+8. **solopreneur runtime plugins (client / worklog / plans、 #1471 / #1464 / #1465 / #1475)** — 重要度 **B**、 plugin 数増加トレンドの先頭で 1 plugin (client 推奨) でまず 1 PR 書き、 helper 抽出 / parameterized 化の機会を見極める
+9. **L-FRESH-PRESET-SKILL** — 重要度 **B**、 infra (4.) の上で 1 PR。 preset migration 経路の end-to-end net
 
-### Phase 4: 再評価 / drop
+### Phase 4: 再評価 / drop / 重コスト
 
-7. **L-24 sandbox:login image 不在 (B-02)** — plan の理解が現実装と乖離 (現 `yarn sandbox:login` は keychain export スクリプト)。 シナリオ再定義 PR が先。 着手保留
-8. **L-29 MCP server crash (B-07)** — 対象外推奨。 unit test (`test/agent/test_agent_config.ts` の `buildDockerSpawnArgs`) で構造的退行は cover 済、 e2e-live への移植は tautology spec
+10. **L-FRESH-SANDBOX-BUILD** — 重要度 **B** だが `MULMOCLAUDE_SANDBOX_IMAGE` env 新設 (source PR) + build に分単位かかる (CI 不向き)。 手動 skill 専用の前提で位置付け、 着手は他 Phase が片付いてから
+11. **L-24 sandbox:login image 不在 (B-02)** — plan の理解が現実装と乖離 (現 `yarn sandbox:login` は keychain export スクリプト)。 シナリオ再定義 PR が先。 着手保留 (※L-FRESH-SANDBOX-BUILD が image 不在 → auto-build の経路を cover するので、 L-24 を独立に立てる必要が薄まる可能性あり)
+12. **L-29 MCP server crash (B-07)** — 対象外推奨。 unit test (`test/agent/test_agent_config.ts` の `buildDockerSpawnArgs`) で構造的退行は cover 済、 e2e-live への移植は tautology spec
 
 ### docker 系の優先度
 
