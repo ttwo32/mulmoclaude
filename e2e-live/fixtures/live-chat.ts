@@ -564,13 +564,16 @@ export async function navigateToWikiPage(page: Page, slug: string): Promise<void
  * hydrated with `marker`" assertion. Collapses the three boilerplate
  * checks every wiki-navigation spec repeats:
  *
- *   1. URL ends with `/wiki/pages/<encoded-slug>` — the SPA router
- *      pushed the expected path. encodeURIComponent matches what the
- *      browser actually sits on (no-op for ASCII slugs, percent-encoded
- *      for non-ASCII), and its output is regex-safe so we splice into
- *      the RegExp source verbatim.
- *   2. `[data-testid="wiki-page-body"]` contains `marker` — the page
- *      body actually rendered (vs. an empty shell or a 404 view).
+ *   1. URL pathname ends with `/wiki/pages/<encoded-slug>` — the SPA
+ *      router pushed the expected path. The predicate compares the
+ *      encoded suffix as a literal string, side-stepping the
+ *      `encodeURIComponent` regex-safety pitfall (encodeURIComponent
+ *      preserves `.`, `(`, `)`, `*`, all of which are regex
+ *      metacharacters — splicing the encoded slug into a `RegExp`
+ *      would silently overmatch for any caller whose slug includes
+ *      those chars).
+ *   2. `WIKI_PAGE_BODY_SELECTOR` contains `marker` — the page body
+ *      actually rendered (vs. an empty shell or a 404 view).
  *   3. URL does NOT match `/chat` — sentinel for the B-23 / B-24
  *      regression shape where the catch-all router swallowed
  *      `/wiki/pages/<slug>` and bounced to the chat surface.
@@ -582,8 +585,9 @@ export async function navigateToWikiPage(page: Page, slug: string): Promise<void
  * helper only owns the three checks every wiki landing test shares.
  */
 export async function expectWikiPageBody(page: Page, slug: string, marker: string): Promise<void> {
-  await expect(page).toHaveURL(new RegExp(`/wiki/pages/${encodeURIComponent(slug)}$`));
-  await expect(page.getByTestId("wiki-page-body")).toContainText(marker);
+  const expectedPathSuffix = `/wiki/pages/${encodeURIComponent(slug)}`;
+  await expect(page).toHaveURL((url) => url.pathname.endsWith(expectedPathSuffix));
+  await expect(page.locator(WIKI_PAGE_BODY_SELECTOR)).toContainText(marker);
   await expect(page).not.toHaveURL(/\/chat/);
 }
 
