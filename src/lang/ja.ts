@@ -87,6 +87,11 @@ const jaMessages = {
     notFound: "{command} が見つかりません — 関連機能を無効化しました。インストールして再起動すると有効になります。",
     notResponding: "{command} はインストール済みですが応答しません — 関連機能を無効化しました。起動して再起動すると有効になります。",
   },
+  backendOffline: {
+    title: "バックエンドに接続できません",
+    body: "MulmoClaude サーバが起動していない可能性があります。dev サーバを確認してから再試行してください。",
+    retry: "再試行",
+  },
   pluginErrorBoundary: {
     title: "プラグイン {pkg} がクラッシュしました",
     subtitle: "プラグインのレンダリングに失敗しました。エラーはコンソールに記録されています。",

@@ -82,6 +82,11 @@ const deMessages = {
     notResponding:
       "{command} ist installiert, antwortet aber nicht — zugehörige Funktionen wurden deaktiviert. Starten Sie es und starten Sie neu, um sie zu aktivieren.",
   },
+  backendOffline: {
+    title: "Backend nicht erreichbar",
+    body: "Der MulmoClaude-Server läuft möglicherweise nicht. Prüfe den Dev-Server und versuche es erneut.",
+    retry: "Erneut versuchen",
+  },
   pluginErrorBoundary: {
     title: "Plugin {pkg} ist abgestürzt",
     subtitle: "Das Plugin konnte nicht gerendert werden. Der Fehler wurde in der Konsole protokolliert.",

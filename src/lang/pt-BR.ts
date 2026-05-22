@@ -80,6 +80,11 @@ const ptBRMessages = {
     notFound: "{command} não encontrado — recursos relacionados foram desativados. Instale-o e reinicie para habilitá-los.",
     notResponding: "{command} está instalado mas não responde — recursos relacionados foram desativados. Inicie-o e reinicie para habilitá-los.",
   },
+  backendOffline: {
+    title: "Não foi possível conectar ao backend",
+    body: "O servidor do MulmoClaude pode não estar em execução. Verifique o servidor de desenvolvimento e tente novamente.",
+    retry: "Tentar novamente",
+  },
   pluginErrorBoundary: {
     title: "O plugin {pkg} travou",
     subtitle: "O plugin falhou ao renderizar. O erro foi registrado no console.",

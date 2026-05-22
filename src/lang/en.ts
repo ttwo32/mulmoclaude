@@ -101,6 +101,11 @@ const enMessages = {
     notFound: "{command} not found — related features are disabled. Install it and restart to enable them.",
     notResponding: "{command} is installed but not responding — related features are disabled. Start it and restart to enable them.",
   },
+  backendOffline: {
+    title: "Can't reach the backend",
+    body: "The MulmoClaude server may not be running. Check the dev server, then retry.",
+    retry: "Retry",
+  },
   pluginErrorBoundary: {
     title: "Plugin {pkg} crashed",
     subtitle: "The plugin failed to render. The error has been logged to the console.",

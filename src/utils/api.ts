@@ -29,8 +29,27 @@
 //   - setAuthToken() populates a module-level token used by every call
 //   - interceptors could go here for logging, retry, metrics
 
+import { ref, type Ref } from "vue";
 import { errorMessage } from "./errors";
 import { hasStringProp } from "./types";
+
+// ── Backend reachability signal (#1479) ─────────────────────────────
+//
+// `apiCall` returns `{ ok:false, status:0 }` when `fetch` itself
+// throws — the classic "network error" / `ERR_CONNECTION_REFUSED`
+// shape. That used to be silently swallowed feature-by-feature; now
+// we flip a module-level ref so any consumer (App.vue's banner) can
+// react. Eager: surfaces backend-down at the FIRST failing user-
+// triggered fetch, no need to wait for the 15s health poll.
+
+/** True while the backend appears reachable. Flipped to false on a
+ *  `fetch` throw (network error, server stopped, DNS, etc.) and back
+ *  to true on any successful HTTP response. */
+export const backendReachable: Ref<boolean> = ref(true);
+
+/** Last network-error message observed when `backendReachable` was
+ *  flipped to false. Useful for the offline banner's small print. */
+export const lastBackendError: Ref<string | null> = ref(null);
 
 // ── Auth token (populated by bootstrap; consumed by every call) ─────
 
@@ -140,11 +159,26 @@ export async function apiCall<T = unknown>(path: string, opts: ApiOptions = {}):
   try {
     res = await fetch(url, init);
   } catch (err) {
+    // `fetch` itself threw — backend unreachable (server stopped,
+    // DNS, CORS preflight failure, etc.). Surface globally so the
+    // banner appears immediately rather than waiting for the 15s
+    // health poll.
+    const message = errorMessage(err);
+    backendReachable.value = false;
+    lastBackendError.value = message;
     return {
       ok: false,
-      error: errorMessage(err),
+      error: message,
       status: 0,
     };
+  }
+
+  // Any reply at all means the server is talking — re-arm the
+  // reachable flag. HTTP-level errors (4xx/5xx) leave it true; only
+  // network-error throws above flip it false.
+  if (!backendReachable.value) {
+    backendReachable.value = true;
+    lastBackendError.value = null;
   }
 
   if (!res.ok) {

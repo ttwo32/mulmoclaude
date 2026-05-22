@@ -88,6 +88,11 @@ const koMessages = {
     notFound: "{command}을(를) 찾을 수 없습니다 — 관련 기능이 비활성화되었습니다. 설치 후 재시작하면 활성화됩니다.",
     notResponding: "{command}이(가) 설치되어 있지만 응답하지 않습니다 — 관련 기능이 비활성화되었습니다. 시작한 후 재시작하면 활성화됩니다.",
   },
+  backendOffline: {
+    title: "백엔드에 연결할 수 없습니다",
+    body: "MulmoClaude 서버가 실행 중이 아닐 수 있습니다. 개발 서버를 확인한 후 다시 시도하세요.",
+    retry: "다시 시도",
+  },
   pluginErrorBoundary: {
     title: "플러그인 {pkg}이(가) 충돌했습니다",
     subtitle: "플러그인 렌더링에 실패했습니다. 오류가 콘솔에 기록되었습니다.",
