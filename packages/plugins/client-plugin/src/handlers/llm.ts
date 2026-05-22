@@ -260,12 +260,26 @@ export async function handleManageClient(
         log.warn(`Failed to list projects for client ${slug}`, e);
       }
 
+      const rateInfo = client.rate ? `${client.rate.amount} ${client.rate.currency} per ${client.rate.unit}` : "Not configured";
+
+      const detailsMessage = [
+        `Retrieved details for client "${client.name}" (status: ${client.status}).`,
+        `- Slug: ${client.id}`,
+        `- Rate: ${rateInfo}`,
+        `- Payment Terms: ${client.paymentTerms || "N/A"}`,
+        `- First Engagement: ${client.firstEngagement || "N/A"}`,
+        client.contacts && client.contacts.length > 0
+          ? `- Contacts: ${client.contacts.map((c: any) => `${c.name} (${c.email || "no email"}${c.role ? ` - ${c.role}` : ""})`).join(", ")}`
+          : "- Contacts: None",
+        projects && projects.length > 0 ? `- Projects: ${projects.map((p) => `${p.name || p.id} (${p.status || "active"})`).join(", ")}` : "- Projects: None",
+      ].join("\n");
+
       return {
         ok: true,
         client,
         projects,
         args: { action: args.action, id: slug },
-        message: `Retrieved details for client "${client.name}" (status: ${client.status}).`,
+        message: detailsMessage,
         jsonData: { client, projects },
         instructions: `Open details page for client ${client.name}.`,
       };
