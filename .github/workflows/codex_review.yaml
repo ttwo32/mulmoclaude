@@ -73,7 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Codex needs full history to inspect the PR diff via `gh`.
           fetch-depth: 0
@@ -82,7 +82,7 @@ jobs:
           persist-credentials: false
 
       - name: Use Node.js 22.x
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22.x
 
