@@ -835,10 +835,17 @@ let unsub: (() => void) | null = null;
 onMounted(async () => {
   await loadData();
 
-  // If the dashboard was opened as a result of saving settings, focus the settings tab
   const args = props.selectedResult?.args as any;
+  // If the dashboard was opened as a result of saving settings, focus the settings tab
   if (args?.action === "saveSettings") {
     activeTab.value = "settings";
+  }
+
+  // If opened as the result of a new invoice candidate, automatically select it
+  const candidate = props.selectedResult?.jsonData?.candidate;
+  if (candidate?.candidateId) {
+    selectedRecordId.value = candidate.candidateId;
+    isCandidate.value = true;
   }
 
   unsub = pubsub.subscribe("changed", () => {
