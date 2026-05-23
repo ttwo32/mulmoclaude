@@ -1860,6 +1860,13 @@ onUnmounted(() => {
   color: #1e293b !important;
 }
 
+.invoice-markdown-body :deep(tr[style*="color: white"] td),
+.invoice-markdown-body :deep(tr[style*="color:white"] td),
+.invoice-markdown-body :deep(tr[style*="color: #ffffff"] td),
+.invoice-markdown-body :deep(tr[style*="color:#ffffff"] td) {
+  color: #ffffff !important;
+}
+
 .dark .invoice-markdown-body :deep(h1),
 .dark .invoice-markdown-body :deep(h2),
 .dark .invoice-markdown-body :deep(h3),
@@ -1870,6 +1877,13 @@ onUnmounted(() => {
 .dark .invoice-markdown-body :deep(td),
 .dark .invoice-markdown-body :deep(th) {
   color: #e2e8f0 !important;
+}
+
+.dark .invoice-markdown-body :deep(tr[style*="color: white"] td),
+.dark .invoice-markdown-body :deep(tr[style*="color:white"] td),
+.dark .invoice-markdown-body :deep(tr[style*="color: #ffffff"] td),
+.dark .invoice-markdown-body :deep(tr[style*="color:#ffffff"] td) {
+  color: #ffffff !important;
 }
 
 /* Settings Form Tab */
