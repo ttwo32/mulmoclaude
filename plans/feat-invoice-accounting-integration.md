@@ -1,60 +1,65 @@
-# Plan: Solopreneur Invoice Plugin with Accounting Bookkeeping & Dynamic settings
+# Plan: Solopreneur Invoice Plugin with AI-Native Bookkeeping Coordination
 
-This plan describes the implementation of the `@mulmoclaude/invoice-plugin` completely from scratch, including automated double-entry bookkeeping via the host's Accounting plugin, dynamic issuer configurations (zero hardcoded values), and AI-native invoice layout generation using a Japanese/English template.
-
-## Requirements & Scope
-
-1. **Standalone Invoice Management**:
-   - Standard CRUD-like commands for billing candidates and committed invoices.
-   - Dual-panel UI dashboard showing candidates next to committed invoices.
-   - Dynamic settings page for setting issuer details (Company Name, T-number, Address, Email, Bank Details).
-
-2. **Strict Decoupling (疎結合) Sibling Lookups**:
-   - Query client and worklog data dynamically via host registry API commands first, degrading gracefully to parsing `data/clients/*.md` or `committed/*.jsonl` respectively if registry is unavailable.
-
-3. **Automated Journal Postings**:
-   - **Approval**: Debit A/R (`1100`) and Credit Revenue (`4000`) for the invoice total. If tax > 0 and account `2400` ("Sales Tax Payable") exists, split Credit between `4000` (subtotal) and `2400` (tax), attaching the issuer's T-number to the tax line.
-   - **Mark Paid**: Debit checking bank (`1010`) and Credit A/R (`1100`) for the total.
-   - **Void**: Scan the active book's entries, find the entry or entries matching `invoice.id` in their memos, and call `voidEntry` on the service layer to post reversing entries.
-   - **Graceful Error Handling**: All bookkeeping operations are wrapped defensively so any failures (e.g. no books, missing accounts) are caught and logged as warnings, leaving the invoice lifecycle intact.
-
-4. **AI Invoice Layout Generation**:
-   - Clicking "Generate Layout (AI)" dispatches `startPrintableGenerationChat` on the backend.
-   - Spawns a new chat in the `"accounting"` role via the host's `runtime.chat.start` runtime API.
-   - Seeds the chat with a precise prompt containing the invoice items, totals, and dynamic issuer settings, instructing the LLM to output a beautiful Japanese/English print-ready invoice based on the 有限会社パーベイシブ template design and save it directly to `artifacts/invoices/<invoice-id>.md`.
-   - Redirects the user to the resulting `/chat/<chatId>`.
-
-5. **No Hardcoded Issuer Values**:
-   - No company names or registration numbers are hardcoded in the source code or prompts. Everything is dynamically injected from `settings.json` configured in the UI.
+This plan describes the implementation of the `@mulmoclaude/invoice-plugin` completely from scratch, utilizing **AI-Native Bookkeeping Coordination** to achieve strict decoupling (疎結合), complete sandboxed safety, and premium solopreneur UI layouts.
 
 ---
 
-## File Deliverables
+## 1. Requirements & Scope
 
-### 1. Backend Plugin Infrastructure
-- **[NEW] [accounting.ts](file:///Users/satoshi/git/ai/mulmoclaude/packages/plugins/invoice-plugin/src/accounting.ts)**: Dynamic ESM host import wrapper of `server/accounting/service` with book search, automated journals (`recordInvoiceApproval`, `recordInvoicePayment`), and journal scan-and-void logic (`recordInvoiceVoid`).
-- **[MODIFY] [types.ts](file:///Users/satoshi/git/ai/mulmoclaude/packages/plugins/invoice-plugin/src/types.ts)**: Incorporates `InvoiceSettingsSchema` (Zod) and exports type `InvoiceSettings`.
-- **[MODIFY] [io.ts](file:///Users/satoshi/git/ai/mulmoclaude/packages/plugins/invoice-plugin/src/io.ts)**: Implements Zod-validated configuration loading and saving (`loadSettings`, `saveSettings`) to write issuer data to `settings.json`.
-- **[NEW] [index.ts](file:///Users/satoshi/git/ai/mulmoclaude/packages/plugins/invoice-plugin/src/index.ts)**: Entry point for `definePlugin` orchestrating `manageInvoice` dispatches. Sets up candidates on creation, commits invoice records on approval, marks paid, and voids invoices. Handles `startPrintableGenerationChat` and wraps accounting tasks in defensive try/catch blocks.
+### Standalone Invoice Management
+- Standard CRUD-like commands for billing candidates and committed invoices.
+- Dual-panel UI dashboard showing candidates next to committed invoices.
+- Dynamic settings page for setting issuer details (Company Name, T-number, Address, Email, Bank Details) and target ledger book configurations (`bookId`, `bookName`).
+
+### Loose Decoupling (疎結合)
+- Avoids direct backend-to-backend plugin communications entirely.
+- The invoice plugin remains 100% sandboxed inside its own data directory.
+- No direct dynamic module imports (`importServerModule`) or custom server-side dynamic lookups are used, ensuring clean sandboxed safety.
+- Restores a pristine, standard Vite bundler configuration (no Node built-ins as `external`).
+
+### AI-Native Bookkeeping Coordination
+- Rather than having the backend write directly to the accounting ledger, the frontend View uses the host-provided **`sendTextMessage`** callback to request the **AI Accountant (LLM running in the `"accounting"` role)** to post the entries.
+- **Trigger Points**:
+  - **Approval**: Upon successful local invoice candidate approval, the View sends a message to the active chat instructing the LLM to Debit A/R (`1100`) and Credit Revenue (`4000`) / Sales Tax Payable (`2400`) in the chosen ledger book.
+  - **Payment**: Upon marking an invoice paid, the View sends a message instructing the LLM to Debit Checking/Cash (`1010`/`1000`) and Credit A/R (`1100`).
+  - **Void**: Upon voiding an invoice, the View sends a message instructing the LLM to scan and void matching entries.
+- The active AI Accountant receives the message and executes the actual accounting write using its standard `manageAccounting` tool dispatches (`addEntries` / `voidEntry`).
+
+### AI Invoice Layout Generation
+- Clicking "Generate Layout (AI)" dispatches `startPrintableGenerationChat` on the backend.
+- Spawns a new chat in the `"accounting"` role via the host's `runtime.chat.start` runtime API.
+- Seeds the chat with a precise prompt containing the invoice items, totals, and dynamic issuer settings, instructing the LLM to output a beautiful Japanese/English print-ready invoice based on the 有限会社パーベイシブ template design and save it directly to `artifacts/invoices/<invoice-id>.md`.
+- Redirects the user to the resulting `/chat/<chatId>`.
+
+---
+
+## 2. File Deliverables
+
+### Backend Plugin Infrastructure
+- **[MODIFY] [types.ts](file:///Users/satoshi/git/ai/mulmoclaude/packages/plugins/invoice-plugin/src/types.ts)**: Incorporates `InvoiceSettingsSchema` (Zod) including `bookId` and `bookName`, and exports type `InvoiceSettings`.
+- **[MODIFY] [io.ts](file:///Users/satoshi/git/ai/mulmoclaude/packages/plugins/invoice-plugin/src/io.ts)**: Implements Zod-validated configuration loading and saving (`loadSettings`, `saveSettings`) to write issuer data to `settings.json`. Completely sandboxed (no dynamic registry imports).
+- **[MODIFY] [index.ts](file:///Users/satoshi/git/ai/mulmoclaude/packages/plugins/invoice-plugin/src/index.ts)**: Entry point for `definePlugin` orchestrating `manageInvoice` dispatches. Standard sandboxed file operations.
 - **[NEW] [handlers/llm.ts](file:///Users/satoshi/git/ai/mulmoclaude/packages/plugins/invoice-plugin/src/handlers/llm.ts)**: Specialized LLM-callable handlers to create candidates or query data.
 - **[MODIFY] [definition.ts](file:///Users/satoshi/git/ai/mulmoclaude/packages/plugins/invoice-plugin/src/definition.ts)**: Tool descriptor for `manageInvoice` including settings configuration actions and notes prompt.
 
-### 2. Role Permissions & Registry
+### Role Permissions & Registry
 - **[MODIFY] [toolNames.ts](file:///Users/satoshi/git/ai/mulmoclaude/src/config/toolNames.ts)**: Registers `manageInvoice: "manageInvoice"`.
 - **[MODIFY] [roles.ts](file:///Users/satoshi/git/ai/mulmoclaude/src/config/roles.ts)**: Grants access to `manageWorklog`, `manageClient`, and `manageInvoice` in the `accounting` role.
 - **[MODIFY] [preset-list.ts](file:///Users/satoshi/git/ai/mulmoclaude/server/plugins/preset-list.ts)**: Registers `@mulmoclaude/invoice-plugin` in the runtime engine preset list.
 
-### 3. Premium Frontend UI Component
-- **[NEW] [View.vue](file:///Users/satoshi/git/ai/mulmoclaude/packages/plugins/invoice-plugin/src/View.vue)**: HSL-tuned premium glassmorphic Solopreneur Invoicing board with Candidate vs Committed lists, a specialized "Settings" editor, dynamic warning banners when settings are missing, and an AI generation button redirecting users to the newly seeded chat session. Uses `marked` to render invoice markdown beautifully on the details sheet.
+### Premium Frontend UI Component
+- **[NEW] [View.vue](file:///Users/satoshi/git/ai/mulmoclaude/packages/plugins/invoice-plugin/src/View.vue)**: HSL-tuned premium glassmorphic Solopreneur Invoicing board with Candidate vs Committed lists.
+  - Receives `sendTextMessage` callback as a prop.
+  - Features a target ledger selector dropdown under Settings.
+  - Programmatically calls `sendTextMessage` upon successful candidate approvals, bank payments, or invoice void actions to request ledger writes via the AI Accountant.
 - **[NEW] [vue.ts](file:///Users/satoshi/git/ai/mulmoclaude/packages/plugins/invoice-plugin/src/vue.ts)**: Frontend plugin binder exporting `View.vue` and custom menus.
 - **[NEW] [shared.ts](file:///Users/satoshi/git/ai/mulmoclaude/packages/plugins/invoice-plugin/src/shared.ts)**: Shared utilities (constants or helpers).
 - **[NEW] [shims-vue.d.ts](file:///Users/satoshi/git/ai/mulmoclaude/packages/plugins/invoice-plugin/src/shims-vue.d.ts)**: Vue shim definitions.
 
 ---
 
-## Verification & Launch Plan
+## 3. Verification & Launch Plan
 
-1. Build & transpile all modules.
-2. Confirm strict type-safety via compiler checks.
-3. Validate dynamic import and fallback gracefully under standalone run conditions.
-4. Perform user tests in local environment before preparing PR.
+1. Rebuild and verify standard, sandboxed Vue and backend JS bundles.
+2. Confirm strict type-safety across the workspace.
+3. Validate AI-native message dispatches end-to-end.

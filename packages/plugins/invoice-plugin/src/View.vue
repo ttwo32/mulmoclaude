@@ -39,6 +39,25 @@
       </div>
     </transition>
 
+    <transition name="slide-down">
+      <div v-if="copyInstructionText" class="alert-banner info glass-panel instruction-panel" style="padding: 1.25rem; border-left: 4px solid #4f46e5; background: rgba(79, 70, 229, 0.05); margin-top: 0.5rem; display: flex; flex-direction: column; align-items: stretch; gap: 0.75rem;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <span class="material-icons text-indigo-500 animate-pulse">chat</span>
+          <span class="font-bold text-xs uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Manual Bookkeeping Instruction</span>
+        </div>
+        <div class="alert-text" style="display: flex; flex-direction: column; gap: 0.75rem;">
+          <p style="font-size: 0.8rem; margin: 0; color: #4b5563; dark:color: #9ca3af;">Please copy the instruction below and paste it to the AI Accountant chat to complete double-entry bookkeeping:</p>
+          <pre style="margin: 0; font-family: monospace; font-size: 0.8rem; background: rgba(0, 0, 0, 0.06); padding: 0.85rem; rounded: 8px; border: 1px solid rgba(0, 0, 0, 0.08); white-space: pre-wrap; word-break: break-all; select: all; line-height: 1.5; color: #1f2937; dark:color: #f3f4f6;">{{ copyInstructionText }}</pre>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-indigo" type="button" @click="copyToClipboard(copyInstructionText)" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">
+              <span class="material-icons" style="font-size: 0.85rem;">content_copy</span> Copy to Clipboard
+            </button>
+            <button class="btn btn-slate" type="button" @click="copyInstructionText = ''" style="padding: 0.4rem 0.8rem; font-size: 0.75rem;">Dismiss</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
     <!-- Profile Incomplete Setup Warning Banner -->
     <transition name="slide-down">
       <div v-if="dataLoaded && !settings.companyName && activeTab !== 'settings'" class="setup-warning-banner glass-panel">
@@ -442,7 +461,10 @@ import type { Invoice, InvoiceCandidate, InvoiceSettings, ExtendedToolResultComp
 import ConfirmModal from "../../shared/components/ConfirmModal.vue";
 import { useConfirm } from "../../shared/components/confirm";
 
-const props = defineProps<{ selectedResult?: ExtendedToolResultComplete }>();
+const props = defineProps<{
+  selectedResult?: ExtendedToolResultComplete;
+  sendTextMessage?: (text?: string) => void;
+}>();
 
 const { dispatch, pubsub, log } = useRuntime();
 const { openConfirm } = useConfirm();
@@ -452,6 +474,7 @@ const activeTab = ref<"invoices" | "settings">("invoices");
 const viewMode = ref<"details" | "preview">("details");
 const successMsg = ref("");
 const errorMsg = ref("");
+const copyInstructionText = ref("");
 const actionPending = ref(false);
 const dataLoaded = ref(false);
 
@@ -470,6 +493,7 @@ const settings = ref<InvoiceSettings>({
   bankAccountNumber: "",
   bankAccountHolder: "",
   bookId: "",
+  bookName: "",
 });
 
 const clients = ref<any[]>([]);
@@ -629,7 +653,6 @@ async function loadData() {
       invoices.value = res.jsonData.invoices || [];
       candidates.value = res.jsonData.candidates || [];
       clients.value = res.jsonData.clients || [];
-      books.value = res.jsonData.books || [];
       settings.value = res.jsonData.settings || {
         companyName: "",
         taxRegistrationId: "",
@@ -642,8 +665,26 @@ async function loadData() {
         bankAccountNumber: "",
         bankAccountHolder: "",
         bookId: "",
+        bookName: "",
       };
       editSettings.value = { ...settings.value };
+    }
+
+    // Dynamic book fetching via standard API
+    try {
+      const booksRes = await fetch("/api/accounting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "getBooks" }),
+      });
+      if (booksRes.ok) {
+        const booksData = await booksRes.json();
+        if (booksData?.ok && booksData?.jsonData?.books) {
+          books.value = booksData.jsonData.books;
+        }
+      }
+    } catch (err: any) {
+      log.error("Failed to dynamically fetch available accounting books", { error: err.message });
     }
   } catch (err: any) {
     errorMsg.value = "Failed to load bookkeeping and invoice data.";
@@ -688,6 +729,9 @@ async function saveIssuerSettings() {
   successMsg.value = "";
   errorMsg.value = "";
   try {
+    const selectedBook = books.value.find((b) => b.id === editSettings.value.bookId);
+    editSettings.value.bookName = selectedBook ? selectedBook.name : "";
+
     const res = (await dispatch({ action: "saveSettings", settings: editSettings.value })) as any;
     if (res?.ok) {
       settings.value = { ...editSettings.value };
@@ -715,14 +759,47 @@ async function approveCandidate() {
   actionPending.value = true;
   successMsg.value = "";
   errorMsg.value = "";
+  copyInstructionText.value = "";
   try {
     const res = (await dispatch({ action: "candidateApprove", id: selectedRecordId.value! })) as any;
     if (res?.ok && res?.jsonData?.invoice) {
-      successMsg.value = `Invoice approved and registered as ${res.jsonData.invoice.id}. Journal entries created.`;
-      const nextId = res.jsonData.invoice.id;
+      const invoice = res.jsonData.invoice;
+      successMsg.value = `Invoice approved and registered as ${invoice.id}.`;
+      const nextId = invoice.id;
+      const clientName = getClientName(invoice.clientId);
+      const bookId = settings.value.bookId || "book-7ceddbfc";
+      const bookName = settings.value.bookName || "Pervasive";
+
       await loadData();
       selectedRecordId.value = nextId;
       isCandidate.value = false;
+
+      const instruction = `Please record the double-entry bookkeeping journal entries for approved Invoice ${nextId}.\n` +
+        `Total: ¥${invoice.total.toLocaleString()} (Subtotal: ¥${invoice.subtotal.toLocaleString()}, Tax: ¥${invoice.tax.toLocaleString()})\n` +
+        `Date: ${invoice.date}\n` +
+        `Client: ${clientName}\n` +
+        `Book ID: ${bookId} (${bookName})`;
+
+      if (props.sendTextMessage) {
+        props.sendTextMessage(instruction);
+      } else {
+        try {
+          const chatRes = (await dispatch({
+            action: "startAccountingChat",
+            message: instruction,
+          })) as any;
+          if (chatRes?.ok && chatRes?.jsonData?.chatId) {
+            successMsg.value += " Redirecting to new Accounting chat...";
+            setTimeout(() => {
+              window.location.href = `/chat/${chatRes.jsonData.chatId}`;
+            }, 1200);
+          } else {
+            copyInstructionText.value = instruction;
+          }
+        } catch (err: any) {
+          copyInstructionText.value = instruction;
+        }
+      }
     } else {
       errorMsg.value = res?.error || "Failed to approve billing draft.";
     }
@@ -771,19 +848,54 @@ function promptMarkPaid() {
 
 async function markPaidSubmit() {
   if (!pendingActionId.value) return;
+  const currentActionId = pendingActionId.value;
+  const currentPaymentRef = paymentRef.value;
+
   showPaymentModal.value = false;
   actionPending.value = true;
   successMsg.value = "";
   errorMsg.value = "";
+  copyInstructionText.value = "";
   try {
     const res = (await dispatch({
       action: "invoiceMarkPaid",
-      id: pendingActionId.value,
-      paymentRef: paymentRef.value,
+      id: currentActionId,
+      paymentRef: currentPaymentRef,
     })) as any;
-    if (res?.ok) {
-      successMsg.value = `Invoice ${pendingActionId.value} marked as paid. Bank deposit entries logged.`;
+    if (res?.ok && res?.jsonData?.invoice) {
+      const invoice = res.jsonData.invoice;
+      successMsg.value = `Invoice ${invoice.id} marked as paid.`;
+      const clientName = getClientName(invoice.clientId);
+      const bookId = settings.value.bookId || "book-7ceddbfc";
+      const bookName = settings.value.bookName || "Pervasive";
+
       await loadData();
+
+      const instruction = `Invoice PAID: ${invoice.id}\n` +
+        `Total: ¥${invoice.total.toLocaleString()}\n` +
+        `Reference: ${currentPaymentRef || "Bank Transfer"}\n\n` +
+        `Please record the cash receipt journal entries (debit Checking/Cash, credit Accounts Receivable) for this paid invoice into the ledger book ID: "${bookId}" (Name: ${bookName}).`;
+
+      if (props.sendTextMessage) {
+        props.sendTextMessage(instruction);
+      } else {
+        try {
+          const chatRes = (await dispatch({
+            action: "startAccountingChat",
+            message: instruction,
+          })) as any;
+          if (chatRes?.ok && chatRes?.jsonData?.chatId) {
+            successMsg.value += " Redirecting to new Accounting chat...";
+            setTimeout(() => {
+              window.location.href = `/chat/${chatRes.jsonData.chatId}`;
+            }, 1200);
+          } else {
+            copyInstructionText.value = instruction;
+          }
+        } catch (err: any) {
+          copyInstructionText.value = instruction;
+        }
+      }
     } else {
       errorMsg.value = res?.error || "Failed to record payment.";
     }
@@ -804,19 +916,52 @@ function promptVoid() {
 
 async function voidSubmit() {
   if (!pendingActionId.value || !voidReason.value) return;
+  const currentActionId = pendingActionId.value;
+  const currentVoidReason = voidReason.value;
+
   showVoidModal.value = false;
   actionPending.value = true;
   successMsg.value = "";
   errorMsg.value = "";
+  copyInstructionText.value = "";
   try {
     const res = (await dispatch({
       action: "invoiceVoid",
-      id: pendingActionId.value,
-      voidReason: voidReason.value,
+      id: currentActionId,
+      voidReason: currentVoidReason,
     })) as any;
-    if (res?.ok) {
-      successMsg.value = `Invoice ${pendingActionId.value} voided. Journal reversing entries recorded.`;
+    if (res?.ok && res?.jsonData?.invoice) {
+      const invoice = res.jsonData.invoice;
+      successMsg.value = `Invoice ${invoice.id} voided.`;
+      const bookId = settings.value.bookId || "book-7ceddbfc";
+      const bookName = settings.value.bookName || "Pervasive";
+
       await loadData();
+
+      const instruction = `Invoice VOIDED: ${invoice.id}\n` +
+        `Reason: ${currentVoidReason || "Duplicate invoice"}\n\n` +
+        `Please scan and void all journal entries associated with Invoice ${invoice.id} in the ledger book ID: "${bookId}" (Name: ${bookName}).`;
+
+      if (props.sendTextMessage) {
+        props.sendTextMessage(instruction);
+      } else {
+        try {
+          const chatRes = (await dispatch({
+            action: "startAccountingChat",
+            message: instruction,
+          })) as any;
+          if (chatRes?.ok && chatRes?.jsonData?.chatId) {
+            successMsg.value += " Redirecting to new Accounting chat...";
+            setTimeout(() => {
+              window.location.href = `/chat/${chatRes.jsonData.chatId}`;
+            }, 1200);
+          } else {
+            copyInstructionText.value = instruction;
+          }
+        } catch (err: any) {
+          copyInstructionText.value = instruction;
+        }
+      }
     } else {
       errorMsg.value = res?.error || "Failed to void invoice.";
     }
@@ -851,6 +996,15 @@ async function triggerPrintableGeneration() {
     errorMsg.value = err.message || "An unexpected error occurred.";
   } finally {
     actionPending.value = false;
+  }
+}
+
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    successMsg.value = "Instruction copied to clipboard! You can paste it in your active chat.";
+  } catch (err) {
+    errorMsg.value = "Failed to copy instruction to clipboard.";
   }
 }
 
