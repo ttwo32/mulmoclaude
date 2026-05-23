@@ -600,13 +600,7 @@ const renderedInvoiceTemplate = computed(() => {
   <tbody>
     ${record.items
       .map(
-        (item: any) => `
-      <tr style="border-bottom: 1px solid rgba(0,0,0,0.08);">
-        <td style="padding: 8px;">${item.description}</td>
-        <td style="padding: 8px; text-align: center;">${item.quantity}</td>
-        <td style="padding: 8px; text-align: right;">¥${item.amount.toLocaleString()}</td>
-      </tr>
-    `,
+        (item: any) => `<tr style="border-bottom:1px solid rgba(0,0,0,0.08);"><td style="padding:8px;">${item.description}</td><td style="padding:8px;text-align:center;">${item.quantity}</td><td style="padding:8px;text-align:right;">¥${item.amount.toLocaleString()}</td></tr>`
       )
       .join("")}
   </tbody>
