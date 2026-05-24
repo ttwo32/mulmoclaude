@@ -24,7 +24,7 @@
     "@mulmobridge/client": "^0.1.4",
     "@mulmobridge/protocol": "^0.1.4",
     "dotenv": "^17.0.0",
-    "ws": "^8.20.1"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.0",
