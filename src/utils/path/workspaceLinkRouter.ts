@@ -5,15 +5,41 @@
 //
 // Pure function — no DOM or Vue dependencies, fully unit-testable.
 
+import { PAGE_ROUTES } from "../../router/pageRoutes";
 import { isExternalHref, extractSessionIdFromPath } from "./relativeLink";
 
-export type WorkspaceLinkTarget = { kind: "wiki"; slug: string } | { kind: "file"; path: string } | { kind: "session"; sessionId: string };
+export type WorkspaceLinkTarget =
+  | { kind: "wiki"; slug: string }
+  | { kind: "file"; path: string }
+  | { kind: "session"; sessionId: string }
+  /** A top-level SPA route like `/collections/mc-clients`,
+   *  `/calendar`, `/todos/<id>`. `path` includes the leading slash
+   *  so callers can pass it directly to `router.push(string)`. */
+  | { kind: "spa-route"; path: string };
 
 // Match `data/wiki/pages/<slug>.md` or `wiki/pages/<slug>.md`.
 const WIKI_PAGE_PATTERN = /(?:data\/)?wiki\/pages\/([^/]+)\.md$/;
 
 // Match `conversations/chat/<id>.jsonl` (delegates to extractSessionIdFromPath).
 const CHAT_LOG_PREFIX = "conversations/";
+
+// Top-level SPA route names whose leading-segment match should
+// short-circuit the files-view fallback. Without this set, an
+// agent-emitted link like `[Microsoft](/collections/mc-clients)` or
+// `[my calendar](/calendar)` falls into the `kind: "file"` default
+// and gets routed to `/files/collections/mc-clients`, which 404s
+// because that path doesn't exist on disk.
+//
+// `chat` and `files` are intentionally OMITTED:
+//   - `chat`: agent-emitted chat links go through the
+//     `conversations/chat/<id>.jsonl` convention above so the
+//     session-load handler (mark-read, start-chat) runs. A bare
+//     `/chat/<id>` would skip that flow.
+//   - `files`: a bare `/files/<path>` from agent text is already
+//     a file-view URL — letting it stay in the file fallback
+//     keeps the per-segment URL encoding the catch-all route does
+//     (see App.vue navigateToWorkspacePath#file).
+const SPA_ROUTE_NAMES: ReadonlySet<string> = new Set(Object.values(PAGE_ROUTES).filter((name) => name !== PAGE_ROUTES.chat && name !== PAGE_ROUTES.files));
 
 /**
  * Given a raw href attribute from agent Markdown, return a typed
@@ -60,6 +86,17 @@ export function classifyWorkspacePath(href: string): WorkspaceLinkTarget | null 
     if (sessionId) {
       return { kind: "session", sessionId };
     }
+  }
+
+  // Top-level SPA route: leading segment names one of the host's
+  // pages (collections, calendar, todos, automations, skills, …).
+  // Without this branch, those links would be routed to the Files
+  // view (with `files/` prepended) and 404 — the trigger for this
+  // generalization was `[X](/collections/mc-clients)` from the
+  // mc-clients SKILL.md ending up at `/files/collections/mc-clients`.
+  const [firstSegment] = normalized.split("/");
+  if (SPA_ROUTE_NAMES.has(firstSegment)) {
+    return { kind: "spa-route", path: `/${normalized}` };
   }
 
   // Everything else: open in Files view

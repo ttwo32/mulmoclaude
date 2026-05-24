@@ -86,6 +86,89 @@ describe("classifyWorkspacePath", () => {
   // router's own encoding step turns "%E3..." into "%25E3..." (see
   // plans/done/fix-workspace-link-double-encoding.md).
 
+  // ── SPA route links ───────────────────────────────────────
+  //
+  // Regression for the apps→collections rename PR: agent-emitted
+  // links like `[Microsoft](/collections/mc-clients)` were falling
+  // into the file fallback and routing to `/files/collections/mc-clients`
+  // (404). The classifier now recognizes top-level SPA routes.
+
+  describe("SPA route links", () => {
+    it("classifies /collections/<slug> as spa-route", () => {
+      const result = classifyWorkspacePath("/collections/mc-clients");
+      assert.deepEqual(result, { kind: "spa-route", path: "/collections/mc-clients" });
+    });
+
+    it("classifies collections without leading slash as spa-route", () => {
+      // marked.parse() can emit either form depending on the source
+      // markdown; both should classify the same way.
+      const result = classifyWorkspacePath("collections/mc-clients");
+      assert.deepEqual(result, { kind: "spa-route", path: "/collections/mc-clients" });
+    });
+
+    it("classifies bare /collections (no slug) as spa-route", () => {
+      const result = classifyWorkspacePath("/collections");
+      assert.deepEqual(result, { kind: "spa-route", path: "/collections" });
+    });
+
+    it("classifies /calendar as spa-route", () => {
+      const result = classifyWorkspacePath("/calendar");
+      assert.deepEqual(result, { kind: "spa-route", path: "/calendar" });
+    });
+
+    it("classifies /todos/<id> as spa-route", () => {
+      const result = classifyWorkspacePath("/todos/buy-milk");
+      assert.deepEqual(result, { kind: "spa-route", path: "/todos/buy-milk" });
+    });
+
+    it("classifies /skills and /roles as spa-route", () => {
+      assert.deepEqual(classifyWorkspacePath("/skills"), { kind: "spa-route", path: "/skills" });
+      assert.deepEqual(classifyWorkspacePath("/roles"), { kind: "spa-route", path: "/roles" });
+    });
+
+    it("does NOT classify /chat/<id> as spa-route (preserves session-load flow via conversations/chat/<id>.jsonl)", () => {
+      // /chat is intentionally excluded from SPA_ROUTE_NAMES so the
+      // existing handleSessionSelect path (mark-read, start-chat) is
+      // the only way agent links reach a chat session.
+      const result = classifyWorkspacePath("/chat/abc-123");
+      assert.ok(result);
+      assert.equal(result.kind, "file");
+    });
+
+    it("does NOT classify /files/<path> as spa-route (preserves per-segment URL encoding)", () => {
+      // /files is excluded so the catch-all pathMatch encoding in
+      // the file-fallback branch still applies.
+      const result = classifyWorkspacePath("/files/data/clients/items/microsoft.json");
+      assert.ok(result);
+      assert.equal(result.kind, "file");
+    });
+
+    it("wiki page pattern still wins over the spa-route catch-all", () => {
+      // `wiki` is in SPA_ROUTE_NAMES, but the more specific
+      // `data/wiki/pages/<slug>.md` wiki-page pattern is checked
+      // first and should still return kind: "wiki".
+      const result = classifyWorkspacePath("data/wiki/pages/my-page.md");
+      assert.deepEqual(result, { kind: "wiki", slug: "my-page" });
+    });
+
+    it("bare /wiki (no page slug) classifies as spa-route", () => {
+      // The wiki-page regex requires `pages/<slug>.md` — without
+      // that, the SPA-route branch picks it up so `/wiki` opens
+      // the wiki home instead of 404ing at `/files/wiki`.
+      const result = classifyWorkspacePath("/wiki");
+      assert.deepEqual(result, { kind: "spa-route", path: "/wiki" });
+    });
+
+    it("does not confuse a file path that happens to start with `data/`", () => {
+      // `data` is not a SPA route name, so paths under it stay in
+      // the file-fallback branch as expected.
+      const result = classifyWorkspacePath("data/clients/items/microsoft.json");
+      assert.ok(result);
+      assert.equal(result.kind, "file");
+      assert.equal((result as { kind: "file"; path: string }).path, "data/clients/items/microsoft.json");
+    });
+  });
+
   describe("percent-encoded hrefs (from marked.parse output)", () => {
     it("decodes percent-encoded multibyte file path", () => {
       // "テストファイル" (test file) — generic Japanese name picked
