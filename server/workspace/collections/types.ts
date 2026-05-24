@@ -32,22 +32,10 @@ export interface CollectionFieldSpec {
   to?: string;
   /** When `type === "money"` (or `type === "derived"` with
    *  `display: "money"`): ISO 4217 currency code passed to
-   *  `Intl.NumberFormat` for table display. Used as the default
-   *  when `currencyField` is absent OR the referenced record
-   *  field is blank. Defaults to "USD" client-side when omitted.
-   *  The stored value is always a plain decimal number — currency
-   *  is presentation only. */
+   *  `Intl.NumberFormat` for table display. Defaults to "USD"
+   *  client-side when omitted. The stored value is always a plain
+   *  decimal number — currency is presentation only. */
   currency?: string;
-  /** When `type === "money"`: name of a sibling field on the
-   *  same record that holds the currency code for this money
-   *  value. Use this when different records need different
-   *  currencies (e.g. `hourlyRate` on `mc-clients` — one client
-   *  invoices in USD, another in JPY). The sibling field should
-   *  be an `enum` listing the allowed currency codes. When the
-   *  sibling resolves to a non-empty string the host uses it for
-   *  both display formatting AND the form-input prefix symbol;
-   *  otherwise it falls back to `currency`. */
-  currencyField?: string;
   /** When `type === "enum"`: the closed set of allowed string
    *  values. The form renders a `<select>` populated from this
    *  list; storage is a plain string. Required when type is

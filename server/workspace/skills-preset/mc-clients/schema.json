@@ -23,17 +23,6 @@
       "type": "text",
       "label": "Address"
     },
-    "currency": {
-      "type": "enum",
-      "values": ["USD", "JPY", "EUR", "GBP", "CAD", "AUD", "CNY", "INR", "CHF"],
-      "label": "Billing currency"
-    },
-    "hourlyRate": {
-      "type": "money",
-      "currency": "USD",
-      "currencyField": "currency",
-      "label": "Hourly rate"
-    },
     "notes": {
       "type": "markdown",
       "label": "Notes"

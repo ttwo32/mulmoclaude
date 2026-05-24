@@ -84,11 +84,8 @@ last invoice"):
    grouping: one line item per worklog entry (`description = entry.notes`,
    `quantity = entry.hours`, `rate = <user's standing rate or asked>`).
    You can also group by description if many entries share the same notes.
-4. For the line-item rate, check the **client record's `hourlyRate`** field
-   first (`data/clients/items/<clientId>.json`). If it's set, use that. If
-   it's absent AND the user didn't specify a rate, ASK via `presentForm` —
-   don't invent one. (Future invoices for this client will skip the form
-   once the `hourlyRate` is recorded on the client.)
+4. If the user hasn't specified a line-item rate and you don't have one on
+   file, ASK via `presentForm` — don't invent one.
 5. Write the invoice. The host will display Subtotal / Tax / Total
    automatically once the file is saved.
 

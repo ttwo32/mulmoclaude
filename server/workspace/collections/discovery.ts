@@ -58,7 +58,6 @@ const SubFieldSpecSchema = z
     // like missing data. Applied consistently to every "non-empty
     // string" slot in the schema (CodeRabbit PR #1497).
     currency: z.string().trim().min(1).optional(),
-    currencyField: z.string().trim().min(1).optional(),
     values: z.array(z.string().trim().min(1)).min(1).optional(),
   })
   .refine(refRefine, refMessage)
@@ -72,7 +71,6 @@ const FieldSpecSchema = z
     required: z.boolean().optional(),
     to: z.string().min(1).optional(),
     currency: z.string().trim().min(1).optional(),
-    currencyField: z.string().trim().min(1).optional(),
     values: z.array(z.string().trim().min(1)).min(1).optional(),
     of: z.record(z.string(), SubFieldSpecSchema).optional(),
     formula: z.string().trim().min(1).optional(),

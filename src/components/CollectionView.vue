@@ -63,9 +63,7 @@
                   >{{ refDisplay(field.to, String(item[key])) }}</router-link
                 >
               </span>
-              <span v-else-if="field.type === 'money'" class="block truncate tabular-nums">{{
-                formatMoney(item[key], resolveCurrency(field, item), locale)
-              }}</span>
+              <span v-else-if="field.type === 'money'" class="block truncate tabular-nums">{{ formatMoney(item[key], field.currency, locale) }}</span>
               <span v-else-if="field.type === 'table'" class="block text-gray-500">{{ tableSummary(item[key]) }}</span>
               <span v-else-if="field.type === 'derived'" class="block truncate tabular-nums">{{
                 derivedDisplay(field, evaluateDerivedAgainstItem(field, String(key), item))
@@ -197,7 +195,7 @@
                            treatment as the top-level money input. -->
                       <div v-else-if="subField.type === 'money'" class="relative">
                         <span class="absolute inset-y-0 left-0 flex items-center pl-1 text-xs text-gray-500 pointer-events-none">{{
-                          currencySymbol(resolveCurrency(subField, rowDraftToRecord(row, field.of)))
+                          currencySymbol(subField.currency)
                         }}</span>
                         <input
                           v-model="row.text[subKey]"
@@ -254,7 +252,7 @@
                  into (the bare number input gave no visual hint). -->
             <div v-else-if="field.type === 'money'" class="relative">
               <span class="absolute inset-y-0 left-0 flex items-center pl-2 text-xs text-gray-500 pointer-events-none">{{
-                currencySymbol(resolveCurrency(field, liveRecord))
+                currencySymbol(field.currency)
               }}</span>
               <input
                 :id="`collections-field-${key}`"
@@ -332,14 +330,8 @@ interface FieldSpec {
    *  plans/done/feat-collections-ref-field.md). */
   to?: string;
   /** When type === "money": ISO 4217 currency for Intl display.
-   *  Default when `currencyField` is absent or resolves blank. */
+   *  Defaults to "USD" when omitted. */
   currency?: string;
-  /** When type === "money": name of a sibling field whose value
-   *  holds the currency code. Lets different records of the same
-   *  collection use different currencies (e.g. each client's
-   *  hourlyRate billed in their own currency). See
-   *  `resolveCurrency`. */
-  currencyField?: string;
   /** When type === "enum": closed list of allowed string values
    *  for the form `<select>`. */
   values?: readonly string[];
@@ -561,18 +553,6 @@ function inputTypeFor(type: FieldType): string {
   if (type === "money") return "number";
   if (type === "date") return "date";
   return "text";
-}
-
-/** Pick the currency code to use for a money field at render
- *  time. When the schema declares `currencyField`, look up that
- *  sibling on the current record (form draft or persisted item);
- *  fall back to the field's static `currency`, then to `USD`. */
-function resolveCurrency(field: FieldSpec, record: CollectionItem | null | undefined): string | undefined {
-  if (field.currencyField && record) {
-    const fromRecord = record[field.currencyField];
-    if (typeof fromRecord === "string" && fromRecord.length > 0) return fromRecord;
-  }
-  return field.currency;
 }
 
 /** Extract the localized currency symbol for a given ISO code
