@@ -759,6 +759,16 @@ function scalarDraftToValue(raw: string | undefined, fieldType: FieldType): unkn
   return raw;
 }
 
+/** True when a draft slot should count as "empty" for required-
+ *  field validation. NOT a truthiness check: Vue coerces
+ *  `<input type="number">` to a numeric `0`, and a required field
+ *  whose value is `0` (a quantity of 0, a rate of 0) is a filled
+ *  value, not a missing one. Only `undefined` / `null` / empty
+ *  string count as missing. (CodeRabbit PR #1497.) */
+function isMissingDraftValue(value: unknown): boolean {
+  return value === undefined || value === null || value === "";
+}
+
 /** Convert one row of a `table` field's draft to its persisted
  *  row record. Sub-fields are restricted to non-table / non-derived
  *  types by the SubFieldSpecSchema, so we only need to handle the
@@ -767,7 +777,14 @@ function rowDraftToRecord(rowDraft: TableRowDraft, subFields: Record<string, Fie
   const row: Record<string, unknown> = {};
   for (const [subKey, subField] of Object.entries(subFields)) {
     if (subField.type === "boolean") {
-      row[subKey] = rowDraft.bool[subKey] === true;
+      // Mirror the top-level boolean omission rule (lighter-weight
+      // — no per-row touched tracking): emit only when `true` or
+      // when the sub-field is required. An absent optional boolean
+      // stays absent through a no-op edit, so consumers that
+      // distinguish absence from `false` aren't clobbered.
+      // (github-actions review PR #1497.)
+      const value = rowDraft.bool[subKey] === true;
+      if (value || subField.required) row[subKey] = value;
       continue;
     }
     const value = scalarDraftToValue(rowDraft.text[subKey], subField.type);
@@ -795,7 +812,7 @@ function firstMissingTableSubField(field: FieldSpec, rows: TableRowDraft[] | und
       // Boolean required is a no-op (same reasoning as the
       // top-level skip below).
       if (subField.type === "boolean") continue;
-      if (!row.text[subKey]) return `${field.label} #${rowIdx + 1}: ${subField.label}`;
+      if (isMissingDraftValue(row.text[subKey])) return `${field.label} #${rowIdx + 1}: ${subField.label}`;
     }
   }
   return null;
@@ -828,7 +845,7 @@ function validateOneField(key: string, field: FieldSpec, draft: EditState): stri
   if (!field.required) return null;
   if (draft.mode === "create" && field.primary === true) return null;
   if (field.type === "boolean" || field.type === "derived") return null;
-  return draft.text[key] ? null : field.label;
+  return isMissingDraftValue(draft.text[key]) ? field.label : null;
 }
 
 function firstMissingRequiredField(draft: EditState, schema: CollectionSchema): string | null {
