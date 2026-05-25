@@ -1137,7 +1137,7 @@ const zhMessages = {
     sectionActive: "活动",
     sectionCatalog: "目录",
     sectionLegendActive:
-      "Claude 现在可以使用的技能。在对话过程中 Claude 会自动调用，你也可以输入技能名来调用。{system} 系统(自带 mc-) / {project} 项目(可编辑，MulmoClaude 专用) / {user} 用户(~/.claude/skills/ 中的技能)。",
+      "Claude 现在可以使用的技能。在对话过程中 Claude 会自动调用，你也可以输入技能名来调用。{system} 系统(自带 mc-) / {project} 项目(可编辑，仅此工作区) / {user} 用户(~/.claude/skills/ 中的技能)。",
     sectionLegendCatalog:
       "目录: 标记 {star} 后会成为活动的技能。从活动中取消 {star} 会回到目录 — Claude 将不再使用 (技能不会被删除)。{runOnce} 不加入活动，只运行一次。",
     catalogEmpty: "没有可用的预设技能。",

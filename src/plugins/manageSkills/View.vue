@@ -356,7 +356,9 @@
                   :title="isSelectedPreset ? t('pluginManageSkills.unstarPresetSkill') : t('pluginManageSkills.deleteProjectSkill')"
                   @click="deleteSkill"
                 >
-                  <span class="material-icons text-sm">{{ isSelectedPreset ? "star_border" : "delete" }}</span>
+                  <span class="material-icons text-sm" :class="isSelectedPreset ? 'text-amber-500' : ''">{{
+                    isSelectedPreset ? "star_border" : "delete"
+                  }}</span>
                   {{ isSelectedPreset ? t("pluginManageSkills.btnUnstar") : t("pluginManageSkills.btnDelete") }}
                 </button>
                 <button

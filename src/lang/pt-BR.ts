@@ -1149,7 +1149,7 @@ const ptBRMessages = {
     sectionActive: "Ativas",
     sectionCatalog: "Catálogo",
     sectionLegendActive:
-      "Skills que o Claude pode usar agora. O Claude as usa automaticamente no fluxo da conversa, ou você pode invocar uma digitando seu nome. {system} Sistema (mc- inclusa) / {project} Projeto (editável, somente MulmoClaude) / {user} Usuário (skills em ~/.claude/skills/).",
+      "Skills que o Claude pode usar agora. O Claude as usa automaticamente no fluxo da conversa, ou você pode invocar uma digitando seu nome. {system} Sistema (mc- inclusa) / {project} Projeto (editável, somente neste workspace) / {user} Usuário (skills em ~/.claude/skills/).",
     sectionLegendCatalog:
       "Catálogo: skills que passam a ser Ativas ao marcar com {star}. Remover {star} de Ativas devolve a skill ao Catálogo — o Claude deixa de usá-la (a skill não é excluída). {runOnce} executa a skill uma única vez sem adicioná-la.",
     catalogEmpty: "Nenhuma skill de preset disponível.",

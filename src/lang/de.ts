@@ -1164,7 +1164,7 @@ const deMessages = {
     sectionActive: "Aktiv",
     sectionCatalog: "Katalog",
     sectionLegendActive:
-      "Skills, die Claude jetzt verwenden kann. Claude verwendet sie automatisch im Verlauf des Gesprächs, oder du kannst eine durch Eingabe ihres Namens aufrufen. {system} System (mc- mitgeliefert) / {project} Projekt (bearbeitbar, nur MulmoClaude) / {user} Nutzer (Skills in ~/.claude/skills/).",
+      "Skills, die Claude jetzt verwenden kann. Claude verwendet sie automatisch im Verlauf des Gesprächs, oder du kannst eine durch Eingabe ihres Namens aufrufen. {system} System (mc- mitgeliefert) / {project} Projekt (bearbeitbar, nur in diesem Workspace) / {user} Nutzer (Skills in ~/.claude/skills/).",
     sectionLegendCatalog:
       "Katalog: Skills, die durch {star} Markieren Aktiv werden. {star} in Aktiv entfernen bringt eine Skill zurück in den Katalog — Claude verwendet sie dann nicht mehr (die Skill wird nicht gelöscht). {runOnce} führt die Skill einmal aus, ohne sie hinzuzufügen.",
     catalogEmpty: "Keine Preset-Skills verfügbar.",
