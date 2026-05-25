@@ -220,6 +220,11 @@ describe("Accounting role", () => {
   // - presentDocument (longer narrative outputs like month-end notes)
   // - presentSpreadsheet / presentChart / presentHtml (rich report
   //   surfaces for B/S, P&L, ratio analysis, dashboards)
+  //
+  // The legacy manageWorklog / manageClient / manageInvoice MCP tools
+  // were removed from every built-in role — the schema-driven `mc-*`
+  // collection skills replace them (the plugins still ship in
+  // PRESET_PLUGINS but no role exposes them out of the box).
   const role = BUILTIN_ROLES.find((entry) => entry.id === "accounting");
 
   it("exists in BUILTIN_ROLES", () => {
@@ -230,9 +235,6 @@ describe("Accounting role", () => {
     assert.ok(role);
     assert.deepStrictEqual([...role.availablePlugins].sort(), [
       "manageAccounting",
-      "manageClient",
-      "manageInvoice",
-      "manageWorklog",
       "presentChart",
       "presentDocument",
       "presentForm",
