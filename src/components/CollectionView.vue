@@ -743,7 +743,13 @@ const embedViews = computed<Record<string, EmbedView>>(() => {
     const rows: EmbedRow[] = [];
     if (schema && item) {
       for (const [subKey, subField] of Object.entries(schema.fields)) {
-        rows.push({ key: subKey, label: subField.label, type: subField.type, value: item[subKey], display: embedValue(subField, item[subKey]) });
+        const value = item[subKey];
+        // Skip empty fields — the embed is a read-only summary of
+        // another record (e.g. a "From (issuer)" block), so unfilled
+        // optional fields would just be "—" noise rather than the
+        // editable blanks a form needs.
+        if (value === undefined || value === null || value === "") continue;
+        rows.push({ key: subKey, label: subField.label, type: subField.type, value, display: embedValue(subField, value) });
       }
     }
     out[key] = { found: Boolean(item), rows, targetSlug: field.to ?? "", recordId: field.id ?? "" };
