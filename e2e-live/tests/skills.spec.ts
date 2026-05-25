@@ -32,12 +32,35 @@ const L21B_TIMEOUT_MS = 3 * ONE_MINUTE_MS;
 const L22_TIMEOUT_MS = 3 * ONE_MINUTE_MS;
 const L31_TIMEOUT_MS = 3 * ONE_MINUTE_MS;
 const L32_TIMEOUT_MS = 3 * ONE_MINUTE_MS;
+const L33_TIMEOUT_MS = 3 * ONE_MINUTE_MS;
 
-// All five scenarios talk to the live LLM (L-21: chart tool dispatch,
+// L-33: launcher preset slug + a signature line from its bundled
+// `SKILL.md`. Treated as pinned literals because the canary's whole
+// premise is that this exact preset, with this exact wording, lands
+// in the user's workspace after `syncPresetSkills`. A rename (e.g.
+// `mc-cooking-coach` → `mc-recipe-keeper`) or a body rewrite that
+// drops the signature line must trip the test loudly so the discovery
+// chain — `server/workspace/skills-preset/<slug>/SKILL.md` →
+// `data/skills/catalog/preset/<slug>/` → `.claude/skills/<slug>/` —
+// stays observable end-to-end.
+const L33_PRESET_SLUG = "mc-cooking-coach";
+const L33_BODY_SIGNATURE = "bundled MulmoClaude preset skill";
+// First-turn agent response after `/mc-cooking-coach` slash dispatch.
+// The preset body opens with "Be the user's cooking-loving friend" +
+// workflows that mention `recipe` / `cooking` repeatedly, so a
+// faithful first turn will reference at least one of these tokens.
+// Casting a wide net (English + Japanese) keeps the assertion robust
+// to LLM phrasing variance while still catching the regression shape
+// — a generic "Hi, how can I help?" response (which would mean the
+// preset body did NOT condition the turn) hits none of these tokens.
+const L33_COOKING_VOCAB_PATTERN = /recipe|cook|料理|レシピ/i;
+
+// All six scenarios talk to the live LLM (L-21: chart tool dispatch,
 // L-21B: encore defineEncore tool dispatch, L-22: skill execution,
 // L-31: mc-manage-skills bridge dispatch canary, L-32: end-to-end
-// skill landing canary). They share no state — run in parallel to
-// cut wall time, mirroring the other category specs.
+// skill landing canary, L-33: mc-cooking-coach preset chain canary).
+// They share no state — run in parallel to cut wall time, mirroring
+// the other category specs.
 test.describe.configure({ mode: "parallel" });
 
 // Fully-qualified MCP tool name for the encore plugin's defineEncore
@@ -617,7 +640,139 @@ test.describe("skills (real LLM / static)", () => {
       }
     }
   });
+
+  test("L-33: mc-cooking-coach preset が catalog → /skills → Run の chain で agent に届く (#1287 preset chain canary)", async ({ page }) => {
+    // The slash command `/mc-cooking-coach` reaches the agent and the
+    // bundled SKILL.md body conditions the first turn — neither half
+    // is fakeable by fake-echo, which has no skill resolver.
+    test.skip(process.env.E2E_LIVE_NO_LLM === "1", "E2E_LIVE_NO_LLM=1 — needs slash dispatch + agent reasoning over a preset body");
+    test.setTimeout(L33_TIMEOUT_MS);
+    // End-to-end canary for the **launcher-bundled preset** chain
+    // (#1287 split `cookingCoach` role → `mc-cooking-coach` preset
+    // skill). L-22 covers a synthetic skill seeded directly via
+    // `placeProjectSkill`, and L-32 covers an agent-authored skill
+    // landed through the #1298 bridge. Neither exercises the
+    // **launcher → catalog → active** rail, which is what gets
+    // shipped to every fresh user via `syncPresetSkills`:
+    //   `server/workspace/skills-preset/<slug>/SKILL.md`  (launcher tarball, read-only)
+    //   → `<workspace>/data/skills/catalog/preset/<slug>/SKILL.md`  (boot-time copy by syncPresetSkills)
+    //   → `<workspace>/.claude/skills/<slug>/SKILL.md`              (per-user star via syncActivePresetSkills / catalog UI)
+    //   → `/<slug>` slash dispatch loads body into agent context
+    //   → agent first-turn response references the body's persona/workflow
+    //
+    // A regression that drops the preset from the launcher tarball,
+    // mangles `syncPresetSkills`'s tree copy (sibling assets path),
+    // breaks the catalog→active star path, or shears the slash-command
+    // resolver collapses one of these signals: missing catalog row,
+    // missing project-skill row, missing signature line in the
+    // rendered body, or a generic non-cooking first-turn response.
+    //
+    // Side-effect policy: `mc-cooking-coach` is a launcher preset
+    // whose canonical state is "starred" (every shipped preset is
+    // designed to be active by default in a fresh user's workspace).
+    // If the user already has it starred we use the existing active
+    // copy directly; if not, we star it via the catalog UI as a
+    // one-time setup and **do not unstar** in finally — unstarring
+    // would create user-visible state churn for no win, and the next
+    // boot's `syncActivePresetSkills` would re-mirror the body
+    // anyway. Only the Run-time chat session is reaped.
+    const sessionsToCleanup: string[] = [];
+    try {
+      const baselineSlugs = await snapshotProjectSkillSlugs();
+      await page.goto("/skills");
+      await ensurePresetStarred(page, L33_PRESET_SLUG, baselineSlugs);
+      await verifyPresetBody(page, L33_PRESET_SLUG, L33_BODY_SIGNATURE);
+      const sessionId = await runPresetAndCaptureSessionId(page);
+      sessionsToCleanup.push(sessionId);
+      await waitForAssistantResponseComplete(page, 2 * ONE_MINUTE_MS);
+
+      // Body conditioned the first turn: the cooking-coach persona +
+      // workflow vocabulary surfaces in the assistant's reply. The
+      // assertion runs against `text-response-assistant-body.last()`
+      // mirroring L-22/L-32 so sidebar/history pane noise is excluded
+      // by construction. A regression that broke skill-body loading
+      // (e.g. the resolver dropped the `mc-*` namespace) would land
+      // on a generic acknowledgement that misses the entire pattern.
+      await expect(
+        page.getByTestId("text-response-assistant-body").last(),
+        `assistant first turn after /${L33_PRESET_SLUG} must reference cooking vocabulary — proves SKILL.md body reached the agent context (preset chain canary, #1287)`,
+      ).toContainText(L33_COOKING_VOCAB_PATTERN, { timeout: 2 * ONE_MINUTE_MS });
+    } finally {
+      for (const sid of sessionsToCleanup) {
+        await deleteSession(page, sid);
+      }
+    }
+  });
 });
+
+/**
+ * L-33 setup step: make sure `<slug>` is in `.claude/skills/` before
+ * the spec opens the active-skill detail pane. If a prior run /
+ * fresh-user setup already starred it, this is a no-op gated by the
+ * baseline snapshot. Otherwise it drives the catalog UI through the
+ * same path a user takes (select catalog row → click ☆ Star →
+ * wait for the active row to appear), so a regression that hangs the
+ * star button (#1335 PR-B follow-ups) trips the visibility wait.
+ */
+async function ensurePresetStarred(page: Page, slug: string, baselineSlugs: Set<string>): Promise<void> {
+  // discovery half: the catalog row MUST always render (we don't
+  // skip this check even on already-starred runs — a regression that
+  // hides preset entries in the catalog would otherwise pass
+  // silently when the user happens to have them starred from a
+  // previous boot).
+  const catalogRow = page.getByTestId(`skill-catalog-item-${slug}`);
+  await expect(
+    catalogRow,
+    `catalog list must include ${slug} — proves syncPresetSkills landed the launcher preset under data/skills/catalog/preset/`,
+  ).toBeVisible({
+    timeout: ONE_MINUTE_MS,
+  });
+  if (baselineSlugs.has(slug)) return;
+  await catalogRow.click();
+  const starBtn = page.getByTestId("skill-catalog-detail-star-btn");
+  await expect(starBtn, `catalog detail must offer Star when ${slug} is not yet starred`).toBeVisible({ timeout: ONE_MINUTE_MS });
+  await starBtn.click();
+  await expect(
+    page.getByTestId(`skill-item-${slug}`),
+    `${slug} must surface in /skills after starring — proves catalog→active rail (.claude/skills/) is wired`,
+  ).toBeVisible({ timeout: ONE_MINUTE_MS });
+}
+
+/**
+ * Open the active-skill detail pane and assert the rendered body
+ * contains the launcher signature line. Catches a sync regression
+ * that corrupted the body (e.g. truncated copy, encoding mismatch)
+ * but left the directory + filename intact — a passing
+ * `skill-item-*` visibility check alone would not flag that.
+ */
+async function verifyPresetBody(page: Page, slug: string, signature: string): Promise<void> {
+  const skillRow = page.getByTestId(`skill-item-${slug}`);
+  await expect(skillRow, `${slug} project-skill row must be visible before opening detail pane`).toBeVisible({ timeout: ONE_MINUTE_MS });
+  await skillRow.click();
+  const bodyView = page.getByTestId("skill-body-rendered");
+  await expect(bodyView, "preset body must hydrate (detail API + markdown render path)").toBeVisible({ timeout: ONE_MINUTE_MS });
+  await expect(
+    bodyView,
+    `rendered body must echo the launcher signature ${JSON.stringify(signature)} — proves catalog→active copy preserved the SKILL.md text`,
+  ).toContainText(signature);
+}
+
+/**
+ * Click the active-skill Run button. The handler issues
+ * `appApi.startNewChat('/<slug>')` which routes to /chat/<id> with
+ * the slash command as the first user message. Capture the new
+ * session id immediately for the spec's `finally` cleanup so a
+ * downstream assertion timeout still reaps the chat.
+ */
+async function runPresetAndCaptureSessionId(page: Page): Promise<string> {
+  await page.getByTestId("skill-run-btn").click();
+  await page.waitForURL(SESSION_URL_PATTERN);
+  const sessionId = getCurrentSessionId(page);
+  if (sessionId === null) {
+    throw new Error("runPresetAndCaptureSessionId: getCurrentSessionId returned null after waitForURL — SESSION_URL_PATTERN likely drifted");
+  }
+  return sessionId;
+}
 
 // Composite cleanup: prefer the user-facing UI delete (keeps the
 // server registry / `/skills` listing in sync) but always finish
