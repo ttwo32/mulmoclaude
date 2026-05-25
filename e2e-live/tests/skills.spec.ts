@@ -46,14 +46,17 @@ const L33_TIMEOUT_MS = 3 * ONE_MINUTE_MS;
 const L33_PRESET_SLUG = "mc-cooking-coach";
 const L33_BODY_SIGNATURE = "bundled MulmoClaude preset skill";
 // First-turn agent response after `/mc-cooking-coach` slash dispatch.
-// The preset body opens with "Be the user's cooking-loving friend" +
-// workflows that mention `recipe` / `cooking` repeatedly, so a
-// faithful first turn will reference at least one of these tokens.
-// Casting a wide net (English + Japanese) keeps the assertion robust
-// to LLM phrasing variance while still catching the regression shape
-// — a generic "Hi, how can I help?" response (which would mean the
-// preset body did NOT condition the turn) hits none of these tokens.
-const L33_COOKING_VOCAB_PATTERN = /recipe|cook|料理|レシピ/i;
+// The preset body opens with "Be the user's cooking-loving friend"
+// and the workflows revolve around `recipe` / `レシピ` / `料理`. A
+// faithful first turn references at least one. **`cook` is
+// deliberately excluded** even though the body uses it: the token
+// also appears in the slug `mc-cooking-coach` itself, so an agent
+// that NEVER loaded the body could still echo "cooking" parsed from
+// the slash command and false-pass the canary (Codex iter-1 review).
+// `recipe` / `料理` / `レシピ` are body-specific and absent from the
+// slash command, so a hit there is a stronger signal that the
+// SKILL.md body actually conditioned the response.
+const L33_COOKING_VOCAB_PATTERN = /recipe|料理|レシピ/i;
 
 // All six scenarios talk to the live LLM (L-21: chart tool dispatch,
 // L-21B: encore defineEncore tool dispatch, L-22: skill execution,
@@ -678,9 +681,8 @@ test.describe("skills (real LLM / static)", () => {
     // anyway. Only the Run-time chat session is reaped.
     const sessionsToCleanup: string[] = [];
     try {
-      const baselineSlugs = await snapshotProjectSkillSlugs();
       await page.goto("/skills");
-      await ensurePresetStarred(page, L33_PRESET_SLUG, baselineSlugs);
+      await ensurePresetStarred(page, L33_PRESET_SLUG);
       await verifyPresetBody(page, L33_PRESET_SLUG, L33_BODY_SIGNATURE);
       const sessionId = await runPresetAndCaptureSessionId(page);
       sessionsToCleanup.push(sessionId);
@@ -707,31 +709,49 @@ test.describe("skills (real LLM / static)", () => {
 
 /**
  * L-33 setup step: make sure `<slug>` is in `.claude/skills/` before
- * the spec opens the active-skill detail pane. If a prior run /
- * fresh-user setup already starred it, this is a no-op gated by the
- * baseline snapshot. Otherwise it drives the catalog UI through the
- * same path a user takes (select catalog row → click ☆ Star →
- * wait for the active row to appear), so a regression that hangs the
- * star button (#1335 PR-B follow-ups) trips the visibility wait.
+ * the spec opens the active-skill detail pane. The primary decision
+ * uses {@link snapshotProjectSkillSlugs} (disk-authoritative) rather
+ * than a `/skills` DOM count, which has its own load race — the
+ * project-skill row often hasn't hydrated yet right after
+ * `page.goto("/skills")`, so a DOM-count check would falsely report
+ * "not starred" and then collide with a "Starred" badge in the
+ * catalog detail pane. The Star path itself is defensive against the
+ * Codex iter-1 race (a parallel worker stars between this snapshot
+ * and the click) — see {@link starPresetViaCatalog}. Always asserts
+ * the catalog row is present so a preset that's already starred from
+ * a previous boot can't mask a fresh launcher→catalog regression.
  */
-async function ensurePresetStarred(page: Page, slug: string, baselineSlugs: Set<string>): Promise<void> {
-  // discovery half: the catalog row MUST always render (we don't
-  // skip this check even on already-starred runs — a regression that
-  // hides preset entries in the catalog would otherwise pass
-  // silently when the user happens to have them starred from a
-  // previous boot).
-  const catalogRow = page.getByTestId(`skill-catalog-item-${slug}`);
+async function ensurePresetStarred(page: Page, slug: string): Promise<void> {
   await expect(
-    catalogRow,
+    page.getByTestId(`skill-catalog-item-${slug}`),
     `catalog list must include ${slug} — proves syncPresetSkills landed the launcher preset under data/skills/catalog/preset/`,
-  ).toBeVisible({
-    timeout: ONE_MINUTE_MS,
-  });
-  if (baselineSlugs.has(slug)) return;
-  await catalogRow.click();
+  ).toBeVisible({ timeout: ONE_MINUTE_MS });
+  const projectSlugs = await snapshotProjectSkillSlugs();
+  if (projectSlugs.has(slug)) return;
+  await starPresetViaCatalog(page, slug);
+}
+
+/**
+ * Drive the catalog UI through the star path a user takes (select
+ * catalog row → click ☆ Star → wait for the active row to appear).
+ * Defensive against the iter-1 race where a parallel worker stars
+ * the preset between {@link ensurePresetStarred}'s disk snapshot and
+ * this function: the detail pane could surface EITHER the ☆ Star
+ * button (still un-starred) OR the disabled "Starred" indicator
+ * (already starred by the other worker). Both are acceptable
+ * outcomes — only click Star when it's the one actually rendered.
+ * Each helper stays under CLAUDE.md's 20-line cap; a regression
+ * that hangs the star path (#1335 PR-B follow-ups) trips the
+ * closing visibility wait either way.
+ */
+async function starPresetViaCatalog(page: Page, slug: string): Promise<void> {
+  await page.getByTestId(`skill-catalog-item-${slug}`).click();
   const starBtn = page.getByTestId("skill-catalog-detail-star-btn");
-  await expect(starBtn, `catalog detail must offer Star when ${slug} is not yet starred`).toBeVisible({ timeout: ONE_MINUTE_MS });
-  await starBtn.click();
+  const starredIndicator = page.getByTestId("skill-catalog-detail-starred");
+  await expect(starBtn.or(starredIndicator), `catalog detail must surface either ☆ Star or "Starred" for ${slug}`).toBeVisible({ timeout: ONE_MINUTE_MS });
+  if ((await starredIndicator.count()) === 0) {
+    await starBtn.click();
+  }
   await expect(
     page.getByTestId(`skill-item-${slug}`),
     `${slug} must surface in /skills after starring — proves catalog→active rail (.claude/skills/) is wired`,
