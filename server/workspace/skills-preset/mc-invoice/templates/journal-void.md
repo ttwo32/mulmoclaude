@@ -31,14 +31,21 @@ size limit even when filtered. Call `getReport` with:
 
 Every sale and payment entry for the invoice touches A/R, so its rows
 appear here. Each row carries the `entryId` you pass to `voidEntry`.
-Collect every row whose memo contains this invoice `id`:
+Select the entries to void with these explicit, deterministic rules — do
+NOT void anything that fails them:
 
-- the **sale** entry (memo has `sale`), and
-- the **payment** entry (memo has `payment`), if one was posted.
+1. **Keep only original sale/payment rows.** A row qualifies only if its
+   memo contains this invoice `id` **and** the word `sale` or `payment`.
+   This excludes the reversing entries a prior void posted, whose memo is
+   the void reason (`Void INV-…`) and contains neither word.
+2. **Deduplicate by `entryId`** (an entry spans several A/R rows only if
+   it has multiple A/R lines, but treat each `entryId` once).
+3. **Skip anything already voided.** If a qualifying entry already has a
+   matching opposite-sign reversal in the ledger for this invoice (same
+   amount, memo `Void INV-…`), it was voided before — drop it.
 
-Ignore rows already part of a void/reversal (don't re-void a reversal).
-**If no live row references this invoice, tell the user there is nothing
-to void and stop** — do not post anything.
+**If no entry survives these rules, tell the user there is nothing to
+void and stop** — do not post anything.
 
 ### 4. Confirm, then void
 

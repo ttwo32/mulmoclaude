@@ -10,6 +10,7 @@
 
 import { Router, Request, Response } from "express";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
+import { actionVisible } from "../../../src/utils/collections/actionVisible.js";
 import {
   discoverCollections,
   generateItemId,
@@ -222,6 +223,14 @@ router.post(API_ROUTES.collections.itemAction, async (req: Request<{ slug: strin
     const record = await readItem(collection.dataDir, req.params.itemId);
     if (!record) {
       notFound(res, `item '${req.params.itemId}' not found`);
+      return;
+    }
+    // Enforce the action's `when` predicate server-side: the client
+    // hides out-of-state buttons, but a stale or crafted request could
+    // still target one (e.g. seed a payment journal for a non-paid
+    // invoice). The visibility rule is the authorization rule.
+    if (!actionVisible(action, record)) {
+      conflict(res, `action '${action.id}' is not available for item '${req.params.itemId}' in its current state`);
       return;
     }
     const template = await readSkillTemplate(collection.skillDir, action.template);
