@@ -34,6 +34,18 @@ export type CollectionSource = "user" | "project";
  *  another schema-shape change. */
 export type CollectionActionKind = "chat";
 
+/** Optional visibility predicate for an action: the button renders
+ *  only when the open record's `field` (stringified) is one of `in`.
+ *  Generic and domain-free — the host evaluates it against the record
+ *  with no knowledge of what the field means. Absent ⇒ always shown. */
+export interface CollectionActionWhen {
+  /** Top-level record field key whose value gates the button. */
+  field: string;
+  /** Allowed values; the button shows when `String(record[field])` is
+   *  one of these. Non-empty. */
+  in: string[];
+}
+
 /** A schema-declared, per-record action rendered as a button in the
  *  read-only detail view. Pure UI/behaviour directive — never stored,
  *  never validated against record data. All domain specifics (label,
@@ -53,6 +65,10 @@ export interface CollectionAction {
   /** `kind: "chat"`: skill-relative path to the template file whose
    *  text becomes the seed prompt body (e.g. `templates/invoice.md`). */
   template: string;
+  /** Optional visibility predicate; the button renders only when the
+   *  open record matches (see CollectionActionWhen). Absent ⇒ always
+   *  shown. */
+  when?: CollectionActionWhen;
 }
 
 export interface CollectionFieldSpec {

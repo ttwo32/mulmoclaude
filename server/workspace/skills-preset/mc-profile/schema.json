@@ -36,6 +36,10 @@
       "type": "markdown",
       "label": "Payment details (bank / wire / PayPal)"
     },
+    "defaultBookId": {
+      "type": "string",
+      "label": "Default accounting book ID"
+    },
     "notes": {
       "type": "markdown",
       "label": "Notes"

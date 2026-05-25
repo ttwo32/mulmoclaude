@@ -116,6 +116,15 @@ function isSafeTemplatePath(value: string): boolean {
   return value.split("/").every((seg) => seg.length > 0 && seg !== "." && seg !== ".." && /^[A-Za-z0-9._-]+$/.test(seg));
 }
 
+// Optional visibility predicate: the action button shows only when the
+// open record's `field` (stringified) is one of `in`. Domain-free —
+// `field` is any non-empty key, `in` a non-empty array of non-empty
+// values; the host never interprets the meaning.
+const ActionWhenSchema = z.object({
+  field: z.string().trim().min(1),
+  in: z.array(z.string().trim().min(1)).min(1),
+});
+
 // A schema-declared record action. Domain-free: the host validates the
 // shape; the meaning (which role, which template) is data.
 const ActionSpecSchema = z.object({
@@ -125,6 +134,7 @@ const ActionSpecSchema = z.object({
   kind: z.enum(["chat"]),
   role: z.string().trim().min(1),
   template: z.string().trim().min(1).refine(isSafeTemplatePath, "must be a safe skill-relative path (no `..`, no leading `/`, no backslash)"),
+  when: ActionWhenSchema.optional(),
 });
 
 const CollectionSchemaZ = z

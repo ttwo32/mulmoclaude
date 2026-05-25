@@ -84,6 +84,33 @@
       "kind": "chat",
       "role": "accounting",
       "template": "templates/invoice.md"
+    },
+    {
+      "id": "journal-sale",
+      "label": "Record sale",
+      "icon": "request_quote",
+      "kind": "chat",
+      "role": "accounting",
+      "template": "templates/journal-sale.md",
+      "when": { "field": "status", "in": ["sent", "paid"] }
+    },
+    {
+      "id": "journal-payment",
+      "label": "Record payment",
+      "icon": "payments",
+      "kind": "chat",
+      "role": "accounting",
+      "template": "templates/journal-payment.md",
+      "when": { "field": "status", "in": ["paid"] }
+    },
+    {
+      "id": "journal-void",
+      "label": "Record void",
+      "icon": "block",
+      "kind": "chat",
+      "role": "accounting",
+      "template": "templates/journal-void.md",
+      "when": { "field": "status", "in": ["void"] }
     }
   ]
 }

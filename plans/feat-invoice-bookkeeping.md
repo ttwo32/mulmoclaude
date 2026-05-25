@@ -85,14 +85,26 @@ Each template gets the invoice record in the `<record_data_json>` block
 
 1. **Resolve the book.** First read `defaultBookId` from the profile
    (`data/profile/items/me.json`); if set, use it. Otherwise call
-   `getBooks`; if exactly one, use it; if several, pick the one matching
-   the invoice's currency/country, else `presentForm` to ask.
+   `getBooks`; if exactly one, use it; if several, narrow by the
+   invoice's currency/country, then by the book name matching the
+   issuer's `companyName`, and only if still ambiguous `presentForm` to
+   ask. (Setting `defaultBookId` skips all of this — strongly preferred
+   once books multiply.)
 2. **Tag every entry** with the invoice id in the memo (e.g.
    `INV-2026-0001`) so payment/void can find it later.
-3. **Idempotency.** Before posting, query the ledger (`getReport`) for an
-   existing entry whose memo contains this invoice id + this transaction
-   type; if found, tell the user it's already recorded and stop — don't
-   double-post.
+3. **Idempotency / entry lookup.** Locate prior entries with a compact,
+   bounded query: `getReport` `kind: "ledger"`, `accountCode: <A/R>`,
+   `period: { kind: "range", from: <issueDate>, to: <today> }`. This
+   returns small rows (`entryId`, `date`, `memo`) for just the A/R
+   account in a narrow window; the `memo` concatenates entry+line memos,
+   so the invoice id is searchable, and the `entryId` is what `voidEntry`
+   needs. If a row's memo matches this invoice id + transaction type,
+   it's already recorded — stop, don't double-post. **Do NOT use
+   `getJournalEntries`**: its `accountCode` filter keeps the *whole*
+   entry whenever *any* line touches A/R (≈ every entry in a receivables
+   book), and full entries (~2KB each, no pagination cap) blow the
+   tool-result size limit — observed twice in testing (~110 KB even when
+   filtered). The ledger report is ~10× smaller per row.
 
 Per-template specifics:
 
@@ -102,9 +114,9 @@ Per-template specifics:
   the real codes; never invent one.
 - **`journal-payment.md`** — find the open receivable for this invoice;
   post Dr Cash/Checking, Cr A/R for the total. Payment is always direct
-  deposit to the issuer's bank account (from the profile's `bankDetails`),
+  deposit to the issuer's bank account (from the profile's `paymentDetails`),
   so the debit is the Checking/Bank account in the book — match it via
-  `getAccounts`. If the invoice's `note` field carries a payment
+  `getAccounts`. If the invoice's `notes` field carries a payment
   reference, include it in the memo, otherwise post without one (do not
   prompt).
 - **`journal-void.md`** — find the sale entry (and payment entry, if
@@ -117,21 +129,21 @@ to the book (`openBook`) so the user can review.
 
 ## Profile additions (data — `mc-profile` / `data/profile/items/me.json`)
 
-Two new fields on the business profile schema, both optional:
+The business profile already carries the bank/remit-to info: the
+existing **`paymentDetails`** markdown field ("Payment details (bank /
+wire / PayPal)") is free-form and is already rendered in the invoice's
+PAYMENT block by `invoice.md`. We reuse it rather than add a duplicate
+`bankDetails` field. `journal-payment.md` treats its presence as
+confirmation that payment lands in the Checking/Bank account.
+
+One genuinely new field, optional:
 
 - **`defaultBookId`** (string) — the accounting book the journal
   templates post into (decision #2). Templates read it first; fall back
   to `getBooks` resolution when unset.
-- **`bankDetails`** (multi-line string, free-form) — the issuer's
-  remit-to bank info, typed however the issuer's country/bank expects
-  (US routing + account #, JP 銀行/支店/口座種別/口座番号, EU IBAN/BIC, …).
-  `invoice.md` renders it verbatim as a "payment instructions" block so
-  the client knows where to direct-deposit; `journal-payment.md` treats
-  its presence as confirmation that payment lands in the Checking/Bank
-  account.
 
-No host code — these are skill-schema fields the `mc-profile` collection
-and the invoice/journal templates consume.
+No host code — this is a skill-schema field the `mc-profile` collection
+and the journal templates consume.
 
 ## Entry-linking convention (the load-bearing decision)
 
@@ -153,14 +165,14 @@ id. Documented in all three templates + a one-line note in
    and confirm via `presentForm` before voiding.
 4. **Payment reference** — DECIDED: no payment-ref field added to the
    `mc-invoice` schema. Payment is always direct deposit to the issuer's
-   bank account (profile `bankDetails`), so the method is fixed; the
-   payment template reads the optional `note` field for a reference if
+   bank account (profile `paymentDetails`), so the method is fixed; the
+   payment template reads the optional `notes` field for a reference if
    the user put one there, otherwise it posts without one and does not
    prompt.
-5. **Bank account on profile** — DECIDED: add a single free-form
-   `bankDetails` text field to `mc-profile` (not structured fields).
-   `invoice.md` renders it as a payment-instructions block; the issuer
-   types it however their country/bank expects.
+5. **Bank account on profile** — DECIDED: reuse the existing free-form
+   `paymentDetails` markdown field on `mc-profile` (already rendered in
+   `invoice.md`); do NOT add a duplicate `bankDetails` field. The issuer
+   types their direct-deposit details however their country/bank expects.
 
 ## Test plan
 

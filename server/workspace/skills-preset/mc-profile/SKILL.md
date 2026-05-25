@@ -44,6 +44,9 @@ types):
 - `address` — multi-line text
 - `paymentDetails` — markdown (free-form bank / wire / PayPal instructions, so
   it isn't tied to any one country's bank-account structure)
+- `defaultBookId` — string (the accounting book the invoice bookkeeping actions
+  post journals into; the `accounting` role reads it to skip book selection.
+  Leave unset and the role resolves the book at posting time)
 - `notes` — markdown
 
 Leave optional fields the user hasn't given you out of the JSON entirely — don't

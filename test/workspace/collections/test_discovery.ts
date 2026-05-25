@@ -585,6 +585,56 @@ describe("discoverCollections — actions", () => {
     });
     assert.equal((await listCollections()).length, 0);
   });
+
+  it("accepts an action with a valid `when` predicate", async () => {
+    writeSkill("test-actions-when", {
+      title: "X",
+      icon: "receipt",
+      dataPath: "data/actwhen/items",
+      primaryKey: "id",
+      fields,
+      actions: [{ id: "sale", label: "Record sale", kind: "chat", role: "accounting", template: "s.md", when: { field: "status", in: ["sent", "paid"] } }],
+    });
+    const collections = await listCollections();
+    assert.equal(collections.length, 1);
+    assert.deepEqual(collections[0]?.schema.actions?.[0]?.when, { field: "status", in: ["sent", "paid"] });
+  });
+
+  it("rejects a `when` missing `field`", async () => {
+    writeSkill("test-actions-when-nofield", {
+      title: "X",
+      icon: "warning",
+      dataPath: "data/actwhennf/items",
+      primaryKey: "id",
+      fields,
+      actions: [{ id: "sale", label: "Record sale", kind: "chat", role: "accounting", template: "s.md", when: { in: ["sent"] } }],
+    });
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects a `when` whose `in` is empty", async () => {
+    writeSkill("test-actions-when-emptyin", {
+      title: "X",
+      icon: "warning",
+      dataPath: "data/actwhenei/items",
+      primaryKey: "id",
+      fields,
+      actions: [{ id: "sale", label: "Record sale", kind: "chat", role: "accounting", template: "s.md", when: { field: "status", in: [] } }],
+    });
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects a `when` whose `in` is not an array", async () => {
+    writeSkill("test-actions-when-notarray", {
+      title: "X",
+      icon: "warning",
+      dataPath: "data/actwhenna/items",
+      primaryKey: "id",
+      fields,
+      actions: [{ id: "sale", label: "Record sale", kind: "chat", role: "accounting", template: "s.md", when: { field: "status", in: "sent" } }],
+    });
+    assert.equal((await listCollections()).length, 0);
+  });
 });
 
 describe("discoverCollections — workspaceRoot propagation", () => {

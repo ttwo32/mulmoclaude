@@ -328,12 +328,12 @@
       data-testid="collections-detail"
       @click.self="closeView"
     >
-      <div class="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+      <div class="bg-white rounded-lg shadow-xl w-4/5 max-h-[80vh] flex flex-col">
         <header class="px-5 py-3 border-b border-gray-200 flex items-center gap-3">
           <span class="material-icons text-blue-600 text-base">{{ collection.icon }}</span>
           <h2 class="text-base font-medium text-gray-900 flex-1 min-w-0 truncate">{{ viewTitle }}</h2>
           <button
-            v-for="action in collection.schema.actions ?? []"
+            v-for="action in visibleActions"
             :key="action.id"
             type="button"
             class="h-8 px-2.5 flex items-center gap-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-sm text-gray-700 disabled:opacity-50"
@@ -433,6 +433,7 @@ import type { EmbedRow, EmbedView } from "./collectionEmbed";
 import { useConfirm } from "../composables/useConfirm";
 import { useAppApi } from "../composables/useAppApi";
 import { evaluateDerived } from "../utils/collections/derivedFormula";
+import { actionVisible } from "../utils/collections/actionVisible";
 
 type FieldType = "string" | "text" | "email" | "number" | "date" | "boolean" | "markdown" | "ref" | "money" | "enum" | "table" | "derived" | "embed";
 
@@ -496,6 +497,9 @@ interface CollectionAction {
   kind: "chat";
   role: string;
   template: string;
+  /** Optional visibility predicate: the button renders only when
+   *  `String(record[when.field])` is one of `when.in`. */
+  when?: { field: string; in: string[] };
 }
 
 interface CollectionSchema {
@@ -621,6 +625,15 @@ function actionUrl(slug: string, itemId: string, actionId: string): string {
     .replace(":itemId", encodeURIComponent(itemId))
     .replace(":actionId", encodeURIComponent(actionId));
 }
+
+/** Actions whose optional `when` predicate matches the open record.
+ *  Status-driven buttons (e.g. invoice "Record payment") stay hidden
+ *  until the record reaches the matching state. */
+const visibleActions = computed<CollectionAction[]>(() => {
+  const record = viewing.value;
+  if (!record) return [];
+  return (collection.value?.schema.actions ?? []).filter((action) => actionVisible(action, record));
+});
 
 /** Run a schema-declared action on the open record: ask the server to
  *  assemble the seed prompt, then start a new chat in the action's
