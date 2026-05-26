@@ -748,7 +748,7 @@ function buildRefDisplayMap(detail: CollectionDetailResponse): RefDisplayMap {
   // prefer a field called `name`, fall back to `title`, then to the
   // primary key value (= the slug itself, which we'd show anyway).
   // Future-proof escape hatch (`displayField` in the schema) is
-  // explicitly deferred — see plans/feat-collections-ref-field.md.
+  // explicitly deferred — see plans/done/feat-collections-ref-field.md.
   const { fields, primaryKey } = detail.collection.schema;
   const displayField = "name" in fields ? "name" : "title" in fields ? "title" : primaryKey;
   const map: RefDisplayMap = {};

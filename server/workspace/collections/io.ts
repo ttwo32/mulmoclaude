@@ -244,8 +244,7 @@ export async function readSkillTemplate(skillDir: string, templateRelPath: strin
 
 /** Neutralize prompt-injection vectors in a string bound for the data
  *  block: strip HTML/XML tags (iteratively, so `<<x>>` can't
- *  reconstitute) and defang backticks / `${` template escapes. Mirrors
- *  the legacy invoice-plugin's escapeForPrompt. */
+ *  reconstitute) and defang backticks / `${` template escapes. */
 function sanitizeForPrompt(value: string): string {
   let current = value;
   let prev: string;

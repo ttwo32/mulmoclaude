@@ -1,7 +1,7 @@
 # Plan: invoice → bookkeeping actions (sale / payment / void)
 
 Builds on the schema-declared `actions` mechanism shipped in
-`plans/feat-collections-actions.md` (#1511). Adds the bookkeeping side
+`plans/done/feat-collections-actions.md` (#1511). Adds the bookkeeping side
 of the invoice lifecycle: when an invoice you **issue** is sent, paid,
 or voided, post the matching **double-entry journal** into the
 accounting book — by handing the `accounting` role a templated

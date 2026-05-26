@@ -362,13 +362,9 @@ export const ROLES: Role[] = [
   // role's system prompt and each SKILL.md is self-contained
   // (conventions, "don't write derived fields", file paths).
   //
-  // The legacy manageWorklog / manageClient / manageInvoice MCP
-  // tools have been removed from every built-in role's
-  // `availablePlugins` — the `mc-*` collection skills fully replace
-  // them. The worklog / client / invoice plugins still ship in
-  // `PRESET_PLUGINS` (so existing workspaces keep working and a user
-  // can re-add a tool via Settings → Roles), but no built-in role
-  // exposes them out of the box anymore.
+  // The legacy worklog / client / invoice plugins (manageWorklog /
+  // manageClient / manageInvoice) have been removed entirely — the
+  // `mc-*` collection skills fully replace them.
   {
     id: "debug",
     name: "Debug",
