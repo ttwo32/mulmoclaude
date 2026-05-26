@@ -24,6 +24,12 @@
 export interface PresetPlugin {
   /** npm package name (the directory under `node_modules`). */
   packageName: string;
+  /** True = NOT shipped in the published `mulmoclaude` tarball (only
+   *  resolvable via the yarn-workspaces symlink in a dev checkout).
+   *  Loader downgrades the "not resolvable" log to `debug` so a
+   *  production `npx mulmoclaude` install doesn't surface warns for
+   *  packages we knowingly excluded. */
+  devOnly?: boolean;
 }
 
 export const PRESET_PLUGINS: readonly PresetPlugin[] = [
@@ -51,7 +57,7 @@ export const PRESET_PLUGINS: readonly PresetPlugin[] = [
   // Owns the standalone `/debug` page; the toolbar entry is gated on
   // `VITE_DEV_MODE=1` so production builds hide the launcher button
   // (the page itself is still reachable by typing the URL).
-  { packageName: "@mulmoclaude/debug-plugin" },
+  { packageName: "@mulmoclaude/debug-plugin", devOnly: true },
   // SEC EDGAR runtime plugin — wraps the public EDGAR API as one
   // tool with kind-discriminated dispatch. Server-only (no Vue).
   // Self-healing config flow: when the SEC-required contact info
@@ -59,5 +65,6 @@ export const PRESET_PLUGINS: readonly PresetPlugin[] = [
   // that instructs the LLM to ask the user, write the JSON file
   // at `~/mulmoclaude/config/plugins/<encoded-pkg>/config.json`,
   // and retry. Opt-in per role like every other runtime plugin.
-  { packageName: "@mulmoclaude/edgar-plugin" },
+  // Not published yet — kept dev-only until distribution is decided.
+  { packageName: "@mulmoclaude/edgar-plugin", devOnly: true },
 ];
