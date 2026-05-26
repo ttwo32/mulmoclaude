@@ -78,7 +78,7 @@ e2e-live は放っておくと **「内部バグ ID → L-XX」 1:1 写像** で
 
 1. 新しいバグが来たら、 まず **下層 (unit / mock e2e / integration) で取れないか** 確認する (上記判定フロー)。 e2e-live は最終手段
 2. やむを得ず e2e-live に乗せる場合も、 **既存の能力軸シナリオの assertion を 1 行足すだけで済まないか** を先に検討する (例: happy-tour で同じ View を踏んでいるなら、 そこに assertion を足す)
-3. それでも独立 spec が必要なら L-XX として追加。 ただし plan に **「能力軸 / バグ軸」 ラベル**を必ず付ける
+3. それでも独立 spec が必要なら L-XX として追加。 ただし **「未実装シナリオ詳細」 セクションの定型 metadata 行** (重要度 / Docker / 画像 と並べて) に **`軸: 能力 / バグ`** を必ず明記する。 既存 30+ シナリオの retro 付与は行わない (新規追加分から ratchet)
 4. バグ軸シナリオは **降格候補** として扱い、 後から下層で同等 cover ができたら e2e-live から外す (`/audit-e2e-live` 構想 — 「未確定事項 / TODO」 参照)
 
 **wall-time budget**: `/e2e-live` 全実行を **30 分以内** に収めることを hard constraint とする。 越えそうになったら追加時に降格 / 統合 / drop を検討する義務が生じる (= 圧力として効かせる)。
@@ -309,7 +309,7 @@ e2e-live/
 #### L-HAPPY-TOUR: 主要 View / route を一通り踏んで 「壊れていない」 を確認する正常系 sweep
 
 - カバー: 各 preset plugin の registration / 各標準 View の mount / 起動時 WARN log の有無 / 主要 API endpoint の応答。 個別 spec で見ている深い assertion は **意図的にしない** (深掘りは既存 spec の責務)
-- 重要度: **A** / Docker: `both` / 画像: 不要 / LLM: 最小限 (1 ターンのみ、 no-LLM gate でも可)
+- 軸: **能力** / 重要度: **A** / Docker: `both` / 画像: 不要 / LLM: 最小限 (1 ターンのみ、 no-LLM gate でも可)
 - 操作: dev server 起動 (既存 host の `yarn dev` でも `spawnIsolatedDevServer` でもどちらでも) → SPA に navigate → 各主要 route を順に踏む
 - 検証ステップ (例):
   1. `/api/health` 200
