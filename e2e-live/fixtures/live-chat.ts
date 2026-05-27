@@ -3,7 +3,7 @@
 // install any API mocks — the real Claude API runs end-to-end. Use
 // these helpers from specs in `e2e-live/tests/`.
 
-import { copyFile, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, copyFile, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -241,6 +241,38 @@ export async function removeProjectSkill(slug: string): Promise<void> {
   const stagingDir = resolveWorkspacePath(`data/skills/${slug}`);
   await rm(canonicalDir, { recursive: true, force: true });
   await rm(stagingDir, { recursive: true, force: true });
+}
+
+/**
+ * fs-restore a launcher preset's `.claude/skills/<slug>/` from its
+ * canonical `data/skills/catalog/preset/<slug>/` source. The catalog
+ * subdir is launcher-managed (overwritten on every boot by
+ * `syncPresetSkills`), so copying from it produces the same content
+ * that {@link starPresetViaCatalog | starring via the UI} would
+ * deposit. Used by L-33B's `finally` to restore an originally-
+ * starred preset when the test threw before the UI star path
+ * completed (otherwise the up-front fs-unstar would leave the
+ * workspace in a destroyed state). `cp` is recursive + force so
+ * the helper is idempotent and won't error on a slot that's already
+ * populated. Slug must satisfy `isValidSlug` to keep this from
+ * accepting `..`-style traversal even though both endpoints are
+ * inside the workspace.
+ *
+ * NOTE: this restores the launcher-canonical content. A user with
+ * unsaved local edits to `.claude/skills/<slug>/SKILL.md` would
+ * lose them — same destructive shape as `syncActivePresetSkills`
+ * at boot, so the trade-off matches normal preset lifecycle.
+ */
+export async function copyPresetCatalogToActive(slug: string): Promise<void> {
+  assertValidSkillSlug(slug);
+  // `path.join` for cross-platform safety per CLAUDE.md
+  // ("Build paths with node:path; never concatenate with '/'").
+  // Other helpers in this file predate the rule and still use
+  // template literals; a sweep is out of scope here (CodeRabbit
+  // iter-2).
+  const src = resolveWorkspacePath(path.join("data", "skills", "catalog", "preset", slug));
+  const dst = resolveWorkspacePath(path.join(".claude", "skills", slug));
+  await cp(src, dst, { recursive: true, force: true });
 }
 
 /**
