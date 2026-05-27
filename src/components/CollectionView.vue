@@ -1039,13 +1039,19 @@ function buildRefDisplayMap(detail: CollectionDetailResponse): RefDisplayMap {
 
 /** Index a target collection's items by primary-key slug, keeping the
  *  whole record (unlike buildRefDisplayMap, which reduces each to a
- *  label). Powers ref-dereferencing in derived formulas. */
+ *  label). Powers ref-dereferencing in derived formulas. Each record
+ *  is enriched with the target's OWN derived fields first, because
+ *  derived values are never persisted on disk — so a formula can
+ *  deref a *computed* target column (e.g. `ticker.marketCap`). The
+ *  empty refs (`{}`) resolve target-local derived fields (arithmetic /
+ *  sum / top-level); a target derived field that itself derefs a
+ *  *third* collection stays unresolved — only one hop is loaded. */
 function buildRefRecordMap(detail: CollectionDetailResponse): RefRecordMap {
-  const { primaryKey } = detail.collection.schema;
+  const { schema } = detail.collection;
   const map: RefRecordMap = {};
   for (const item of detail.items) {
-    const slugRaw = item[primaryKey];
-    if (typeof slugRaw === "string" && slugRaw.length > 0) map[slugRaw] = item;
+    const slugRaw = item[schema.primaryKey];
+    if (typeof slugRaw === "string" && slugRaw.length > 0) map[slugRaw] = deriveAll(schema, item, {});
   }
   return map;
 }

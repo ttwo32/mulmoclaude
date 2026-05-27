@@ -175,6 +175,11 @@ Rules and limits:
   column, a non-numeric value, or a **dangling ref** (the slug points at a row
   that doesn't exist) makes the whole formula fail soft to an em-dash (`—`),
   same as any other formula error.
+- The referenced column may itself be a **`derived`** field in the target
+  collection (the host computes the target's own derived fields before the
+  lookup) — *as long as* that target formula is target-local. A target derived
+  field that in turn derefs a **third** collection won't resolve (only one hop
+  is loaded) and reads as `—`.
 - The target collection is loaded **when the page opens**. If a value changes in
   the target while the viewing collection is already open (e.g. you refresh a
   price in `stock-quotes` in another tab), the derived value updates on the next
