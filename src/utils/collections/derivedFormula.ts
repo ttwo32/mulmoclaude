@@ -1,18 +1,25 @@
 // Tiny expression evaluator for the `derived` field type on
 // schema-driven collections (see plans/done/feat-mc-invoice.md).
 //
-// Grammar (recursive-descent, no precedence climbing — five
+// Grammar (recursive-descent, no precedence climbing — six
 // non-terminals total):
 //
 //   expr   := term (('+' | '-') term)*
 //   term   := factor (('*' | '/') factor)*
-//   factor := number | sumCall | identifier | '(' expr ')'
+//   factor := number | sumCall | refAccess | identifier | '(' expr ')'
 //   sumCall:= 'sum' '(' sumArg ')'
 //   sumArg := tableCol (('*' | '/') tableCol)*      // e.g. lineItems[].quantity * lineItems[].rate
 //   tableCol := identifier '[]' '.' identifier
+//   refAccess := identifier '.' identifier          // e.g. ticker.price — deref a ref field into its target record
 //
 // `identifier` accepts top-level field names (single segment).
 // Inside `sumArg`, identifiers are the `<table>[].col` form.
+// A two-segment `<field>.<col>` at factor level is a *ref deref*:
+// `<field>` must be a `ref`-typed field on this record (its stored
+// value is the target item's slug), and `<col>` is a numeric column
+// read from that target record. The caller resolves the target into
+// `ctx.refs` (it owns the schema + the loaded target collection);
+// the evaluator stays pure and never does I/O.
 //
 // What's deliberately NOT supported (and would parse-error rather
 // than silently misbehave):
@@ -31,6 +38,16 @@ export interface FormulaContext {
    *  same `draftToRecord` pipeline). For the main table cell,
    *  this is the persisted item. */
   record: Record<string, unknown>;
+  /** Resolved ref-target records for THIS row, keyed by the local
+   *  `ref` field name. The caller (which has the schema + the linked
+   *  collection's items loaded) maps each ref field's stored slug to
+   *  the full target record and passes it here, so a `<field>.<col>`
+   *  formula can read a numeric column off the referenced record
+   *  (e.g. `shares * ticker.price`). A missing key or `null` value
+   *  (unknown field / dangling slug) makes that deref evaluate to
+   *  NaN → the whole formula returns `null` → em-dash, consistent
+   *  with every other failure mode. Absent ⇒ no refs available. */
+  refs?: Record<string, Record<string, unknown> | null>;
 }
 
 export function evaluateDerived(formula: string, ctx: FormulaContext): number | null {
@@ -160,6 +177,7 @@ function isIdentChar(char: string): boolean {
 type Node =
   | { kind: "num"; value: number }
   | { kind: "ident"; name: string }
+  | { kind: "ref"; field: string; col: string }
   | { kind: "binop"; operator: "+" | "-" | "*" | "/"; left: Node; right: Node }
   | { kind: "sum"; arg: SumArg };
 
@@ -236,7 +254,16 @@ class Parser {
         this.expect(")");
         return { kind: "sum", arg };
       }
-      this.consume();
+      this.consume(); // ident
+      // ref deref: `<field>.<col>` (e.g. ticker.price). The table-row
+      // form `<table>[].col` only appears inside sum(), so a `.`
+      // immediately after a top-level ident is unambiguously a ref
+      // dereference here.
+      if (this.peek()?.kind === ".") {
+        this.consume(); // '.'
+        const col = this.expect("ident");
+        return { kind: "ref", field: name, col: col.value as string };
+      }
       return { kind: "ident", name };
     }
     throw new Error(`unexpected token ${tok.kind} in factor`);
@@ -270,6 +297,14 @@ function evaluate(node: Node, ctx: FormulaContext): number {
   if (node.kind === "ident") {
     const raw = ctx.record[node.name];
     return toFiniteNumber(raw);
+  }
+  if (node.kind === "ref") {
+    // `<field>.<col>`: read `col` off the resolved target record the
+    // caller put in ctx.refs. Unknown field / dangling slug → null →
+    // NaN, so the whole formula fails soft to an em-dash.
+    const target = ctx.refs?.[node.field] ?? null;
+    if (!target) return Number.NaN;
+    return toFiniteNumber(target[node.col]);
   }
   if (node.kind === "binop") {
     const left = evaluate(node.left, ctx);

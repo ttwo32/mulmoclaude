@@ -92,6 +92,50 @@ describe("evaluateDerived — sum()", () => {
   });
 });
 
+describe("evaluateDerived — ref dereference (<field>.<col>)", () => {
+  // A my-portfolio row: `ticker` is a ref field whose stored value is
+  // the slug "AAPL"; the caller resolves it into ctx.refs.
+  const refs = { ticker: { price: 200, shares: 50 } };
+
+  it("reads a numeric column off the resolved target record", () => {
+    assert.equal(evaluateDerived("ticker.price", { record: { ticker: "AAPL" }, refs }), 200);
+  });
+
+  it("multiplies a local field by a referenced column (value = shares * ticker.price)", () => {
+    assert.equal(evaluateDerived("shares * ticker.price", { record: { ticker: "AAPL", shares: 10 }, refs }), 2000);
+  });
+
+  it("works inside larger arithmetic and parens", () => {
+    assert.equal(evaluateDerived("(ticker.price + 50) * 2", { record: { ticker: "AAPL" }, refs }), 500);
+  });
+
+  it("coerces a numeric-string column", () => {
+    assert.equal(evaluateDerived("ticker.price", { record: { ticker: "AAPL" }, refs: { ticker: { price: "12.5" } } }), 12.5);
+  });
+
+  it("returns null when the ref is unresolved (dangling slug → null)", () => {
+    assert.equal(evaluateDerived("ticker.price", { record: { ticker: "ZZZZ" }, refs: { ticker: null } }), null);
+  });
+
+  it("returns null when refs is absent entirely", () => {
+    assert.equal(evaluateDerived("ticker.price", { record: { ticker: "AAPL" } }), null);
+  });
+
+  it("returns null when the referenced column is missing or non-numeric", () => {
+    assert.equal(evaluateDerived("ticker.peRatio", { record: { ticker: "AAPL" }, refs }), null);
+    assert.equal(evaluateDerived("ticker.price", { record: { ticker: "AAPL" }, refs: { ticker: { price: "n/a" } } }), null);
+  });
+
+  it("does not mistake a top-level field for a ref deref", () => {
+    // No `.` ⇒ plain identifier path, unchanged.
+    assert.equal(evaluateDerived("shares", { record: { shares: 7 }, refs }), 7);
+  });
+
+  it("returns null on a malformed deref (trailing dot / missing column)", () => {
+    assert.equal(evaluateDerived("ticker.", { record: { ticker: "AAPL" }, refs }), null);
+  });
+});
+
 describe("evaluateDerived — error handling", () => {
   it("returns null on parse error (unexpected char)", () => {
     assert.equal(evaluateDerived("1 + @ + 2", { record: {} }), null);

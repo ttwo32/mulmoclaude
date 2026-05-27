@@ -648,7 +648,7 @@ import CollectionEmbedView from "./CollectionEmbedView.vue";
 import type { EmbedRow, EmbedView } from "./collectionEmbed";
 import { useConfirm } from "../composables/useConfirm";
 import { useAppApi } from "../composables/useAppApi";
-import { evaluateDerived } from "../utils/collections/derivedFormula";
+import { evaluateDerived, type FormulaContext } from "../utils/collections/derivedFormula";
 import { actionVisible } from "../utils/collections/actionVisible";
 
 type FieldType = "string" | "text" | "email" | "number" | "date" | "boolean" | "markdown" | "ref" | "money" | "enum" | "table" | "derived" | "embed";
@@ -697,6 +697,15 @@ interface FieldSpec {
  *  ref fields point at it. */
 type RefDisplayMap = Record<string, string>;
 type RefCache = Record<string, RefDisplayMap>;
+
+/** Per-target-collection cache of the *full* referenced records,
+ *  keyed by target slug then by the target item's primary-key slug.
+ *  RefCache keeps only a display label per item; this keeps the whole
+ *  record so a `derived` formula can dereference a `ref` field and
+ *  read any numeric column off it (e.g. `shares * ticker.price`).
+ *  Built in the same fetch as RefCache (no extra request). */
+type RefRecordMap = Record<string, CollectionItem>;
+type RefRecordCache = Record<string, RefRecordMap>;
 
 /** Per-target cache for `embed` fields: the target collection's
  *  schema + items, kept in full (not reduced to display names like
@@ -828,6 +837,7 @@ const saveError = ref<string | null>(null);
 const actionPending = ref(false);
 const actionError = ref<string | null>(null);
 const refCache = ref<RefCache>({});
+const refRecordCache = ref<RefRecordCache>({});
 const embedCache = ref<EmbedCache>({});
 
 const searchQuery = ref("");
@@ -918,6 +928,7 @@ async function loadCollection(slug: string): Promise<void> {
   items.value = [];
   searchQuery.value = ""; // Reset search query on collection load
   refCache.value = {};
+  refRecordCache.value = {};
   embedCache.value = {};
   viewing.value = null;
   const result = await apiGet<CollectionDetailResponse>(detailUrl(slug));
@@ -992,13 +1003,18 @@ async function loadLinkedCollections(schema: CollectionSchema, expectedSlug: str
   // the write if we're no longer on the slug that triggered us.
   if (collection.value?.slug !== expectedSlug) return;
   const nextRef: RefCache = {};
+  const nextRefRecords: RefRecordCache = {};
   const nextEmbed: EmbedCache = {};
   for (const { target, result } of results) {
     if (!result.ok) continue;
-    if (refTargets.has(target)) nextRef[target] = buildRefDisplayMap(result.data);
+    if (refTargets.has(target)) {
+      nextRef[target] = buildRefDisplayMap(result.data);
+      nextRefRecords[target] = buildRefRecordMap(result.data);
+    }
     if (embedTargets.has(target)) nextEmbed[target] = { schema: result.data.collection.schema, items: result.data.items };
   }
   refCache.value = nextRef;
+  refRecordCache.value = nextRefRecords;
   embedCache.value = nextEmbed;
 }
 
@@ -1017,6 +1033,19 @@ function buildRefDisplayMap(detail: CollectionDetailResponse): RefDisplayMap {
     const displayRaw = item[displayField];
     const display = typeof displayRaw === "string" && displayRaw.length > 0 ? displayRaw : slugRaw;
     map[slugRaw] = display;
+  }
+  return map;
+}
+
+/** Index a target collection's items by primary-key slug, keeping the
+ *  whole record (unlike buildRefDisplayMap, which reduces each to a
+ *  label). Powers ref-dereferencing in derived formulas. */
+function buildRefRecordMap(detail: CollectionDetailResponse): RefRecordMap {
+  const { primaryKey } = detail.collection.schema;
+  const map: RefRecordMap = {};
+  for (const item of detail.items) {
+    const slugRaw = item[primaryKey];
+    if (typeof slugRaw === "string" && slugRaw.length > 0) map[slugRaw] = item;
   }
   return map;
 }
@@ -1587,14 +1616,31 @@ const liveRecord = computed<CollectionItem | null>(() => {
  *  ceiling silently capped longer chains. The new bound is exact
  *  for any DAG over derived fields and an early `break` on
  *  fixed-point keeps the common-case cost the same. */
-function deriveAll(schema: CollectionSchema, base: CollectionItem): CollectionItem {
+/** Resolve every `ref` field on a record to its full target record,
+ *  keyed by the local field name, for `<field>.<col>` derefs in
+ *  formulas. The stored value is the target's slug; we look it up in
+ *  the pre-fetched cache. Unknown slug ⇒ null ⇒ deref fails soft. */
+function resolveRowRefs(schema: CollectionSchema, record: CollectionItem, refRecords: RefRecordCache): NonNullable<FormulaContext["refs"]> {
+  const refs: NonNullable<FormulaContext["refs"]> = {};
+  for (const [key, field] of Object.entries(schema.fields)) {
+    if (field.type !== "ref" || !field.to) continue;
+    const slug = record[key];
+    refs[key] = typeof slug === "string" ? (refRecords[field.to]?.[slug] ?? null) : null;
+  }
+  return refs;
+}
+
+function deriveAll(schema: CollectionSchema, base: CollectionItem, refRecords: RefRecordCache): CollectionItem {
   const enriched: CollectionItem = { ...base };
+  // Ref slugs aren't themselves derived, so the resolved targets are
+  // stable across passes — resolve once up front.
+  const refs = resolveRowRefs(schema, base, refRecords);
   const maxPasses = Object.values(schema.fields).filter((field) => field.type === "derived").length;
   for (let pass = 0; pass < maxPasses; pass++) {
     let mutated = false;
     for (const [key, field] of Object.entries(schema.fields)) {
       if (field.type !== "derived" || !field.formula) continue;
-      const next = evaluateDerived(field.formula, { record: enriched });
+      const next = evaluateDerived(field.formula, { record: enriched, refs });
       if (next !== null && enriched[key] !== next) {
         enriched[key] = next;
         mutated = true;
@@ -1607,7 +1653,7 @@ function deriveAll(schema: CollectionSchema, base: CollectionItem): CollectionIt
 
 const liveDerived = computed<CollectionItem | null>(() => {
   if (!collection.value || !liveRecord.value) return null;
-  return deriveAll(collection.value.schema, liveRecord.value);
+  return deriveAll(collection.value.schema, liveRecord.value, refRecordCache.value);
 });
 
 function derivedDisplay(field: FieldSpec, computedValue: unknown, record: CollectionItem | null): string {
@@ -1626,7 +1672,7 @@ function evaluateDerivedAgainstItem(field: FieldSpec, fieldKey: string, item: Co
   // Walk derived chain: subtotal → tax → total. Same 3-pass cap as
   // `deriveAll`; if a field's value is already on disk (Claude
   // wrote it), prefer the disk value over re-computing.
-  const enriched = deriveAll(collection.value.schema, item);
+  const enriched = deriveAll(collection.value.schema, item, refRecordCache.value);
   const result = enriched[fieldKey];
   return typeof result === "number" && Number.isFinite(result) ? result : null;
 }

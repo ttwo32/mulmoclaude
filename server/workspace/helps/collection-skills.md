@@ -113,6 +113,9 @@ Every field spec needs a `type` and a `label`. Extra keys by type:
 - **`ref`** — `to: "<target-slug>"`. Stores the target record's primary-key
   slug; host renders a clickable link + a dropdown picker populated from the
   target collection. Example: `{ "type": "ref", "to": "mc-clients", "label": "Client" }`.
+  A `derived` field on the same record can also **dereference** a `ref` to read
+  a numeric column off the record it points at — see the cross-collection
+  formula syntax below.
 - **`embed`** — `to: "<target-slug>"`, `id: "<record-id>"`. Pulls a *fixed*
   record from another collection into the read-only detail view (display-only,
   **nothing is stored** on this record). Example: an invoice embedding the
@@ -134,9 +137,52 @@ returns `null` on any failure). Supported:
 - identifier references to **top-level** fields (`subtotal * taxRate`)
 - `sum(tableField[].col)` — sum a column across table rows
 - `sum(tableField[].col * tableField[].col)` — sum a per-row product
+- `<refField>.<col>` — **dereference a `ref` field** and read a numeric column
+  off the record it points at (a live cross-collection lookup)
 
 Example: `subtotal` = `sum(lineItems[].quantity * lineItems[].rate)`,
 `tax` = `subtotal * taxRate`, `total` = `subtotal + tax`.
+
+#### Cross-collection lookups (`<refField>.<col>`)
+
+When a field is a `ref` to another collection, a `derived` formula can reach
+into the referenced record and pull a numeric column out of it. This lets one
+collection compute against data **owned by another** without copying that data.
+
+Canonical use — a portfolio that values holdings against a separate price list:
+
+```jsonc
+// my-portfolio/schema.json  (one record per holding)
+"fields": {
+  "ticker": { "type": "ref", "to": "stock-quotes", "label": "Stock" },  // stores e.g. "AAPL"
+  "shares": { "type": "number", "label": "Shares" },
+  "value":  { "type": "derived", "formula": "shares * ticker.price",     // ← reads price from the quotes row
+              "display": "money", "currency": "USD", "label": "Value" }
+}
+```
+
+Here `ticker.price` resolves the `ticker` ref to its `stock-quotes` record and
+reads that record's `price`. `price` lives **only** in `stock-quotes`; the
+portfolio never stores a copy, so a quote refresh in `stock-quotes` is the
+single source of truth for every holding's value.
+
+Rules and limits:
+
+- The left side must be a `ref` field **on this same record**; the right side is
+  a single column name. Only the `<field>.<col>` shape — no `a.b.c` chains, no
+  dereferencing inside `sum(...)`.
+- The referenced column must hold a number (or a numeric string). A missing
+  column, a non-numeric value, or a **dangling ref** (the slug points at a row
+  that doesn't exist) makes the whole formula fail soft to an em-dash (`—`),
+  same as any other formula error.
+- The target collection is loaded **when the page opens**. If a value changes in
+  the target while the viewing collection is already open (e.g. you refresh a
+  price in `stock-quotes` in another tab), the derived value updates on the next
+  reload — not instantly across tabs.
+- It's still per-record: each holding computes `shares * ticker.price` from its
+  own `ticker`/`shares`. To total the portfolio, add a one-record summary
+  collection or read the values off the list view — there is no cross-row sum
+  over a joined column.
 
 ### Actions (per-record buttons)
 
