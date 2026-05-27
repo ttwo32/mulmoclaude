@@ -194,12 +194,25 @@ async function runLauncherRouteSweep(page: Page): Promise<void> {
   }
 }
 
+// Best-effort gate for async fetches to settle before asserting an
+// error banner is absent. `view-root` becoming visible only proves
+// the template mounted — the on-mount fetch (todo list / scheduler
+// items / …) is still in-flight and may surface `*-api-error` a
+// moment later. Without this gate, `toHaveCount(0)` resolves
+// instantly in the pre-fetch state and false-passes regressions
+// (Codex GHA iter-2 finding). `networkidle` is best-effort because
+// pages with long-polling / SSE never reach it — the swallow is
+// intentional, the worst case is we revert to the pre-fix behaviour
+// for that one route rather than hang.
+const POST_FETCH_GRACE_MS = 3000;
+
 async function assertRouteMount(page: Page, entry: RouteSweepEntry): Promise<void> {
   await page.goto(entry.path);
   await expect(page.getByTestId(entry.rootTestId), `${entry.rootTestId} must render under ${entry.path}`).toBeVisible({
     timeout: VIEW_MOUNT_TIMEOUT_MS,
   });
   if (entry.errorBannerTestId !== undefined) {
+    await page.waitForLoadState("networkidle", { timeout: POST_FETCH_GRACE_MS }).catch(() => {});
     await expect(page.getByTestId(entry.errorBannerTestId), `${entry.errorBannerTestId} must NOT appear on a fresh ${entry.path} visit`).toHaveCount(0);
   }
 }
