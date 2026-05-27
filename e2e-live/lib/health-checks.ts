@@ -112,22 +112,22 @@ export function assertRuntimePluginsRegistered(body: unknown, requireDevOnly: bo
 }
 
 /**
- * `/api/plugins/diagnostics` returns an array of boot-time collisions
- * between host aggregators and plugin META contributions. A clean
- * boot returns `[]`. Any entry here means the bell will surface a
- * warning toast at startup, which the L-HAPPY-TOUR step 3 check is
- * specifically scoped to catch.
+ * `/api/plugins/diagnostics` returns `{ diagnostics: [...] }` — an
+ * array of boot-time collisions between host aggregators and plugin
+ * META contributions. A clean boot returns an empty array. Any
+ * entry here means the bell will surface a warning toast at startup,
+ * which the L-HAPPY-TOUR step 3 check is specifically scoped to catch.
  *
- * The route returns `unknown[]` (collision shapes vary by aggregator),
- * so we only assert array-ness and emptiness — the spec doesn't care
- * about the collision shape, only that there are none.
+ * Collision shapes vary by aggregator, so we keep the entries as
+ * `unknown[]` and only assert envelope-shape + emptiness — the spec
+ * doesn't care about the collision payload, only that there are none.
  */
 export function assertNoPluginDiagnostics(body: unknown): HealthCheckResult {
-  if (!Array.isArray(body)) {
-    return { ok: false, reason: `/api/plugins/diagnostics body is not an array: ${JSON.stringify(body)}` };
+  if (!isRecord(body) || !Array.isArray(body.diagnostics)) {
+    return { ok: false, reason: `/api/plugins/diagnostics body is not { diagnostics: [...] }: ${JSON.stringify(body)}` };
   }
-  if (body.length > 0) {
-    return { ok: false, reason: `/api/plugins/diagnostics returned ${body.length} collision(s): ${JSON.stringify(body)}` };
+  if (body.diagnostics.length > 0) {
+    return { ok: false, reason: `/api/plugins/diagnostics returned ${body.diagnostics.length} collision(s): ${JSON.stringify(body.diagnostics)}` };
   }
   return { ok: true };
 }
