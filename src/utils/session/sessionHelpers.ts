@@ -73,7 +73,12 @@ export function applyTextEvent(session: ActiveSession, message: string, source: 
     }
     return;
   }
-  if (appendToLastAssistantText(session, message)) return;
+  // A tool call since the last delta closes the prior text block, so
+  // skip the append and open a fresh card (matches the per-block split
+  // a reloaded session produces). Otherwise stream deltas of the same
+  // block onto the tail card.
+  if (!session.assistantTextInterrupted && appendToLastAssistantText(session, message)) return;
+  session.assistantTextInterrupted = false;
   const textResult = makeTextResult(message, "assistant");
   pushResult(session, textResult);
   if (shouldSelectAssistantText(session.toolResults, session.runStartIndex)) {

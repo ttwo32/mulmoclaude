@@ -30,6 +30,7 @@ function makeSession(): ActiveSession {
     startedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     runStartIndex: 0,
+    assistantTextInterrupted: false,
     pendingGenerations: {},
   };
 }

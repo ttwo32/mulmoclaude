@@ -17,6 +17,7 @@ export function createEmptySession(sessionId: string, roleId: string): ActiveSes
     startedAt: now,
     updatedAt: now,
     runStartIndex: 0,
+    assistantTextInterrupted: false,
     pendingGenerations: {},
   };
 }

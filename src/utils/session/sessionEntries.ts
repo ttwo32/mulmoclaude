@@ -148,6 +148,7 @@ export function buildLoadedSession(opts: {
     startedAt,
     updatedAt,
     runStartIndex: toolResults.length,
+    assistantTextInterrupted: false,
     pendingGenerations: {},
   };
 }

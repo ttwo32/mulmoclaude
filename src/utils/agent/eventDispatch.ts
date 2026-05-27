@@ -42,6 +42,10 @@ export async function applyAgentEvent(event: SseEvent, ctx: AgentEventContext): 
   switch (event.type) {
     case EVENT_TYPES.toolCall:
       session.toolCallHistory.push(toToolCallEntry(event));
+      // A tool call closes the current assistant text block: the next
+      // streamed delta must open a fresh card, not merge onto the
+      // pre-tool prose. See `ActiveSession.assistantTextInterrupted`.
+      session.assistantTextInterrupted = true;
       ctx.scrollSidebarToBottom();
       return;
     case EVENT_TYPES.toolCallResult:

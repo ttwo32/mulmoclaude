@@ -170,6 +170,17 @@ export interface ActiveSession {
   // session (not on the subscription closure) so updates on turn N+1
   // are visible to the reused subscription callback.
   runStartIndex: number;
+  // Set true when a tool call lands while an assistant text card is the
+  // tail of `toolResults`, so the next streamed assistant delta opens a
+  // FRESH card instead of merging onto the pre-tool prose. Native
+  // Bash/Read/Write calls route to `toolCallHistory` (never
+  // `toolResults`), so without this flag `appendToLastAssistantText`
+  // would glue every post-tool text block onto the first one — a single
+  // merged card whose selection anchors at its first line. Reload splits
+  // them per persisted text entry and selects the last; this flag makes
+  // the live stream match that, so a trailing summary becomes its own
+  // auto-selected card in single-pane mode.
+  assistantTextInterrupted: boolean;
   /**
    * In-flight background generations triggered by a plugin view (e.g.
    * MulmoScript image/audio/movie renders). Keyed by
