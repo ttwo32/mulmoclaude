@@ -1,8 +1,19 @@
 import { expect, test } from "@playwright/test";
 
 import { ONE_MINUTE_MS } from "../../server/utils/time.ts";
-import { deleteSession, getCurrentSessionId, sendChatMessage, startNewSession, waitForAssistantResponseComplete } from "../fixtures/live-chat.ts";
+import {
+  clearNotifierEntry,
+  deleteSession,
+  getCurrentSessionId,
+  listNotifierEntries,
+  sendChatMessage,
+  startBridgeOriginAgentRun,
+  startNewSession,
+  waitForAssistantResponseComplete,
+  waitForSessionIdle,
+} from "../fixtures/live-chat.ts";
 
+const L17_TIMEOUT_MS = 2 * ONE_MINUTE_MS;
 const L18_TIMEOUT_MS = 3 * ONE_MINUTE_MS;
 const L19_TIMEOUT_MS = 2 * ONE_MINUTE_MS;
 const L20_TIMEOUT_MS = ONE_MINUTE_MS;
@@ -18,7 +29,110 @@ const PRESENT_FORM_RAW_KEY_PREFIX = "pluginPresentForm.";
 // time. Same justification as media.spec.ts / wiki-nav.spec.ts.
 test.describe.configure({ mode: "parallel" });
 
+/**
+ * Pull `sessionId` off a notifier entry's opaque `pluginData`. Used
+ * by L-17 to identify entries produced by the legacy
+ * `publishNotification()` wrapper (see
+ * `server/events/notifications.ts` — `LegacyNotifierPluginData.sessionId`
+ * is set when the original caller passed `opts.sessionId`, which is
+ * exactly the shape the PR #818 commented-out block produces). Returns
+ * `null` when the entry's pluginData is missing, not an object, or
+ * carries no string `sessionId` — so it's safe to chain into the L-17
+ * filter without intermediate null checks.
+ */
+function pluginDataSessionId(pluginData: unknown): string | null {
+  if (pluginData === null || typeof pluginData !== "object") return null;
+  const { sessionId } = pluginData as { sessionId?: unknown };
+  return typeof sessionId === "string" ? sessionId : null;
+}
+
 test.describe("ui (real LLM / static)", () => {
+  test("L-17: bridge-origin agent run はベルバッジを点灯させない (B-50)", async ({ page }) => {
+    test.setTimeout(L17_TIMEOUT_MS);
+    // Covers B-50 ("二重通知"): a non-human-origin agent run (the
+    // typical real-world trigger is a bridge message landing) used to
+    // light up BOTH the notification bell (via `publishNotification()`
+    // in `runAgentInBackground`'s finally block) AND the Session
+    // History side panel's unread badge (via `endRun()` flipping
+    // `session.hasUnread = true`). Two badges for one event was the
+    // duplicate-notification user report — fixed by PR #818
+    // (`fix/skip-bell-on-bridge-completion`) commenting out the
+    // `publishNotification(...)` block. See `server/api/routes/agent.ts`
+    // around line 985.
+    //
+    // The regression we want to catch: someone uncomments that block
+    // (or re-introduces equivalent logic) and the bell starts ticking
+    // again on every bridge / scheduler / skill turn.
+    //
+    // Strategy: POST `/api/agent` directly from the browser with
+    // `origin: "bridge"` — this is the *only* origin Playwright can
+    // produce without a real bridge WebSocket connection, and
+    // /api/agent already accepts the field (server/api/routes/agent.ts
+    // line 121, 219). The UI button flow (`startNewSession` +
+    // `sendChatMessage`) always produces `origin: "human"`, which
+    // never enters the buggy code path — so the test must bypass the
+    // UI for the publish trigger. Then wait for the agent run to
+    // finish (`waitForSessionIdle`), and assert the active notifier
+    // entry count is unchanged. Works under both backends — fake-echo
+    // (`MULMOCLAUDE_FAKE_AGENT=1`) and real Claude — because the
+    // origin gate in agent.ts is upstream of any LLM call.
+    await page.goto("/");
+    const bell = page.getByTestId("notification-bell");
+    await expect(bell, "notification-bell must mount on the top chrome").toBeVisible();
+
+    // Snapshot active entries pre-run. We don't compare the full
+    // id-set blindly (Codex iter-1 review): an unrelated background
+    // publisher firing during the test window — Encore obligations,
+    // ghost-bell recovery, the todo plugin's action lifecycle — would
+    // add new ids and false-fail the assertion. Instead, we look for
+    // the *specific shape* PR #818 commented out: a
+    // `publishNotification({ kind: NOTIFICATION_KINDS.agent, sessionId:
+    // chatSessionId })` from agent.ts's finally block. That call ends
+    // up at `engine.publish` with `pluginPkg === "agent"` (via
+    // `legacyKindToPluginPkg`) and `pluginData.sessionId` carrying the
+    // bridge run's session id (via `LegacyNotifierPluginData`). No
+    // other publisher carries OUR specific session id, so the filter
+    // is immune to test-window noise without losing precision on the
+    // exact regression shape.
+    const baselineEntries = await listNotifierEntries(page);
+    const baselineIds = new Set(baselineEntries.map((entry) => entry.id));
+
+    let bridgeSessionId: string | null = null;
+    let spuriousNotifierIds: string[] = [];
+    try {
+      // The prompt is intentionally innocuous: we don't care what the
+      // agent says, only that `runAgentInBackground`'s finally block
+      // runs with `params.origin === "bridge"`. "General" is the
+      // canonical role that exists in every workspace fixture.
+      bridgeSessionId = await startBridgeOriginAgentRun(page, "Say hi.", "general");
+      await waitForSessionIdle(page, bridgeSessionId);
+
+      // B-50 regression assertion. Look only at entries that match
+      // BOTH the agent-kind pluginPkg AND our specific bridge session
+      // id — see snapshot comment above for why this filter is the
+      // PR #818 regression's precise shape.
+      const postEntries = await listNotifierEntries(page);
+      spuriousNotifierIds = postEntries
+        .filter((entry) => !baselineIds.has(entry.id))
+        .filter((entry) => entry.pluginPkg === "agent" && pluginDataSessionId(entry.pluginData) === bridgeSessionId)
+        .map((entry) => entry.id);
+      expect(
+        spuriousNotifierIds,
+        "bridge-origin agent completion must NOT add notifier entries tagged with our session id — B-50 regression (agent.ts publishNotification re-enabled?)",
+      ).toEqual([]);
+    } finally {
+      // Defensive cleanup: if the regression IS real, the spurious
+      // entries would otherwise survive in
+      // `~/mulmoclaude/data/notifier/active.json` and pollute every
+      // subsequent run's bell. Clear in failure-tolerant fashion so
+      // a single clear failure doesn't mask the assertion error.
+      for (const entryId of spuriousNotifierIds) {
+        await clearNotifierEntry(page, entryId).catch(() => {});
+      }
+      if (bridgeSessionId !== null) await deleteSession(page, bridgeSessionId);
+    }
+  });
+
   test("L-18: presentForm の i18n キーが raw 文字列として DOM に漏れない", async ({ page }) => {
     // fake-echo detects `presentForm` in the prompt + the `id='...'
     // label='...'` shape, posts to /api/form (the same endpoint the

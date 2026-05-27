@@ -3,6 +3,7 @@
 // install any API mocks — the real Claude API runs end-to-end. Use
 // these helpers from specs in `e2e-live/tests/`.
 
+import { randomUUID } from "node:crypto";
 import { cp, copyFile, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -15,6 +16,7 @@ import { readSessionJsonl } from "../../server/utils/files/session-io.ts";
 import { readTextUnder } from "../../server/utils/files/workspace-io.ts";
 import { isValidSlug } from "../../server/utils/slug.ts";
 import { isErrorWithCode, isRecord } from "../../server/utils/types.ts";
+import type { NotifierEntry } from "../../server/notifier/types.ts";
 import { API_ROUTES } from "../../src/config/apiRoutes.ts";
 
 /**
@@ -911,16 +913,25 @@ const SESSION_IDLE_PER_ATTEMPT_TIMEOUT_MS = 5 * ONE_SECOND_MS;
 // use raw numbers` rule).
 const SESSION_IDLE_RETRY_INTERVALS_MS = [ONE_SECOND_MS / 5, ONE_SECOND_MS / 2, ONE_SECOND_MS];
 
-// Probe shape returned by the in-page evaluate. We carry both the
-// HTTP outcome and the session-running flag so the polling site can
-// distinguish "API healthy + session still busy" (retry quietly)
-// from "API failed" (surface as a real assertion failure inside
-// `toPass`, with the offending status / error message in the
-// log). Without this split, a 401/5xx or a network blip silently
-// looks like "session is still running" and the poller waits the
-// full timeout before falling through to the swallowed UI cleanup
-// — exactly the silent failure the original wait was added to fix.
-type SessionIdleProbe = { ok: true; stillRunning: boolean } | { ok: false; reason: string };
+// Probe shape returned by the in-page evaluate. We carry the HTTP
+// outcome, the session-running flag, AND whether the session row
+// was found in the list so the polling site can distinguish:
+//
+//   - "API healthy + session still busy"        → retry quietly
+//   - "API healthy + session missing from list" → retry quietly
+//     (the agent run might have only just been kicked off; the
+//     sessions index updates after the first persist tick — without
+//     this state, `.find()` returning undefined silently looked
+//     like `stillRunning=false=idle` and let the caller proceed
+//     before the server-side run had even started. CodeRabbit
+//     review on PR #1508 caught this for the bridge-origin L-17
+//     path, where the gap between `/api/agent` 202 and the session
+//     becoming list-visible is wide enough to false-pass.)
+//   - "API healthy + session done"              → exit the wait
+//   - "API failed"                              → real assertion
+//     failure inside `toPass`, with the offending status / error
+//     message in the log
+type SessionIdleProbe = { ok: true; found: boolean; stillRunning: boolean } | { ok: false; reason: string };
 
 // In-page probe body — runs inside `page.evaluate`, so this function
 // must be self-contained (no closure imports). Reads the bearer
@@ -955,7 +966,8 @@ async function probeSessionIdle(args: { sid: string; listUrl: string; perAttempt
     // (the old broad `isRunning` could stay true through movie /
     // image post-processing even though DELETE was already safe).
     const session = data.sessions.find((row) => row.id === sid);
-    return { ok: true as const, stillRunning: session?.liveIsRunning === true };
+    if (session === undefined) return { ok: true as const, found: false, stillRunning: false };
+    return { ok: true as const, found: true, stillRunning: session.liveIsRunning === true };
   } catch (err) {
     // Network drop / AbortSignal timeout / JSON parse throw — anything
     // that would otherwise surface as an opaque page.evaluate failure
@@ -973,11 +985,17 @@ async function probeSessionIdle(args: { sid: string; listUrl: string; perAttempt
 function assertSessionProbeIdle(probe: SessionIdleProbe, sessionId: string): void {
   expect(probe.ok, probe.ok ? "session probe ok" : `session probe failed for ${sessionId}: ${probe.reason}`).toBe(true);
   if (probe.ok) {
+    // Both `found=false` (session not yet visible in the list) and
+    // `stillRunning=true` (session in flight) keep us in the toPass
+    // retry loop. Only when the session is BOTH visible AND idle do
+    // we exit — that's the only state in which the run has actually
+    // completed end-to-end. CodeRabbit review on PR #1508.
+    expect(probe.found, `session ${sessionId} not yet visible in /api/sessions list — retrying`).toBe(true);
     expect(probe.stillRunning, `session ${sessionId} should report isRunning=false before delete`).toBe(false);
   }
 }
 
-async function waitForSessionIdle(page: Page, sessionId: string, timeoutMs: number = SESSION_IDLE_TIMEOUT_MS): Promise<void> {
+export async function waitForSessionIdle(page: Page, sessionId: string, timeoutMs: number = SESSION_IDLE_TIMEOUT_MS): Promise<void> {
   // Resolve the sessions-list URL once on the test process side via
   // the canonical `API_ROUTES.sessions.list` constant
   // (src/config/apiRoutes.ts) so this helper stays coupled to the
@@ -1623,4 +1641,117 @@ export function bashCommandFromCall(call: ToolCallTraceRecord): string | null {
   if (!isRecord(call.args)) return null;
   const { command } = call.args;
   return typeof command === "string" ? command : null;
+}
+
+// ── Notifier list probe (used by the L-17 bell-count canary) ────────
+
+type NotifierListProbe = { ok: true; entries: NotifierEntry[] } | { ok: false; reason: string };
+
+/**
+ * Snapshot the active notifier entries via the always-on
+ * `{ action: "list" }` dispatch. L-17 calls this twice — once before
+ * triggering a bridge-origin agent run, once after — to assert the
+ * bell entry count is unchanged. Filtering by entry id avoids being
+ * fooled by background publishers (Encore obligations, ghost-bell
+ * recovery) that the dev server may emit during the test window.
+ */
+export async function listNotifierEntries(page: Page): Promise<NotifierEntry[]> {
+  const probe: NotifierListProbe = await page.evaluate(async (url): Promise<NotifierListProbe> => {
+    const meta = document.querySelector('meta[name="mulmoclaude-auth"]');
+    const token = meta?.getAttribute("content") ?? "";
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list" }),
+      });
+      if (!res.ok) return { ok: false, reason: `list returned HTTP ${res.status}` };
+      const body = (await res.json()) as { entries?: NotifierEntry[] };
+      if (!Array.isArray(body.entries)) return { ok: false, reason: `list missing entries[]: ${JSON.stringify(body)}` };
+      return { ok: true, entries: body.entries };
+    } catch (err) {
+      return { ok: false, reason: `list threw: ${err instanceof Error ? err.message : String(err)}` };
+    }
+  }, API_ROUTES.notifier.dispatch);
+  if (!probe.ok) throw new Error(`listNotifierEntries: ${probe.reason}`);
+  return probe.entries;
+}
+
+/**
+ * Clear a notifier entry by id via the always-on `{ action: "clear" }`
+ * dispatch. Used by the L-17 cleanup path: if the B-50 regression
+ * ever fires (bell ticks unexpectedly during a bridge-origin run),
+ * the spurious entry would otherwise survive across runs in
+ * `~/mulmoclaude/data/notifier/active.json` and pollute the bell.
+ */
+export async function clearNotifierEntry(page: Page, entryId: string): Promise<void> {
+  const result = await page.evaluate(
+    async ({ url, targetId }) => {
+      const meta = document.querySelector('meta[name="mulmoclaude-auth"]');
+      const token = meta?.getAttribute("content") ?? "";
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "clear", id: targetId }),
+        });
+        if (!res.ok) return { ok: false as const, reason: `clear ${targetId} returned HTTP ${res.status}` };
+        return { ok: true as const };
+      } catch (err) {
+        return { ok: false as const, reason: `clear ${targetId} threw: ${err instanceof Error ? err.message : String(err)}` };
+      }
+    },
+    { url: API_ROUTES.notifier.dispatch, targetId: entryId },
+  );
+  if (!result.ok) throw new Error(`clearNotifierEntry: ${result.reason}`);
+}
+
+// ── Bridge-origin agent run (used by the L-17 B-50 canary) ─────────
+
+type StartAgentProbe = { ok: true; chatSessionId: string } | { ok: false; reason: string };
+
+/**
+ * Kick off an agent run with `origin: "bridge"` by POSTing directly
+ * to `/api/agent` via the in-page bearer token. Returns the
+ * `chatSessionId` the server assigned. Unlike `startNewSession +
+ * sendChatMessage` (which mirror the UI button flow and always
+ * produce `origin: "human"`), this helper is the *only* way to drive
+ * a non-human-origin agent run from a Playwright browser without a
+ * real bridge WebSocket connection. /api/agent already accepts
+ * `origin` in its body (server/api/routes/agent.ts line 121, 219) —
+ * the typed `AgentBody` omits it for the UI's sake, but Express
+ * passes the full JSON body through, and `startChat` validates and
+ * propagates `origin` via `isSessionOrigin`.
+ *
+ * L-17 uses this to reach the agent.ts finally block that gates
+ * `publishNotification(...)` on `origin !== SESSION_ORIGINS.human` —
+ * the exact code path PR #818 commented out for B-50. A future
+ * regression that re-enables that block would tick the bell on this
+ * bridge-origin run; the L-17 assertion catches it.
+ */
+export async function startBridgeOriginAgentRun(page: Page, message: string, roleId: string): Promise<string> {
+  const chatSessionId = randomUUID();
+  const probe: StartAgentProbe = await page.evaluate(
+    async ({ url, body }): Promise<StartAgentProbe> => {
+      const meta = document.querySelector('meta[name="mulmoclaude-auth"]');
+      const token = meta?.getAttribute("content") ?? "";
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const text = await res.text();
+        if (!res.ok) return { ok: false, reason: `POST ${url} returned HTTP ${res.status}: ${text.slice(0, 200)}` };
+        const parsed = JSON.parse(text) as { chatSessionId?: unknown };
+        if (typeof parsed.chatSessionId !== "string") return { ok: false, reason: `unexpected /api/agent response: ${text}` };
+        return { ok: true, chatSessionId: parsed.chatSessionId };
+      } catch (err) {
+        return { ok: false, reason: `POST ${url} threw: ${err instanceof Error ? err.message : String(err)}` };
+      }
+    },
+    { url: API_ROUTES.agent.run, body: { chatSessionId, message, roleId, origin: "bridge" } },
+  );
+  if (!probe.ok) throw new Error(`startBridgeOriginAgentRun: ${probe.reason}`);
+  return probe.chatSessionId;
 }
