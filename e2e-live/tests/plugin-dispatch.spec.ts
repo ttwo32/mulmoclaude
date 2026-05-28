@@ -160,7 +160,13 @@ function makeMarker(testId: string): string {
  * first record lands, so the gate is required to avoid a fast-path
  * race against an indicator that detached before the agent fired.
  */
-async function expectToolDispatched(sessionId: string, toolName: string, marker: string, expectedAction?: string): Promise<void> {
+async function expectToolDispatched(
+  sessionId: string,
+  toolName: string,
+  marker: string,
+  expectedAction: string | undefined,
+  markerScopedFile: MarkerScope | undefined,
+): Promise<void> {
   const expectedName = `${MCP_PREFIX}${toolName}`;
   const calls = await readSessionToolCalls(sessionId);
   const sameToolCalls = calls.filter((call) => call.toolName === expectedName);
@@ -168,34 +174,54 @@ async function expectToolDispatched(sessionId: string, toolName: string, marker:
     if (expectedAction !== undefined) {
       if (!isRecord(call.args) || call.args.action !== expectedAction) return false;
     }
-    return argsIncludeMarker(call.args, marker);
+    return argsCarryMarker(call.args, marker, markerScopedFile);
   });
   const actionsSeen =
     sameToolCalls.map((call) => (isRecord(call.args) ? String(call.args.action ?? "<no-action>") : "<non-object-args>")).join(", ") || "<none>";
   const actionHint = expectedAction !== undefined ? ` tool_call with args.action='${expectedAction}'` : " tool_call";
+  const matchKindHint = markerScopedFile !== undefined ? ` (strict args.${markerScopedFile.matchField}=='${marker}')` : " (marker substring anywhere in args)";
   expect(
     matched.length,
-    `marker='${marker}': expected at least one ${expectedName}${actionHint} whose args carry the marker (saw tool actions: ${actionsSeen}; marker-carrying matches: ${matched.length})`,
+    `marker='${marker}': expected at least one ${expectedName}${actionHint} whose args carry the marker${matchKindHint} (saw tool actions: ${actionsSeen}; marker-carrying matches: ${matched.length})`,
   ).toBeGreaterThan(0);
 }
 
 /**
- * Recursive walk over `args`: returns true iff any string value
- * anywhere in the tree includes `marker` as a substring. Used to
- * prove the agent actually wrote the per-test marker into the
- * payload, not just dispatched the right action with unrelated
- * data (Codex GHA iter-2). Generic across every plugin we test:
- * todo / calendar / accounting carry the marker in a top-level
- * string field (`text` / `title` / `name`); presentDocument /
- * presentHtml / presentSVG carry it in the body string; and
- * presentSpreadsheet carries it in a nested `sheets[].name`. All
- * land as string-leaf values, so a single substring scan suffices
- * without the spec needing to know each tool's exact arg shape.
+ * Two-mode marker check on tool_call args, dispatched on whether
+ * this case has a marker-bearing DB field (todo / calendar /
+ * accounting → `markerScopedFile` is set, and cleanup later asserts
+ * `row[matchField] === marker` strictly) or not (artifact plugins
+ * — marker is substring-embedded in a larger body string like the
+ * markdown / HTML / SVG body, with no cleanup-side check at all):
+ *
+ * - **strict mode** (markerScopedFile set): args MUST have a
+ *   top-level string field named `matchField` equal to the marker.
+ *   Symmetric with `expectMarkerAbsent`'s `row[matchField] === marker`
+ *   check, so a `prefix-${marker}` LLM hallucination can't pass the
+ *   create-side gate while failing the cleanup-side lookup
+ *   (Codex GHA iter-4 false-green path).
+ *
+ * - **substring mode** (markerScopedFile undefined): recursive walk
+ *   that returns true iff any string leaf includes the marker.
+ *   Needed for artifact plugins where the marker is embedded inside
+ *   a longer body string (the markdown source `# ${marker}`, the
+ *   HTML `<h1>${marker}</h1>`, the SVG `<title>${marker}</title>`,
+ *   the spreadsheet `sheets[0].name`). These plugins have no
+ *   delete tool so there is no cleanup-side strict check to be
+ *   symmetric with.
  */
-function argsIncludeMarker(args: unknown, marker: string): boolean {
+function argsCarryMarker(args: unknown, marker: string, markerScopedFile: MarkerScope | undefined): boolean {
+  if (markerScopedFile !== undefined) {
+    if (!isRecord(args)) return false;
+    return args[markerScopedFile.matchField] === marker;
+  }
+  return argsSubstringMatch(args, marker);
+}
+
+function argsSubstringMatch(args: unknown, marker: string): boolean {
   if (typeof args === "string") return args.includes(marker);
-  if (Array.isArray(args)) return args.some((item) => argsIncludeMarker(item, marker));
-  if (isRecord(args)) return Object.values(args).some((value) => argsIncludeMarker(value, marker));
+  if (Array.isArray(args)) return args.some((item) => argsSubstringMatch(item, marker));
+  if (isRecord(args)) return Object.values(args).some((value) => argsSubstringMatch(value, marker));
   return false;
 }
 
@@ -328,7 +354,7 @@ async function runDispatchCase(page: Page, kase: PluginDispatchCase): Promise<vo
     const sessionId = await setupRoleSession(page, kase.role, sessionsToCleanup);
     await sendChatMessage(page, kase.prompt);
     await waitForAssistantTurn(page);
-    await expectToolDispatched(sessionId, kase.toolName, kase.marker, kase.expectedAddAction);
+    await expectToolDispatched(sessionId, kase.toolName, kase.marker, kase.expectedAddAction, kase.markerScopedFile);
     if (kase.cleanupPrompt !== undefined && kase.expectedCleanupAction !== undefined && kase.markerScopedFile !== undefined) {
       const baselineDeleteCount = await countToolActionCalls(sessionId, kase.toolName, kase.expectedCleanupAction);
       await sendChatMessage(page, kase.cleanupPrompt);
