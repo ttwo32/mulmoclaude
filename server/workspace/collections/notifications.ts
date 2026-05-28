@@ -91,6 +91,21 @@ async function findActiveEntryIds(slug: string, itemId: string): Promise<string[
   return entries.filter((entry) => isLegacyNotifierPluginData(entry.pluginData) && entry.pluginData.legacyId === legacyId).map((entry) => entry.id);
 }
 
+/** Per-legacyId in-flight lock. Serializes concurrent
+ *  `ensureItemNotification` calls for the same (slug, itemId) so the
+ *  `findActiveEntryIds → publish` check stays atomic across callers
+ *  — not just across watcher events.
+ *
+ *  Why this matters: the watcher's `scheduleItemReconcile` single-
+ *  flights events from `fs.watch`, but reconciles can ALSO reach
+ *  `ensureItemNotification` from `reconcileAllItems` (boot + schema-
+ *  change). On macOS, `readdir` on a watched dir can itself fire an
+ *  fs.watch event, so a reconcileAllItems pass can race a watcher
+ *  event for the SAME item. Without this lock, both code paths read
+ *  `listAll` (which bypasses the engine's write queue), miss each
+ *  other's in-flight publish, and produce duplicate entries. */
+const ensureLocks = new Map<string, Promise<void>>();
+
 /** Idempotently ensure a bell entry exists for a still-pending item.
  *  No-op if an entry with this (slug, itemId)'s legacy id is already
  *  active.
@@ -106,10 +121,31 @@ async function findActiveEntryIds(slug: string, itemId: string): Promise<string[
  *  (`LegacyNotifierPluginData`), so the bell preserves icon / dedup
  *  semantics and `findActiveEntryIds` keeps working. */
 async function ensureItemNotification(slug: string, schema: CollectionSchema, itemId: string): Promise<void> {
+  const legacyId = completionLegacyId(slug, itemId);
+  // Drain any in-flight publish for this key BEFORE our check + set.
+  // The drain + claim runs synchronously between the loop's
+  // `ensureLocks.get` and `ensureLocks.set` calls below, so two
+  // callers can't both observe an empty slot and both claim it.
+  while (true) {
+    const inflight = ensureLocks.get(legacyId);
+    if (!inflight) break;
+    await inflight;
+  }
+  const work = doEnsureItemNotification(slug, schema, itemId, legacyId);
+  ensureLocks.set(legacyId, work);
+  try {
+    await work;
+  } finally {
+    if (ensureLocks.get(legacyId) === work) {
+      ensureLocks.delete(legacyId);
+    }
+  }
+}
+
+async function doEnsureItemNotification(slug: string, schema: CollectionSchema, itemId: string, legacyId: string): Promise<void> {
   try {
     const existing = await findActiveEntryIds(slug, itemId);
     if (existing.length > 0) return;
-    const legacyId = completionLegacyId(slug, itemId);
     const action: NotificationAction = {
       type: NOTIFICATION_ACTION_TYPES.navigate,
       target: { view: NOTIFICATION_VIEWS.collections, slug, itemId },

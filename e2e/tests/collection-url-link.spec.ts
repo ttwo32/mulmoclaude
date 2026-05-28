@@ -87,13 +87,15 @@ test.describe("collection URL links", () => {
   });
 
   test("clicking a URL link in the list does NOT open the row's detail panel", async ({ page }) => {
-    await page.goto("/collections/reading-list");
-    // Prevent the new tab from actually opening — we only want to
+    // Stub `window.open` BEFORE navigating — `addInitScript` only runs
+    // on subsequent navigations, so the order matters. The override
+    // prevents the new tab from actually opening; we only need to
     // verify the click doesn't bubble into the row handler.
     await page.addInitScript(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (window as any).open = () => null;
     });
+    await page.goto("/collections/reading-list");
     await page.getByTestId("collections-url-link-url-anthropic-blog").click();
     // Detail panel is the modal-style overlay opened by the row click.
     // If `@click.stop` is missing, this would be visible.
