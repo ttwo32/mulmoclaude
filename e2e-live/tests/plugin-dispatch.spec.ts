@@ -4,6 +4,7 @@ import { type Page, expect, test } from "@playwright/test";
 
 import { ONE_MINUTE_MS } from "../../server/utils/time.ts";
 import { deleteSession, readSessionToolCalls, sendChatMessage, setupRoleSession, waitForAssistantTurn } from "../fixtures/live-chat.ts";
+import { isRecord } from "../../server/utils/types.ts";
 
 // Per-test wall-time budget. Some specs do two LLM turns (add +
 // chat-driven delete), so the ceiling is a little roomier than the
@@ -87,6 +88,16 @@ interface PluginDispatchCase {
    * 4 `present*` artifact plugins where no delete tool exists.
    */
   cleanupPrompt?: string;
+  /**
+   * Required when `cleanupPrompt` is set: the literal value of the
+   * MCP tool's `action` argument the cleanup turn MUST invoke
+   * (`delete` for todo / calendar, `deleteBook` for accounting).
+   * Used by the post-cleanup assertion to prove the agent actually
+   * dispatched the delete branch — without it the cleanup turn
+   * could narrate / ToolSearch / silently no-op and still let the
+   * spec pass green (Codex iter-2 review).
+   */
+  expectedCleanupAction?: string;
 }
 
 /** Per-test unique marker suffix (epoch ms + 6 hex chars). */
@@ -112,6 +123,36 @@ async function expectToolDispatched(sessionId: string, toolName: string): Promis
 }
 
 /**
+ * Post-cleanup-turn assertion: prove the agent actually dispatched
+ * the delete branch of the same MCP tool. Without this gate a
+ * cleanup turn that narrates / no-ops / silently skips delete still
+ * leaves the marker behind, but the test passes — Codex iter-2 hit
+ * exactly this hole. We read the jsonl again, filter for tool_calls
+ * to the same MCP tool whose `args.action` equals the expected
+ * delete action literal, and require >=1 such call (the add turn's
+ * args.action is `add` / `createBook`, never the delete literal, so
+ * the add turn cannot satisfy the assertion).
+ */
+async function expectDeleteActionDispatched(sessionId: string, toolName: string, expectedAction: string): Promise<void> {
+  const expectedName = `${MCP_PREFIX}${toolName}`;
+  const calls = await readSessionToolCalls(sessionId);
+  const deleteCalls = calls.filter((call) => {
+    if (call.toolName !== expectedName) return false;
+    if (!isRecord(call.args)) return false;
+    return call.args.action === expectedAction;
+  });
+  expect(
+    deleteCalls.length,
+    `expected at least one ${expectedName} tool_call with args.action='${expectedAction}' in the cleanup turn (saw actions: ${
+      calls
+        .filter((call) => call.toolName === expectedName)
+        .map((call) => (isRecord(call.args) ? String(call.args.action ?? "<no-action>") : "<non-object-args>"))
+        .join(", ") || "<no-matching-tool>"
+    })`,
+  ).toBeGreaterThan(0);
+}
+
+/**
  * Drive one plugin's canary: switch into the role that exposes the
  * tool, send the prompt, drain the turn, assert dispatch landed.
  * If a cleanup prompt is provided, send it as a second turn in the
@@ -131,6 +172,9 @@ async function runDispatchCase(page: Page, kase: PluginDispatchCase): Promise<vo
     if (kase.cleanupPrompt !== undefined) {
       await sendChatMessage(page, kase.cleanupPrompt);
       await waitForAssistantTurn(page);
+      if (kase.expectedCleanupAction !== undefined) {
+        await expectDeleteActionDispatched(sessionId, kase.toolName, kase.expectedCleanupAction);
+      }
     }
   } finally {
     for (const sid of sessionsToCleanup) {
@@ -155,9 +199,10 @@ test.describe("plugin dispatch (real LLM, one-turn canaries)", () => {
       ].join(" "),
       cleanupPrompt: [
         `Now delete every todo whose text equals EXACTLY '${marker}'.`,
-        "Use the manageTodoList tool with the delete action (look it up via ToolSearch if needed).",
+        "Use the manageTodoList tool with action='delete' (look it up via ToolSearch if needed).",
         "Do not narrate the result.",
       ].join(" "),
+      expectedCleanupAction: "delete",
     });
   });
 
@@ -174,9 +219,10 @@ test.describe("plugin dispatch (real LLM, one-turn canaries)", () => {
       ].join(" "),
       cleanupPrompt: [
         `Now delete every calendar event whose title equals EXACTLY '${marker}'.`,
-        "Use the manageCalendar tool with the delete action.",
+        "Use the manageCalendar tool with action='delete'.",
         "Do not narrate the result.",
       ].join(" "),
+      expectedCleanupAction: "delete",
     });
   });
 
@@ -258,6 +304,7 @@ test.describe("plugin dispatch (real LLM, one-turn canaries)", () => {
         "Use the manageAccounting tool with action='getBooks' first to find the bookId, then action='deleteBook' with confirm=true.",
         "Do not narrate the result.",
       ].join(" "),
+      expectedCleanupAction: "deleteBook",
     });
   });
 });
