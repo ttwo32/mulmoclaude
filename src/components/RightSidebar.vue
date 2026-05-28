@@ -129,6 +129,7 @@ import { ref, computed, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
 import type { ToolCallHistoryItem } from "../types/toolCallHistory";
 import { formatTime } from "../utils/format/date";
+import { buildMessagePermalink } from "../utils/chat/permalink";
 import { useClipboardCopy } from "../composables/useClipboardCopy";
 
 const { t } = useI18n();
@@ -144,17 +145,10 @@ const props = defineProps<{
 
 const { copied, copy } = useClipboardCopy();
 
-// Permalink to the currently-selected message inside this chat session.
-// Intentionally NOT mirrored into the browser URL bar (#179587b1 removed
-// the `?result=` URL persistence because per-click history writes turned
-// the back button into an "undo panel selection" anti-pattern). The
-// debug pane exposes the string as a copyable field so you can paste
-// "investigate this message" pointers into a chat without polluting
-// browser navigation.
-const permalink = computed<string | null>(() => {
-  if (!props.sessionId || !props.selectedResultUuid) return null;
-  return `${window.location.origin}/chat/${props.sessionId}?result=${props.selectedResultUuid}`;
-});
+// Permalink to the currently-selected message. Build via the pure
+// helper so the URL shape stays unit-testable; the section hides
+// entirely when the helper returns null (no session or no selection).
+const permalink = computed<string | null>(() => buildMessagePermalink(window.location.origin, props.sessionId, props.selectedResultUuid));
 
 const { copied: permalinkCopied, copy: copyPermalink } = useClipboardCopy();
 
