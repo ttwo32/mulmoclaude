@@ -1223,18 +1223,23 @@ export async function selectRole(page: Page, roleId: string): Promise<void> {
  * the General-side session in `finally`. Returns the role-switched
  * session id (the one the spec sends prompts at).
  *
+ * Uses `startGuaranteedNewSession` rather than `startNewSession` +
+ * `waitForURL(SESSION_URL_PATTERN)` to close the stale-session race
+ * documented at {@link startGuaranteedNewSession}: in a populated
+ * workspace the SPA's bootstrap can resume into `/chat/<existing>`,
+ * and capturing that id into the cleanup list would `deleteSession`
+ * pre-existing user data on test exit. The role-switched id is
+ * still fresh-by-construction (selectRole always spawns a new chat
+ * on the chat page), but the General-side baseline must be the one
+ * we just created — never a resumed pre-test session.
+ *
  * Lifted from `skills.spec.ts` (L-21B) when `plugin-dispatch.spec.ts`
- * needed the same dance for 8 plugin canaries; keeping it in
+ * needed the same dance for 7 plugin canaries; keeping it in
  * live-chat.ts prevents the duplication mentioned in CLAUDE.md
  * "shared utilities — check before reinventing".
  */
 export async function setupRoleSession(page: Page, roleId: string, sessionsToCleanup: string[]): Promise<string> {
-  await startNewSession(page);
-  await page.waitForURL(SESSION_URL_PATTERN);
-  const generalSessionId = getCurrentSessionId(page);
-  if (generalSessionId === null) {
-    throw new Error("setupRoleSession: getCurrentSessionId returned null after startNewSession — URL pattern likely drifted");
-  }
+  const generalSessionId = await startGuaranteedNewSession(page);
   sessionsToCleanup.push(generalSessionId);
   await selectRole(page, roleId);
   await page.waitForURL((url) => SESSION_URL_PATTERN.test(url.pathname) && !url.pathname.endsWith(generalSessionId));

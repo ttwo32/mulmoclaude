@@ -1,14 +1,14 @@
+import { randomUUID } from "node:crypto";
+
 import { type Page, expect, test } from "@playwright/test";
 
 import { ONE_MINUTE_MS } from "../../server/utils/time.ts";
 import { deleteSession, readSessionToolCalls, sendChatMessage, setupRoleSession, waitForAssistantTurn } from "../fixtures/live-chat.ts";
 
-// Per-test wall-time budget for a single one-turn dispatch canary.
-// Empirically real-LLM one-turn tool calls land well under 90s; the
-// 3-minute ceiling matches the rest of skills.spec.ts so a slow run
-// fails as a timeout (recoverable rerun) rather than as a flaky
-// assertion timeout (silent flake).
-const DISPATCH_TIMEOUT_MS = 3 * ONE_MINUTE_MS;
+// Per-test wall-time budget. Some specs do two LLM turns (add +
+// chat-driven delete), so the ceiling is a little roomier than the
+// L-21 / L-21B 3-minute budget that only runs a single turn.
+const DISPATCH_TIMEOUT_MS = 5 * ONE_MINUTE_MS;
 
 // MCP prefix the host bridge prepends to every plugin-owned tool
 // when the agent enumerates its tool catalog (see
@@ -22,24 +22,46 @@ const MCP_PREFIX = "mcp__mulmoclaude__";
 // One-turn dispatch canary covering plugins that have never had an
 // e2e-live test before (see `plans/feat-e2e-live.md` §「未踏 plugin
 // の 1 ターン dispatch test 棚卸し」). The shape is uniform across
-// the file: pick the simplest role that exposes the tool, send a
-// prompt that names the tool by literal, wait for the agent turn,
-// read the per-session jsonl trace, assert ≥1 tool_call record
-// matches the expected MCP-prefixed tool name. Skip on
-// `E2E_LIVE_NO_LLM=1` (fake-echo cannot route MCP dispatch).
+// the 7 specs in this file: nonce-stamp a per-test marker, pick the
+// simplest role that exposes the tool, send a prompt that names the
+// tool by literal AND embeds the marker so it lands in the saved
+// data, wait for the agent turn, read the per-session jsonl trace,
+// assert >=1 tool_call record matches the expected MCP-prefixed
+// tool name, then ask the SAME chat session to delete what was
+// just created (where the plugin exposes a delete action). Skip
+// on `E2E_LIVE_NO_LLM=1` (fake-echo cannot route MCP dispatch).
 //
-// Why jsonl-only and not a View-mount assertion: 3 of the 8 plugins
+// Why jsonl-only and not a View-mount assertion: 3 of the 7 plugins
 // here have no top-level chat-inline View testid (todo / markdown /
 // spreadsheet), 1 mounts a generic SchedulerView shared with the
-// standalone route (calendar / automations), and 1 is narrate-only
-// from chat (accounting createBook does not mount the openBook
-// envelope). A uniform jsonl assertion gives one shape across all 8
-// — adding View testids per plugin is a separate refactor (out of
-// scope for this canary PR).
+// standalone route (calendar), and 1 is narrate-only from chat
+// (accounting createBook does not mount the openBook envelope).
+// A uniform jsonl assertion gives one shape across all 7 — adding
+// View testids per plugin is a separate refactor (out of scope
+// for this canary PR).
+//
+// Why cleanup is a second chat turn (todo / calendar / accounting):
+// these plugins expose a delete action through the same MCP tool,
+// so asking the LLM to delete what it just created exercises the
+// full add+delete round-trip via the LLM API — same surface area
+// the test is meant to canary. A bug in the delete action shows up
+// as leftover marker data after the run, surfaced visibly to the
+// developer. Filesystem-level deletion would bypass the tool path
+// entirely and lose that coverage. The 4 artifact-plugin specs
+// (md / xls / svg / html) skip the cleanup turn because their
+// `present*` tools have no delete counterpart — every saved file
+// is meant to persist as a workspace artifact. The marker in the
+// saved content keeps test-authored artifacts identifiable in
+// `/files` so the developer can manually purge them later.
+//
+// Why per-test nonce: parallel runs and pre-existing user state
+// must not collide with cleanup. A nonce-stamped marker also
+// guarantees that any leftover artifact is unambiguously
+// attributable to this test (`L-DISPATCH-MD-canary-<nonce>` in the
+// markdown body / SVG title / spreadsheet sheet name).
 //
 // Specs run in parallel — each owns a fresh session pair and a
-// nonce-stamped marker (where the tool args carry a marker), so
-// there is no cross-spec state.
+// unique nonce-stamped marker, so there is no cross-spec state.
 test.describe.configure({ mode: "parallel" });
 
 interface PluginDispatchCase {
@@ -49,12 +71,31 @@ interface PluginDispatchCase {
   role: string;
   /** Plain MCP tool name as declared in the plugin's `definition.ts`. */
   toolName: string;
+  /**
+   * Marker string the test asks the LLM to embed in the saved
+   * artifact (todo text / event title / document body / cell value /
+   * SVG <title> / HTML body / book name). Used by `cleanupPrompt`
+   * to scope deletion to exactly this test's data.
+   */
+  marker: string;
   /** Prompt body, designed to land the tool in one turn with no narration. */
   prompt: string;
+  /**
+   * Optional follow-up prompt that asks the SAME session to delete
+   * the marker-stamped item. Present for plugins whose tool exposes
+   * a delete action (todo / calendar / accounting); omitted for the
+   * 4 `present*` artifact plugins where no delete tool exists.
+   */
+  cleanupPrompt?: string;
+}
+
+/** Per-test unique marker suffix (epoch ms + 6 hex chars). */
+function makeMarker(testId: string): string {
+  return `${testId}-canary-${Date.now()}-${randomUUID().slice(0, 6)}`;
 }
 
 /**
- * Asserts the per-session jsonl trace contains ≥1 `tool_call` record
+ * Asserts the per-session jsonl trace contains >=1 `tool_call` record
  * for the MCP-prefixed `toolName`. Read after `waitForAssistantTurn`
  * has resolved — the jsonl flushes per-event and is empty until the
  * first record lands, so the gate is required to avoid a fast-path
@@ -73,9 +114,11 @@ async function expectToolDispatched(sessionId: string, toolName: string): Promis
 /**
  * Drive one plugin's canary: switch into the role that exposes the
  * tool, send the prompt, drain the turn, assert dispatch landed.
- * Each call drains its own sessions in `finally` so a mid-test throw
- * still cleans up both the auto-created General-side session and
- * the role-switched session.
+ * If a cleanup prompt is provided, send it as a second turn in the
+ * same session and drain that turn too (best-effort — no assertion,
+ * since a delete failure surfaces as leftover marker data the
+ * developer will notice). The session pair is always deleted in
+ * `finally`, regardless of whether either turn passed.
  */
 async function runDispatchCase(page: Page, kase: PluginDispatchCase): Promise<void> {
   test.setTimeout(DISPATCH_TIMEOUT_MS);
@@ -85,6 +128,10 @@ async function runDispatchCase(page: Page, kase: PluginDispatchCase): Promise<vo
     await sendChatMessage(page, kase.prompt);
     await waitForAssistantTurn(page);
     await expectToolDispatched(sessionId, kase.toolName);
+    if (kase.cleanupPrompt !== undefined) {
+      await sendChatMessage(page, kase.cleanupPrompt);
+      await waitForAssistantTurn(page);
+    }
   } finally {
     for (const sid of sessionsToCleanup) {
       await deleteSession(page, sid);
@@ -96,95 +143,120 @@ test.describe("plugin dispatch (real LLM, one-turn canaries)", () => {
   test.skip(process.env.E2E_LIVE_NO_LLM === "1", "needs real LLM dispatch (fake-echo backend cannot route MCP tool calls)");
 
   test("L-DISPATCH-TODO: Personal role + manageTodoList が一ターンで dispatch される", async ({ page }) => {
+    const marker = makeMarker("L-DISPATCH-TODO");
     await runDispatchCase(page, {
       testId: "L-DISPATCH-TODO",
       role: "personal",
       toolName: "manageTodoList",
-      prompt: ["Use the `manageTodoList` tool to add one todo titled 'L-DISPATCH-TODO canary'.", "Do not use any other tool. Do not narrate the result."].join(
-        " ",
-      ),
+      marker,
+      prompt: [
+        `Use the \`manageTodoList\` tool to add one todo whose text is EXACTLY '${marker}' (verbatim, no edits).`,
+        "Do not use any other tool. Do not narrate the result.",
+      ].join(" "),
+      cleanupPrompt: [
+        `Now delete every todo whose text equals EXACTLY '${marker}'.`,
+        "Use the manageTodoList tool with the delete action (look it up via ToolSearch if needed).",
+        "Do not narrate the result.",
+      ].join(" "),
     });
   });
 
   test("L-DISPATCH-CAL: Personal role + manageCalendar が一ターンで dispatch される", async ({ page }) => {
+    const marker = makeMarker("L-DISPATCH-CAL");
     await runDispatchCase(page, {
       testId: "L-DISPATCH-CAL",
       role: "personal",
       toolName: "manageCalendar",
+      marker,
       prompt: [
-        "Use the `manageCalendar` tool to add a calendar event titled 'L-DISPATCH-CAL canary' on 2099-12-31.",
+        `Use the \`manageCalendar\` tool to add a calendar event whose title is EXACTLY '${marker}' (verbatim) on 2099-12-31.`,
         "Do not use any other tool. Do not narrate the result.",
+      ].join(" "),
+      cleanupPrompt: [
+        `Now delete every calendar event whose title equals EXACTLY '${marker}'.`,
+        "Use the manageCalendar tool with the delete action.",
+        "Do not narrate the result.",
       ].join(" "),
     });
   });
 
-  // manageAutomations is intentionally NOT covered here: per the
-  // comment in `src/config/roles.ts:252` (settings-role split into
-  // three preset skills) the `manageAutomations` MCP tool is no
-  // longer in any built-in role's `availablePlugins`, so an LLM
-  // cannot dispatch it from a normal chat session. A one-turn
-  // dispatch canary for it would need a custom role gate change
-  // — out of scope for this PR. Tracked in plan §「未踏 plugin
-  // の 1 ターン dispatch test 棚卸し」 as 対象外, same status as
-  // manageRoles / manageSource. The /automations route + view-mount
-  // are already covered by L-HAPPY-TOUR step 11.
-
   test("L-DISPATCH-MD: General role + presentDocument が一ターンで dispatch される", async ({ page }) => {
+    const marker = makeMarker("L-DISPATCH-MD");
     await runDispatchCase(page, {
       testId: "L-DISPATCH-MD",
       role: "general",
       toolName: "presentDocument",
+      marker,
       prompt: [
-        "Use the `presentDocument` tool to render this markdown verbatim: '# L-DISPATCH-MD canary'.",
+        `Use the \`presentDocument\` tool to render this markdown verbatim: '# ${marker}'.`,
         "Do not use any other tool. Do not narrate the result.",
       ].join(" "),
+      // presentDocument has no delete tool; the saved
+      // `artifacts/documents/<YYYY>/<MM>/*.md` is a persistent
+      // workspace artifact, identifiable by the marker in its body.
     });
   });
 
   test("L-DISPATCH-XLS: Office role + presentSpreadsheet が一ターンで dispatch される", async ({ page }) => {
+    const marker = makeMarker("L-DISPATCH-XLS");
     await runDispatchCase(page, {
       testId: "L-DISPATCH-XLS",
       role: "office",
       toolName: "presentSpreadsheet",
+      marker,
       prompt: [
-        "Use the `presentSpreadsheet` tool to render one sheet with header [Month, Sales] and one row [Jan, 100].",
+        `Use the \`presentSpreadsheet\` tool to render one sheet named '${marker}' with header [Month, Sales] and one row [Jan, 100].`,
         "Do not use any other tool. Do not narrate the result.",
       ].join(" "),
+      // presentSpreadsheet has no delete tool — see L-DISPATCH-MD note.
     });
   });
 
   test("L-DISPATCH-SVG: Artist role + presentSVG が一ターンで dispatch される", async ({ page }) => {
+    const marker = makeMarker("L-DISPATCH-SVG");
     await runDispatchCase(page, {
       testId: "L-DISPATCH-SVG",
       role: "artist",
       toolName: "presentSVG",
+      marker,
       prompt: [
-        'Use the `presentSVG` tool to render this SVG verbatim: \'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="red"/></svg>\'.',
+        `Use the \`presentSVG\` tool to render this SVG verbatim: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><title>${marker}</title><rect width="10" height="10" fill="red"/></svg>'.`,
         "Do not use any other tool. Do not narrate the result.",
       ].join(" "),
+      // presentSVG has no delete tool — see L-DISPATCH-MD note.
     });
   });
 
   test("L-DISPATCH-HTML: Office role + presentHtml が一ターンで dispatch される", async ({ page }) => {
+    const marker = makeMarker("L-DISPATCH-HTML");
     await runDispatchCase(page, {
       testId: "L-DISPATCH-HTML",
       role: "office",
       toolName: "presentHtml",
+      marker,
       prompt: [
-        "Use the `presentHtml` tool to render this HTML verbatim: '<!doctype html><html><body><h1>L-DISPATCH-HTML canary</h1></body></html>'.",
+        `Use the \`presentHtml\` tool to render this HTML verbatim: '<!doctype html><html><body><h1>${marker}</h1></body></html>'.`,
         "Do not use presentDocument. Do not use any other tool. Do not narrate the result.",
       ].join(" "),
+      // presentHtml has no delete tool — see L-DISPATCH-MD note.
     });
   });
 
   test("L-DISPATCH-ACCT: Accounting role + manageAccounting が一ターンで dispatch される", async ({ page }) => {
+    const marker = makeMarker("L-DISPATCH-ACCT");
     await runDispatchCase(page, {
       testId: "L-DISPATCH-ACCT",
       role: "accounting",
       toolName: "manageAccounting",
+      marker,
       prompt: [
-        "Use the `manageAccounting` tool with action='createBook' to create a new book named 'L-DISPATCH-ACCT canary', currency='USD', country='US'.",
+        `Use the \`manageAccounting\` tool with action='createBook' to create a new book whose name is EXACTLY '${marker}' (verbatim), currency='USD', country='US'.`,
         "Do not call openBook afterwards. Do not use any other tool. Do not narrate the result.",
+      ].join(" "),
+      cleanupPrompt: [
+        `Now delete the book whose name equals EXACTLY '${marker}'.`,
+        "Use the manageAccounting tool with action='getBooks' first to find the bookId, then action='deleteBook' with confirm=true.",
+        "Do not narrate the result.",
       ].join(" "),
     });
   });
