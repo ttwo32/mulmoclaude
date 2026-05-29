@@ -610,6 +610,7 @@ const zhMessages = {
     goToday: "跳到今天",
     next: "下一个",
     deleteItem: "删除项目",
+    deleteConfirm: "删除「{title}」？",
     closeEditor: "关闭编辑器",
     apiError: "⚠ 更新调度器失败: {error}",
     tabCalendar: "日历",

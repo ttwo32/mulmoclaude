@@ -643,6 +643,7 @@ const enMessages = {
     goToday: "Go to today",
     next: "Next",
     deleteItem: "Delete item",
+    deleteConfirm: 'Delete "{title}"?',
     closeEditor: "Close editor",
     apiError: "⚠ Failed to update scheduler: {error}",
     tabCalendar: "Calendar",

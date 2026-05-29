@@ -629,6 +629,7 @@ const esMessages = {
     goToday: "Ir a hoy",
     next: "Siguiente",
     deleteItem: "Eliminar elemento",
+    deleteConfirm: '¿Eliminar "{title}"?',
     closeEditor: "Cerrar editor",
     apiError: "⚠ Error al actualizar el programador: {error}",
     tabCalendar: "Calendario",

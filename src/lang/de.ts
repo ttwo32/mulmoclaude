@@ -632,6 +632,7 @@ const deMessages = {
     goToday: "Zu Heute",
     next: "Weiter",
     deleteItem: "Eintrag löschen",
+    deleteConfirm: "„{title}“ löschen?",
     closeEditor: "Editor schließen",
     apiError: "⚠ Scheduler-Aktualisierung fehlgeschlagen: {error}",
     tabCalendar: "Kalender",

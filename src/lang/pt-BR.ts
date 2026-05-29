@@ -622,6 +622,7 @@ const ptBRMessages = {
     goToday: "Ir para hoje",
     next: "Próximo",
     deleteItem: "Excluir item",
+    deleteConfirm: 'Excluir "{title}"?',
     closeEditor: "Fechar editor",
     apiError: "⚠ Falha ao atualizar o agendador: {error}",
     tabCalendar: "Calendário",

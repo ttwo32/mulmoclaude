@@ -103,6 +103,7 @@
             <button
               class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs px-1 mt-0.5 shrink-0"
               :title="t('pluginScheduler.deleteItem')"
+              :data-testid="`scheduler-item-delete-${item.id}`"
               @click.stop="remove(item)"
             >
               ✕
@@ -589,6 +590,8 @@ async function callApi(body: Record<string, unknown>): Promise<boolean> {
 }
 
 async function remove(item: ScheduledItem): Promise<void> {
+  const confirmed = window.confirm(t("pluginScheduler.deleteConfirm", { title: item.title }));
+  if (!confirmed) return;
   if (selectedId.value === item.id) selectedId.value = null;
   await callApi({ action: "delete", id: item.id });
 }
