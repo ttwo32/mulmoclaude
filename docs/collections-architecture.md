@@ -124,7 +124,8 @@ Discover ──▶ Validate ──▶ Serve ──▶ Render ──▶ CRUD ─�
   declared field flagged `primary: true`. A bad schema is logged and skipped,
   never crashes the host (`discovery.ts:140`, `:222`).
 - **Serve** — REST surface (`server/api/routes/collections.ts`):
-  `GET /api/collections`, `GET /:slug`, `POST/PUT/DELETE /:slug/items[/:itemId]`,
+  `GET /api/collections`, `GET /:slug`, `DELETE /:slug` (delete the whole
+  collection — see below), `POST/PUT/DELETE /:slug/items[/:itemId]`,
   `POST /:slug/items/:itemId/actions/:actionId`.
 - **Render** — `/collections/:slug` mounts `<CollectionView>`
   (`src/router/index.ts:89`, `src/App.vue:230`); every field type maps to a
@@ -380,6 +381,7 @@ catalog.)
 | UI (table / form / detail / actions) | `src/components/CollectionView.vue` |
 | Derived-formula evaluator | `src/utils/collections/derivedFormula.ts` |
 | Action + field visibility predicate (`when`, UI + server) | `src/utils/collections/actionVisible.ts` |
+| Collection delete + archive (all three locations + RESTORE.md) | `server/workspace/collections/delete.ts` |
 | Staging → `.claude/skills` mirror bridge (create + delete) | `server/workspace/hooks/handlers/skillBridge.ts` |
 | Project-skill writer / `deleteProjectSkill` | `server/workspace/skills/writer.ts` |
 | Preset boot-sync (`mc-*` only) | `server/workspace/skills-preset.ts` |
