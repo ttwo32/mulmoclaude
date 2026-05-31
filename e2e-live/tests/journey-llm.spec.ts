@@ -141,21 +141,7 @@ test.describe("L-JOURNEY-* (real LLM add → View reflection → lifecycle)", ()
       await setupRoleSession(page, "accounting", sessions);
       await sendChatMessage(page, accountingCreatePrompt(marker));
       await waitForAssistantTurn(page);
-
-      // Headline: the LLM-created book is reflected in the live View's
-      // switcher. The accounting plugin has no standalone route — the
-      // view only mounts via the openBook envelope inline in chat.
-      const app = page.getByTestId("accounting-app").last();
-      await expect(app, "openBook must mount the accounting view inline in the chat").toBeVisible({ timeout: VIEW_REFLECT_TIMEOUT_MS });
-      // The book-select is a native <select> bound to activeBookId, so
-      // the SELECTED option (`option:checked`) is the active book —
-      // assert against that, not the whole select (whose text contains
-      // every book's option and would false-green if another book were
-      // active). Codex iter-1 must-fix.
-      await expect(
-        app.getByTestId("accounting-book-select").locator("option:checked"),
-        "the LLM-created book must be the ACTIVE book in the switcher",
-      ).toContainText(marker, { timeout: VIEW_REFLECT_TIMEOUT_MS });
+      await assertBookActiveInSwitcher(page, marker);
 
       // Delete is a second LLM turn. That collapses the openBook
       // envelope above (inline plugin views render expanded only while
@@ -278,6 +264,22 @@ async function deleteTodoFromChat(page: Page, sessionId: string, marker: string)
 // accounting (manageAccounting — Accounting role)
 // ---------------------------------------------------------------------------
 
+// Headline assertion: the LLM-created book is reflected in the live
+// View's switcher. The accounting plugin has no standalone route — its
+// view only mounts via the openBook envelope inline in chat.
+async function assertBookActiveInSwitcher(page: Page, marker: string): Promise<void> {
+  const app = page.getByTestId("accounting-app").last();
+  await expect(app, "openBook must mount the accounting view inline in the chat").toBeVisible({ timeout: VIEW_REFLECT_TIMEOUT_MS });
+  // The book-select is a native <select> bound to activeBookId, so the
+  // SELECTED option (`option:checked`) is the active book — assert
+  // against that, not the whole select (whose text contains every
+  // book's option and would false-green if another book were active).
+  await expect(
+    app.getByTestId("accounting-book-select").locator("option:checked"),
+    "the LLM-created book must be the ACTIVE book in the switcher",
+  ).toContainText(marker, { timeout: VIEW_REFLECT_TIMEOUT_MS });
+}
+
 function accountingCreatePrompt(marker: string): string {
   return [
     `Use the \`manageAccounting\` tool with action='createBook' to create a book whose name is EXACTLY '${marker}' (verbatim), currency='USD', country='US'.`,
@@ -321,5 +323,13 @@ function parseBookNamesStrict(raw: string): string[] {
   if (!isRecord(parsed) || !Array.isArray(parsed.books)) {
     throw new Error(`${ACCOUNTING_CONFIG_REL} did not have the expected { books: [...] } shape after deleteBook`);
   }
-  return parsed.books.filter(isRecord).map((book) => (typeof book.name === "string" ? book.name : ""));
+  // Fail closed per-entry too (CodeRabbit): a malformed row (non-object
+  // or non-string `name`) must throw, not silently become "" — else a
+  // corrupted books[] could let `not.toContain(marker)` false-pass.
+  return parsed.books.map((book, idx) => {
+    if (!isRecord(book) || typeof book.name !== "string") {
+      throw new Error(`${ACCOUNTING_CONFIG_REL} has an invalid books[${idx}] entry after deleteBook; expected { name: string }`);
+    }
+    return book.name;
+  });
 }
