@@ -61,9 +61,11 @@
       </button>
     </header>
 
-    <!-- Search Toolbar -->
-    <div v-if="collection && items.length > 0" class="px-6 py-3 bg-white border-b border-slate-100 flex items-center justify-between gap-4">
-      <div class="relative flex-1 max-w-md">
+    <!-- Search Toolbar. Shown when there are items to search OR when the
+         calendar toggle is available — the toggle must reach an empty
+         date-bearing collection so its empty-day create affordance works. -->
+    <div v-if="collection && (items.length > 0 || hasCalendar)" class="px-6 py-3 bg-white border-b border-slate-100 flex items-center justify-between gap-4">
+      <div v-if="items.length > 0" class="relative flex-1 max-w-md">
         <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
           <span class="material-icons text-lg">search</span>
         </span>
@@ -84,8 +86,47 @@
           <span class="material-icons text-sm">close</span>
         </button>
       </div>
-      <div class="text-[10px] text-slate-400 font-bold uppercase tracking-wider select-none">
-        {{ t("collectionsView.searchSummary", { shown: filteredItems.length, total: items.length }) }}
+      <div class="flex items-center gap-2">
+        <!-- View toggle: table ↔ calendar. Shown only when the schema has a
+             `date` field; local UI state, never persisted. -->
+        <div v-if="hasCalendar" class="flex gap-0.5" role="group" :aria-label="t('collectionsView.viewToggle')">
+          <button
+            type="button"
+            class="h-8 px-2.5 flex items-center gap-1 rounded text-xs font-bold transition-colors"
+            :class="!calendarActive ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'"
+            :aria-pressed="!calendarActive"
+            data-testid="collection-view-toggle-table"
+            @click="setView('table')"
+          >
+            <span class="material-icons text-sm">table_rows</span>
+            <span>{{ t("collectionsView.viewTable") }}</span>
+          </button>
+          <button
+            type="button"
+            class="h-8 px-2.5 flex items-center gap-1 rounded text-xs font-bold transition-colors"
+            :class="calendarActive ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'"
+            :aria-pressed="calendarActive"
+            data-testid="collection-view-toggle-calendar"
+            @click="setView('calendar')"
+          >
+            <span class="material-icons text-sm">calendar_month</span>
+            <span>{{ t("collectionsView.viewCalendar") }}</span>
+          </button>
+        </div>
+        <!-- Which date field anchors the grid (only when >1 date field). -->
+        <select
+          v-if="calendarActive && dateFields.length > 1"
+          :value="calendarAnchorField"
+          class="h-8 px-2 rounded border border-slate-200 bg-white text-xs font-semibold text-slate-600 focus:outline-none focus:border-indigo-500 cursor-pointer"
+          :aria-label="t('collectionsView.calendarFieldLabel')"
+          data-testid="collection-calendar-field"
+          @change="anchorOverride = ($event.target as HTMLSelectElement).value"
+        >
+          <option v-for="key in dateFields" :key="key" :value="key">{{ collection?.schema.fields[key]?.label ?? key }}</option>
+        </select>
+        <div v-if="items.length > 0" class="text-[10px] text-slate-400 font-bold uppercase tracking-wider select-none">
+          {{ t("collectionsView.searchSummary", { shown: filteredItems.length, total: items.length }) }}
+        </div>
       </div>
     </div>
 
@@ -102,6 +143,50 @@
 
       <div v-else-if="!collection">
         <!-- defensive: loading=false, error=null, collection=null -->
+      </div>
+
+      <!-- Calendar body: an alternative to the table for date-bearing
+           collections. Shown whenever active (even when empty) so the
+           empty-cell create affordance stays available. -->
+      <div v-else-if="calendarActive" class="p-4">
+        <CollectionCalendarView
+          :schema="collection.schema"
+          :items="filteredItems"
+          :anchor-field="calendarAnchorField"
+          :end-field="calendarEndField"
+          :selected="viewing ? String(viewing[collection.schema.primaryKey] ?? '') : undefined"
+          :can-create="canCreate"
+          @select="onCalendarSelect"
+          @create-on="createOnDate"
+        />
+        <div
+          v-if="viewing || editing"
+          class="mt-4 rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden"
+          data-testid="collections-calendar-panel"
+        >
+          <CollectionRecordPanel
+            v-model:editing="editing"
+            :collection="collection"
+            :viewing="viewing"
+            :saving="saving"
+            :save-error="saveError"
+            :action-error="actionError"
+            :action-pending="actionPending"
+            :visible-actions="visibleActions"
+            :live-record="liveRecord"
+            :live-derived="liveDerived"
+            :view-title="viewTitle"
+            :is-singleton="isSingleton"
+            :render="render"
+            :locale="locale"
+            @submit="saveEditor"
+            @cancel="cancelEditor"
+            @edit="editFromView"
+            @close="closeView"
+            @delete="viewing && confirmDelete(viewing)"
+            @run-action="runAction"
+          />
+        </div>
       </div>
 
       <div v-else-if="items.length === 0 && editing?.mode !== 'create'" class="flex flex-col items-center justify-center py-20 text-sm text-slate-400 gap-2">
@@ -237,433 +322,28 @@
                        `min(100%, 100cqw)` keeps it at table width when the
                        table is narrower than the View. -->
                   <div class="sticky left-0 w-[min(100%,100cqw)]">
-                    <!-- Edit / Create panel (in-place, detail-style grid layout).
-                     Shown for the row being edited, or for the synthetic
-                     create row pinned at the top of the list. -->
-                    <form
-                      v-if="isEditingRow(item)"
-                      class="px-6 py-5 max-h-[60vh] overflow-y-auto"
-                      :data-testid="isCreateRow(item) ? 'collections-create' : 'collections-edit'"
-                      @submit.prevent="saveEditor"
-                    >
-                      <div class="flex items-center gap-2 mb-4">
-                        <div class="flex-1 min-w-0">
-                          <span class="block text-[9px] font-bold text-slate-400 uppercase tracking-wider">{{ collection.title }}</span>
-                          <h2 class="text-base font-bold text-slate-800 truncate" data-testid="collections-edit-title">
-                            {{ editing && editing.mode === "create" ? t("collectionsView.createTitle") : (editing?.originalId ?? "") }}
-                          </h2>
-                        </div>
-                        <button
-                          type="button"
-                          class="h-8 px-2.5 rounded text-xs font-bold text-slate-500 hover:bg-slate-200/50 transition-colors"
-                          data-testid="collections-editor-cancel"
-                          @click="cancelEditor"
-                        >
-                          {{ t("common.cancel") }}
-                        </button>
-                        <button
-                          type="submit"
-                          class="h-8 px-2.5 rounded bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 disabled:opacity-50 transition-all shadow-sm shadow-indigo-600/10"
-                          :disabled="saving"
-                          data-testid="collections-editor-save"
-                        >
-                          {{ saving ? t("common.saving") : t("common.save") }}
-                        </button>
-                      </div>
-
-                      <div v-if="editing" class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 bg-white rounded-2xl border border-slate-200/60 p-6 shadow-sm">
-                        <template v-for="(field, key) in collection.schema.fields" :key="key">
-                          <div
-                            v-if="fieldVisible(field, liveRecord ?? {}) && (!field.primary || editing?.mode === 'create')"
-                            class="flex flex-col gap-1.5"
-                            :class="['table', 'markdown', 'embed'].includes(field.type) ? 'col-span-full' : 'col-span-1'"
-                          >
-                            <label
-                              class="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"
-                              :for="`collections-field-${key}`"
-                            >
-                              {{ field.label }}
-                              <!-- eslint-disable-next-line @intlify/vue-i18n/no-raw-text -- bare "*" is a universal required-field glyph; treating it as i18n copy would force eight translations of the same symbol. -->
-                              <span v-if="field.required" class="text-rose-500 font-bold">*</span>
-                            </label>
-
-                            <!-- Boolean checkbox -->
-                            <label v-if="field.type === 'boolean'" class="inline-flex items-center gap-2.5 text-sm text-slate-700 cursor-pointer select-none">
-                              <input
-                                :id="`collections-field-${key}`"
-                                v-model="editing.bool[key]"
-                                type="checkbox"
-                                class="h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/20 cursor-pointer"
-                                :data-testid="`collections-input-${key}`"
-                                @change="markBoolTouched(key)"
-                              />
-                              <span class="text-xs font-semibold" :class="editing.bool[key] ? 'text-indigo-600' : 'text-slate-500'">
-                                {{ editing.bool[key] ? t("common.yes") : t("common.no") }}
-                              </span>
-                            </label>
-
-                            <!-- Embed card (read-only) -->
-                            <CollectionEmbedView v-else-if="field.type === 'embed' && embedViews[key]" :view="embedViews[key]" :field-key="String(key)" />
-
-                            <!-- Ref selector -->
-                            <select
-                              v-else-if="field.type === 'ref' && field.to && refOptions(field.to).length > 0"
-                              :id="`collections-field-${key}`"
-                              v-model="editing.text[key]"
-                              :required="isFieldRequiredInUi(field)"
-                              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-slate-50 hover:bg-slate-50/50 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-all cursor-pointer font-medium text-slate-700"
-                              :data-testid="`collections-input-${key}`"
-                            >
-                              <option value="">{{ t("collectionsView.selectPlaceholder") }}</option>
-                              <option v-for="opt in refOptions(field.to)" :key="opt.slug" :value="opt.slug">{{ opt.display }}</option>
-                            </select>
-
-                            <!-- Enum selector -->
-                            <select
-                              v-else-if="field.type === 'enum' && Array.isArray(field.values) && field.values.length > 0"
-                              :id="`collections-field-${key}`"
-                              v-model="editing.text[key]"
-                              :required="isFieldRequiredInUi(field)"
-                              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs bg-slate-50 hover:bg-slate-50/50 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none transition-all cursor-pointer font-medium text-slate-700"
-                              :data-testid="`collections-input-${key}`"
-                            >
-                              <option value="">{{ t("collectionsView.selectPlaceholder") }}</option>
-                              <option v-for="value in field.values" :key="value" :value="value">{{ value }}</option>
-                            </select>
-
-                            <!-- Nested Table editor -->
-                            <div
-                              v-else-if="field.type === 'table' && field.of"
-                              class="border border-slate-200 bg-slate-50/30 rounded-xl p-4 space-y-3"
-                              :data-testid="`collections-table-${key}`"
-                            >
-                              <div
-                                v-if="editing.table[key] && editing.table[key].length > 0"
-                                class="overflow-hidden border border-slate-200 rounded-lg shadow-sm"
-                              >
-                                <table class="w-full text-xs text-slate-600 bg-white">
-                                  <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
-                                    <tr>
-                                      <th v-for="(subField, subKey) in field.of" :key="subKey" class="text-left px-3 py-2 font-bold">{{ subField.label }}</th>
-                                      <th class="w-9"></th>
-                                    </tr>
-                                  </thead>
-                                  <tbody class="divide-y divide-slate-100">
-                                    <tr v-for="(row, rowIdx) in editing.table[key]" :key="rowIdx" class="hover:bg-slate-50/50">
-                                      <td v-for="(subField, subKey) in field.of" :key="subKey" class="px-2 py-1.5 align-middle">
-                                        <input
-                                          v-if="subField.type === 'boolean'"
-                                          v-model="row.bool[subKey]"
-                                          type="checkbox"
-                                          class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500/20 cursor-pointer"
-                                          @change="markRowBoolTouched(row, String(subKey))"
-                                        />
-                                        <select
-                                          v-else-if="subField.type === 'enum' && Array.isArray(subField.values) && subField.values.length > 0"
-                                          v-model="row.text[subKey]"
-                                          :required="subField.required"
-                                          class="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-indigo-500 focus:outline-none cursor-pointer bg-slate-50 font-medium"
-                                        >
-                                          <option value="">{{ t("collectionsView.selectPlaceholder") }}</option>
-                                          <option v-for="value in subField.values" :key="value" :value="value">{{ value }}</option>
-                                        </select>
-                                        <select
-                                          v-else-if="subField.type === 'ref' && subField.to && refOptions(subField.to).length > 0"
-                                          v-model="row.text[subKey]"
-                                          :required="subField.required"
-                                          class="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-indigo-500 focus:outline-none cursor-pointer bg-slate-50 font-medium"
-                                        >
-                                          <option value="">{{ t("collectionsView.selectPlaceholder") }}</option>
-                                          <option v-for="opt in refOptions(subField.to)" :key="opt.slug" :value="opt.slug">{{ opt.display }}</option>
-                                        </select>
-                                        <div v-else-if="subField.type === 'money'" class="relative flex items-center">
-                                          <span class="absolute left-1.5 text-[10px] text-slate-400 font-bold pr-1 border-r border-slate-200">{{
-                                            currencySymbol(resolveCurrency(subField, liveRecord))
-                                          }}</span>
-                                          <input
-                                            v-model="row.text[subKey]"
-                                            type="number"
-                                            step="0.01"
-                                            :required="subField.required"
-                                            class="w-full rounded-lg border border-slate-200 pl-6 pr-1.5 py-1 text-xs focus:border-indigo-500 focus:outline-none font-semibold text-slate-800"
-                                          />
-                                        </div>
-                                        <input
-                                          v-else
-                                          v-model="row.text[subKey]"
-                                          :type="inputTypeFor(subField.type)"
-                                          :required="subField.required"
-                                          class="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-indigo-500 focus:outline-none font-medium text-slate-700"
-                                        />
-                                      </td>
-                                      <td class="text-center px-1">
-                                        <button
-                                          type="button"
-                                          class="h-7 w-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                                          :aria-label="t('collectionsView.removeRow')"
-                                          :data-testid="`collections-table-${key}-remove-${rowIdx}`"
-                                          @click="removeTableRow(key, rowIdx)"
-                                        >
-                                          <span class="material-icons text-base">close</span>
-                                        </button>
-                                      </td>
-                                    </tr>
-                                  </tbody>
-                                </table>
-                              </div>
-                              <p v-else class="text-xs text-slate-400 italic">{{ t("collectionsView.noRows") }}</p>
-                              <button
-                                type="button"
-                                class="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-bold hover:underline"
-                                :data-testid="`collections-table-${key}-add`"
-                                @click="addTableRow(key, field.of)"
-                              >
-                                <span class="material-icons text-xs">add</span>
-                                <span>{{ t("collectionsView.addRow") }}</span>
-                              </button>
-                            </div>
-
-                            <!-- Derived formula field -->
-                            <div v-else-if="field.type === 'derived'" class="relative flex items-center">
-                              <span class="absolute left-3 text-indigo-500 font-bold text-[9px] uppercase select-none tracking-wider">{{
-                                t("collectionsView.derivedLabel")
-                              }}</span>
-                              <input
-                                :id="`collections-field-${key}`"
-                                :value="derivedDisplay(field, liveDerived?.[key] ?? null, liveRecord)"
-                                type="text"
-                                disabled
-                                class="w-full rounded-xl border border-indigo-100 bg-indigo-50/15 pl-16 pr-3 py-2 text-xs font-bold text-indigo-700 select-none cursor-not-allowed"
-                                :data-testid="`collections-input-${key}`"
-                              />
-                            </div>
-
-                            <!-- Money input field -->
-                            <div v-else-if="field.type === 'money'" class="relative flex items-center">
-                              <div class="absolute left-3 text-slate-400 font-bold text-xs select-none pr-1.5 border-r border-slate-200">
-                                {{ currencySymbol(resolveCurrency(field, liveRecord)) }}
-                              </div>
-                              <input
-                                :id="`collections-field-${key}`"
-                                v-model="editing.text[key]"
-                                type="number"
-                                step="0.01"
-                                :required="isFieldRequiredInUi(field)"
-                                class="w-full rounded-xl border border-slate-200 pl-11 pr-3 py-2 text-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none font-semibold text-slate-800 transition-all"
-                                :data-testid="`collections-input-${key}`"
-                              />
-                            </div>
-
-                            <!-- Scalar inputs -->
-                            <input
-                              v-else-if="['string', 'email', 'number', 'date', 'ref', 'image'].includes(field.type)"
-                              :id="`collections-field-${key}`"
-                              v-model="editing.text[key]"
-                              :type="inputTypeFor(field.type)"
-                              :required="isFieldRequiredInUi(field)"
-                              :disabled="field.primary === true && (editing.mode === 'edit' || isSingleton)"
-                              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400 font-medium text-slate-700 transition-all"
-                              :data-testid="`collections-input-${key}`"
-                            />
-
-                            <!-- Markdown or long text -->
-                            <textarea
-                              v-else
-                              :id="`collections-field-${key}`"
-                              v-model="editing.text[key]"
-                              :rows="field.type === 'markdown' ? 5 : 3"
-                              :required="isFieldRequiredInUi(field)"
-                              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none font-medium text-slate-700 transition-all"
-                              :data-testid="`collections-input-${key}`"
-                            />
-                          </div>
-                        </template>
-                        <p v-if="saveError" class="col-span-full text-xs font-semibold text-red-600 bg-red-50 border border-red-100 p-2.5 rounded-xl">
-                          {{ saveError }}
-                        </p>
-                      </div>
-                    </form>
-
-                    <!-- Read-only detail panel -->
-                    <div v-else-if="viewing" data-testid="collections-detail" class="px-6 py-5 max-h-[60vh] overflow-y-auto">
-                      <div class="flex items-center gap-2 mb-4">
-                        <div class="flex-1 min-w-0">
-                          <span class="block text-[9px] font-bold text-slate-400 uppercase tracking-wider">{{ collection.title }}</span>
-                          <h2 class="text-base font-bold text-slate-800 truncate" data-testid="collections-detail-title">{{ viewTitle }}</h2>
-                        </div>
-                        <div class="flex items-center gap-2">
-                          <!-- Dynamic Actions -->
-                          <button
-                            v-for="action in visibleActions"
-                            :key="action.id"
-                            type="button"
-                            class="h-8 px-2.5 rounded border border-indigo-200 bg-indigo-50/50 text-indigo-600 hover:bg-indigo-600 hover:text-white hover:border-indigo-600 font-bold text-xs transition-all flex items-center gap-1 disabled:opacity-50"
-                            :disabled="actionPending"
-                            :data-testid="`collections-detail-action-${action.id}`"
-                            @click="runAction(action)"
-                          >
-                            <span v-if="action.icon" class="material-icons text-sm">{{ action.icon }}</span>
-                            <span>{{ action.label }}</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            class="h-8 px-2.5 rounded border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 font-bold text-xs transition-all flex items-center gap-1"
-                            data-testid="collections-detail-edit"
-                            @click="editFromView"
-                          >
-                            <span class="material-icons text-sm">edit</span>
-                            <span>{{ t("collectionsView.editItem") }}</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            class="h-8 px-2.5 rounded border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 font-bold text-xs transition-all flex items-center gap-1"
-                            data-testid="collections-detail-remove"
-                            @click="viewing && confirmDelete(viewing)"
-                          >
-                            <span class="material-icons text-sm">delete</span>
-                            <span>{{ t("common.remove") }}</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            class="h-8 w-8 flex items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-                            :aria-label="t('common.close')"
-                            data-testid="collections-detail-close"
-                            @click="closeView"
-                          >
-                            <span class="material-icons text-lg">close</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      <p
-                        v-if="actionError"
-                        class="mb-3 text-xs font-semibold text-red-600 bg-red-50 border border-red-100 p-2.5 rounded-xl shadow-sm"
-                        data-testid="collections-detail-action-error"
-                      >
-                        {{ actionError }}
-                      </p>
-
-                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 bg-white rounded-2xl border border-slate-200/60 p-6 shadow-sm">
-                        <template v-for="(field, key) in collection.schema.fields" :key="key">
-                          <div
-                            v-if="fieldVisible(field, viewing ?? {}) && !field.primary"
-                            class="flex flex-col gap-1"
-                            :class="['table', 'markdown', 'embed', 'image'].includes(field.type) ? 'col-span-full' : 'col-span-1'"
-                          >
-                            <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wider select-none">{{ field.label }}</div>
-
-                            <div class="text-xs font-medium text-slate-700 break-words" :data-testid="`collections-detail-value-${key}`">
-                              <!-- Boolean state -->
-                              <template v-if="field.type === 'boolean'">
-                                <span
-                                  v-if="viewing[key] === true"
-                                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/40"
-                                >
-                                  <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                                  {{ t("common.yes") }}
-                                </span>
-                                <span
-                                  v-else-if="viewing[key] === false"
-                                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-50 text-slate-400 border border-slate-200/20"
-                                >
-                                  {{ t("common.no") }}
-                                </span>
-                                <!-- eslint-disable-next-line @intlify/vue-i18n/no-raw-text -- bare "—" for an omitted boolean: distinct from an explicit false. -->
-                                <span v-else class="text-slate-300">—</span>
-                              </template>
-
-                              <!-- Ref details link -->
-                              <router-link
-                                v-else-if="field.type === 'ref' && field.to && typeof viewing[key] === 'string' && viewing[key]"
-                                :to="{ path: `/collections/${field.to}`, query: { selected: String(viewing[key]) } }"
-                                class="text-indigo-600 hover:text-indigo-800 font-bold hover:underline"
-                                :data-testid="`collections-detail-ref-${key}`"
-                                >{{ refDisplay(field.to, String(viewing[key])) }}</router-link
-                              >
-
-                              <!-- Money format -->
-                              <span v-else-if="field.type === 'money'" class="font-semibold text-slate-900 tabular-nums text-sm">{{
-                                formatMoney(viewing[key], resolveCurrency(field, viewing), locale)
-                              }}</span>
-
-                              <!-- Derived formula badge -->
-                              <span
-                                v-else-if="field.type === 'derived'"
-                                class="inline-block truncate tabular-nums font-bold text-indigo-900 bg-indigo-50/50 px-2 py-0.5 rounded border border-indigo-100/50"
-                                >{{ derivedDisplay(field, evaluateDerivedAgainstItem(field, String(key), viewing), viewing) }}</span
-                              >
-
-                              <!-- Sub table (e.g. Line Items in details) -->
-                              <div
-                                v-else-if="field.type === 'table' && field.of && hasTableRows(viewing[key])"
-                                class="border border-slate-200/80 rounded-xl overflow-hidden shadow-sm mt-1"
-                              >
-                                <table class="w-full text-[11px] text-slate-600 bg-white">
-                                  <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
-                                    <tr>
-                                      <th v-for="(subField, subKey) in field.of" :key="subKey" class="text-left px-4 py-2 font-bold">{{ subField.label }}</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody class="divide-y divide-slate-100">
-                                    <tr v-for="(row, rowIdx) in tableRows(viewing[key])" :key="rowIdx" class="hover:bg-slate-50/50">
-                                      <td v-for="(subField, subKey) in field.of" :key="subKey" class="px-4 py-2 align-middle font-medium">
-                                        <template v-if="subField.type === 'boolean'">
-                                          <span v-if="row[subKey] === true" class="material-icons text-emerald-600 text-base">check_circle</span>
-                                          <!-- eslint-disable-next-line @intlify/vue-i18n/no-raw-text -- bare "—" empty-value glyph (boolean=false), same as elsewhere. -->
-                                          <span v-else class="text-slate-300">—</span>
-                                        </template>
-                                        <span v-else :class="[subField.type === 'money' ? 'font-bold text-slate-800 tabular-nums' : '']">{{
-                                          formatSubCell(subField, row[subKey], viewing)
-                                        }}</span>
-                                      </td>
-                                    </tr>
-                                  </tbody>
-                                </table>
-                              </div>
-
-                              <span v-else-if="field.type === 'table'" class="text-slate-400 italic">{{ t("collectionsView.noRows") }}</span>
-
-                              <!-- Markdown blocks with scroll area -->
-                              <div
-                                v-else-if="field.type === 'markdown'"
-                                class="bg-slate-50 rounded-xl p-4 border border-slate-200/60 text-slate-600 text-xs whitespace-pre-wrap leading-relaxed max-h-[30vh] overflow-y-auto"
-                              >
-                                {{ detailText(viewing[key]) }}
-                              </div>
-
-                              <!-- Embed view -->
-                              <CollectionEmbedView v-else-if="field.type === 'embed' && embedViews[key]" :view="embedViews[key]" :field-key="String(key)" />
-
-                              <!-- Image (workspace-relative path → <img> via auth-exempt /api/files/raw) -->
-                              <img
-                                v-else-if="field.type === 'image' && typeof viewing[key] === 'string' && viewing[key]"
-                                :src="resolveImageSrc(String(viewing[key]))"
-                                :alt="field.label"
-                                class="max-h-64 max-w-full object-contain rounded-lg border border-slate-200 bg-slate-50"
-                                :data-testid="`collections-detail-image-${key}`"
-                              />
-
-                              <!-- URL string → external link (new tab). -->
-                              <a
-                                v-else-if="isExternalUrl(viewing[key])"
-                                :href="String(viewing[key])"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                class="text-blue-600 hover:text-blue-800 font-semibold hover:underline break-all"
-                                :data-testid="`collections-detail-url-${key}`"
-                                >{{ String(viewing[key]) }}</a
-                              >
-
-                              <!-- Fallback text styling -->
-                              <span v-else class="text-slate-800 font-semibold">{{ formatCell(viewing[key], field.type) }}</span>
-                            </div>
-                          </div>
-                        </template>
-                      </div>
-                    </div>
+                    <CollectionRecordPanel
+                      v-model:editing="editing"
+                      :collection="collection"
+                      :viewing="viewing"
+                      :saving="saving"
+                      :save-error="saveError"
+                      :action-error="actionError"
+                      :action-pending="actionPending"
+                      :visible-actions="visibleActions"
+                      :live-record="liveRecord"
+                      :live-derived="liveDerived"
+                      :view-title="viewTitle"
+                      :is-singleton="isSingleton"
+                      :render="render"
+                      :locale="locale"
+                      @submit="saveEditor"
+                      @cancel="cancelEditor"
+                      @edit="editFromView"
+                      @close="closeView"
+                      @delete="viewing && confirmDelete(viewing)"
+                      @run-action="runAction"
+                    />
                   </div>
                 </td>
               </tr>
@@ -753,182 +433,23 @@ import { API_ROUTES } from "../config/apiRoutes";
 import { PAGE_ROUTES } from "../router/pageRoutes";
 import { BUILTIN_ROLE_IDS } from "../config/roles";
 import ConfirmModal from "./ConfirmModal.vue";
-import CollectionEmbedView from "./CollectionEmbedView.vue";
-import type { EmbedRow, EmbedView } from "./collectionEmbed";
+import CollectionRecordPanel from "./CollectionRecordPanel.vue";
+import CollectionCalendarView from "./CollectionCalendarView.vue";
 import { useConfirm } from "../composables/useConfirm";
 import { useAppApi } from "../composables/useAppApi";
-import { evaluateDerived, type FormulaContext } from "../utils/collections/derivedFormula";
 import { actionVisible, fieldVisible } from "../utils/collections/actionVisible";
-import { resolveImageSrc } from "../utils/image/resolve";
-
-type FieldType = "string" | "text" | "email" | "number" | "date" | "boolean" | "markdown" | "ref" | "money" | "enum" | "table" | "derived" | "embed" | "image";
-
-interface FieldSpec {
-  type: FieldType;
-  label: string;
-  primary?: boolean;
-  required?: boolean;
-  /** When type === "ref" or "embed": slug of the target collection
-   *  (see plans/done/feat-collections-ref-field.md). */
-  to?: string;
-  /** When type === "embed": primary-key value of the fixed record
-   *  pulled from `to` and rendered read-only in the detail view
-   *  (e.g. `me` for the singleton mc-profile). Display-only — never
-   *  stored, never shown in the list table or the edit form. */
-  id?: string;
-  /** When type === "money" (or derived/money): a literal ISO 4217
-   *  currency, fixed for every record. Falls back to "USD" when both
-   *  this and `currencyField` are absent. */
-  currency?: string;
-  /** When type === "money" (or derived/money): name of a sibling
-   *  record field holding the ISO code, so currency can vary per
-   *  record. `resolveCurrency` reads `record[currencyField]` first,
-   *  then `currency`, then "USD". Resolved against the top-level
-   *  record even for money sub-fields inside a table. */
-  currencyField?: string;
-  /** When type === "enum": closed list of allowed string values
-   *  for the form `<select>`. */
-  values?: readonly string[];
-  /** When type === "table": sub-schema for each row (a flat map
-   *  of non-table / non-derived sub-fields). */
-  of?: Record<string, FieldSpec>;
-  /** When type === "derived": formula evaluated against the
-   *  record. See src/utils/collections/derivedFormula.ts. */
-  formula?: string;
-  /** When type === "derived": render the computed value as this
-   *  field type (e.g. "money"). Defaults to "number". */
-  display?: FieldType;
-  /** Optional visibility predicate: render this field only when
-   *  `String(record[when.field])` is one of `when.in` (e.g. hide a
-   *  rating until `visited` is `true`). Presentational only — a
-   *  hidden field's stored value is preserved. See `fieldVisible`. */
-  when?: { field: string; in: string[] };
-}
-
-/** Per-target-collection cache: maps an item's primary-key slug to
- *  the value we'll show in the table and dropdown. Filled in by
- *  `loadLinkedCollections` after the main collection's items arrive
- *  — one fetch per unique target collection, regardless of how many
- *  ref fields point at it. */
-type RefDisplayMap = Record<string, string>;
-type RefCache = Record<string, RefDisplayMap>;
-
-/** Per-target-collection cache of the *full* referenced records,
- *  keyed by target slug then by the target item's primary-key slug.
- *  RefCache keeps only a display label per item; this keeps the whole
- *  record so a `derived` formula can dereference a `ref` field and
- *  read any numeric column off it (e.g. `shares * ticker.price`).
- *  Built in the same fetch as RefCache (no extra request). */
-type RefRecordMap = Record<string, CollectionItem>;
-type RefRecordCache = Record<string, RefRecordMap>;
-
-/** Per-target cache for `embed` fields: the target collection's
- *  schema + items, kept in full (not reduced to display names like
- *  RefCache) so the detail view can render the embedded record's
- *  every field read-only. Keyed by target slug; the fixed record is
- *  looked up by `field.id` at render time. */
-interface EmbedTargetData {
-  schema: CollectionSchema;
-  items: CollectionItem[];
-}
-type EmbedCache = Record<string, EmbedTargetData>;
-
-/** A schema-declared, per-record action rendered as a button in the
- *  detail view. The host stays generic: it reads these fields and, on
- *  click, asks the server to assemble the seed prompt for `kind:"chat"`
- *  then starts a chat in `role`. */
-interface CollectionAction {
-  id: string;
-  label: string;
-  icon?: string;
-  kind: "chat";
-  role: string;
-  template: string;
-  /** Optional visibility predicate: the button renders only when
-   *  `String(record[when.field])` is one of `when.in`. */
-  when?: { field: string; in: string[] };
-}
-
-interface CollectionSchema {
-  title: string;
-  icon: string;
-  dataPath: string;
-  primaryKey: string;
-  /** When set, the collection is a singleton: at most one record whose
-   *  primary key is fixed to this value. */
-  singleton?: string;
-  fields: Record<string, FieldSpec>;
-  actions?: CollectionAction[];
-}
-
-interface CollectionDetail {
-  slug: string;
-  title: string;
-  icon: string;
-  source: "user" | "project";
-  schema: CollectionSchema;
-}
-
-type CollectionItem = Record<string, unknown>;
-
-interface CollectionDetailResponse {
-  collection: CollectionDetail;
-  items: CollectionItem[];
-}
-
-interface ItemMutationResponse {
-  itemId: string;
-  item: CollectionItem;
-}
-
-/** One row of a `table`-typed field, in draft form. Same shape as
- *  a top-level EditState's `text`/`bool` slots but flat — v0
- *  disallows nested tables and derived columns, so a row never
- *  needs its own table/derived sub-buckets. The boolean
- *  presence/touched maps mirror the top-level boolean omission
- *  semantics per row, so a row's explicit `false` round-trips
- *  through a no-op edit instead of being dropped. */
-interface TableRowDraft {
-  text: Record<string, string>;
-  bool: Record<string, boolean>;
-  boolOriginallyPresent: Record<string, boolean>;
-  boolTouched: Record<string, boolean>;
-}
-
-interface EditState {
-  mode: "create" | "edit";
-  /** Form drafts for text-like inputs. v-model on `<input type="text">`
-   *  / `<textarea>` / number / date / email all bind here as strings;
-   *  `draftToRecord` parses numbers and date strings before posting. */
-  text: Record<string, string>;
-  /** Form drafts for `boolean`-typed fields. v-model on `<input
-   *  type="checkbox">` binds here. Split from `text` so the v-model
-   *  generic stays unambiguous (string vs boolean) — vue-tsc complains
-   *  about `string | boolean` slots used as modelValue. */
-  bool: Record<string, boolean>;
-  /** Boolean keys whose value was present in the source record at
-   *  the time the editor was opened. Used by `draftToRecord` to
-   *  preserve omission semantics: an originally-absent boolean
-   *  that the user never touched stays omitted (so the consumer's
-   *  default applies — `mc-worklog` treats absent `billable` as
-   *  "default true"). */
-  boolOriginallyPresent: Record<string, boolean>;
-  /** Boolean keys whose checkbox the user has actively interacted
-   *  with in this editor session. Combined with
-   *  `boolOriginallyPresent`, this lets `draftToRecord` distinguish
-   *  "untouched and originally absent → omit" from "explicitly
-   *  set to false → emit false". Without the dirty bit a user
-   *  cannot persist an explicit `false` from create mode (every
-   *  unchecked box looks the same as untouched), which blocks
-   *  things like a non-billable mc-worklog entry from the UI. */
-  boolTouched: Record<string, boolean>;
-  /** Per-table-field row drafts. Vue tracks deep mutations on
-   *  these arrays so derived formulas re-evaluate live as the
-   *  user edits cells. */
-  table: Record<string, TableRowDraft[]>;
-  /** For edit mode: the original item id pinned to the URL. */
-  originalId: string | null;
-}
+import { useCollectionRendering } from "../composables/collections/useCollectionRendering";
+import { draftToRecord, firstMissingRequiredField, rowFromItem } from "../utils/collections/draft";
+import type {
+  CollectionAction,
+  CollectionDetail,
+  CollectionDetailResponse,
+  CollectionItem,
+  EditState,
+  FieldSpec,
+  ItemMutationResponse,
+  TableRowDraft,
+} from "./collectionTypes";
 
 /** `slug` / `selected` are supplied only in EMBEDDED mode (the
  *  `presentCollection` chat card mounts this component and drives both
@@ -944,6 +465,10 @@ const props = defineProps<{
   slug?: string;
   selected?: string;
   sendTextMessage?: (text?: string) => void;
+  /** Embedded mode only: initial view / anchor restored from the card's
+   *  persisted `viewState` so a switch to calendar survives a remount. */
+  initialView?: "table" | "calendar";
+  initialAnchorField?: string;
 }>();
 
 const emit = defineEmits<{
@@ -951,6 +476,9 @@ const emit = defineEmits<{
    *  The card persists this in its tool-result `viewState` so the open
    *  item survives a re-render. */
   select: [id: string | null];
+  /** Embedded mode only: the view mode / calendar anchor changed. The
+   *  card persists these alongside `selected` so the calendar sticks. */
+  viewStateChange: [state: { view: "table" | "calendar"; anchorField: string }];
 }>();
 
 const { t, locale } = useI18n();
@@ -998,9 +526,14 @@ const actionError = ref<string | null>(null);
 const chatOpen = ref(false);
 const chatMessage = ref("");
 const chatInputEl = ref<HTMLTextAreaElement | null>(null);
-const refCache = ref<RefCache>({});
-const refRecordCache = ref<RefRecordCache>({});
-const embedCache = ref<EmbedCache>({});
+
+// Shared rendering + linked-data layer: owns the ref/embed caches and
+// every value-formatting helper, reused by the extracted record panel
+// (table + calendar) so there's one implementation. Destructure the
+// helpers the list table renders with; pass the whole object to the
+// panel as its `render` prop.
+const render = useCollectionRendering(collection, locale);
+const { refRecordCache, refDisplay, formatMoney, resolveCurrency, derivedDisplay, evaluateDerivedAgainstItem, formatCell, isExternalUrl } = render;
 
 const searchQuery = ref("");
 
@@ -1179,9 +712,7 @@ async function loadCollection(slug: string): Promise<void> {
   collection.value = null;
   items.value = [];
   searchQuery.value = ""; // Reset search query on collection load
-  refCache.value = {};
-  refRecordCache.value = {};
-  embedCache.value = {};
+  render.resetLinkedCaches();
   viewing.value = null;
   const result = await apiGet<CollectionDetailResponse>(detailUrl(slug));
   loading.value = false;
@@ -1198,179 +729,12 @@ async function loadCollection(slug: string): Promise<void> {
   // Pass the slug that triggered THIS load so the helper can drop
   // its result if a faster subsequent load has already switched us
   // to a different collection (Codex P1 review on PR #1495).
-  await loadLinkedCollections(result.data.collection.schema, slug);
+  await render.loadLinkedCollections(result.data.collection.schema, slug);
   // A `?selected=<id>` deep link opens that record in read-only
   // mode once its items are available. Guard against a stale load:
   // only act if we're still on the slug that triggered this fetch.
   if (collection.value?.slug === slug) syncViewToSelected();
 }
-
-function uniqueRefTargets(schema: CollectionSchema): string[] {
-  const targets = new Set<string>();
-  const walk = (fields: Record<string, FieldSpec>): void => {
-    for (const field of Object.values(fields)) {
-      if (field.type === "ref" && typeof field.to === "string" && field.to.length > 0) {
-        targets.add(field.to);
-      }
-      if (field.type === "table" && field.of) {
-        // Sub-fields of a table can also be refs (e.g. lineItem
-        // referencing a product catalog). Walk one level deep —
-        // nested tables are rejected by the schema, so a single
-        // recursion is enough.
-        walk(field.of);
-      }
-    }
-  };
-  walk(schema.fields);
-  return [...targets];
-}
-
-function uniqueEmbedTargets(schema: CollectionSchema): string[] {
-  const targets = new Set<string>();
-  // Embeds are top-level only — the schema rejects `embed` inside a
-  // table's `of` (SubFieldSpecSchema omits it), so no recursion.
-  for (const field of Object.values(schema.fields)) {
-    if (field.type === "embed" && typeof field.to === "string" && field.to.length > 0) targets.add(field.to);
-  }
-  return [...targets];
-}
-
-/** Fetch every collection this schema links to — `ref` targets (for
- *  display-name labels + dropdown options) and `embed` targets (for
- *  the full record rendered in the detail view). Fetched as one
- *  union so a slug used by both is only requested once; the result
- *  fans out into `refCache` (display maps) and `embedCache` (full
- *  schema + items). */
-async function loadLinkedCollections(schema: CollectionSchema, expectedSlug: string): Promise<void> {
-  const refTargets = new Set(uniqueRefTargets(schema));
-  const embedTargets = new Set(uniqueEmbedTargets(schema));
-  const allTargets = [...new Set([...refTargets, ...embedTargets])];
-  if (allTargets.length === 0) return;
-  const results = await Promise.all(allTargets.map((target) => apiGet<CollectionDetailResponse>(detailUrl(target)).then((result) => ({ target, result }))));
-  // Stale-write guard: a quicker subsequent `loadCollection()`
-  // (user navigated to a different collection mid-fetch) may have
-  // already replaced `collection.value`. Overwriting the caches
-  // here would surface the previous collection's linked data on the
-  // current one's UI — broken labels until another reload. Drop
-  // the write if we're no longer on the slug that triggered us.
-  if (collection.value?.slug !== expectedSlug) return;
-  const nextRef: RefCache = {};
-  const nextRefRecords: RefRecordCache = {};
-  const nextEmbed: EmbedCache = {};
-  for (const { target, result } of results) {
-    if (!result.ok) continue;
-    if (refTargets.has(target)) {
-      nextRef[target] = buildRefDisplayMap(result.data);
-      nextRefRecords[target] = buildRefRecordMap(result.data);
-    }
-    if (embedTargets.has(target)) nextEmbed[target] = { schema: result.data.collection.schema, items: result.data.items };
-  }
-  refCache.value = nextRef;
-  refRecordCache.value = nextRefRecords;
-  embedCache.value = nextEmbed;
-}
-
-function buildRefDisplayMap(detail: CollectionDetailResponse): RefDisplayMap {
-  // Heuristic for what to display in the table cell + dropdown:
-  // prefer a field called `name`, fall back to `title`, then to the
-  // primary key value (= the slug itself, which we'd show anyway).
-  // Future-proof escape hatch (`displayField` in the schema) is
-  // explicitly deferred — see plans/done/feat-collections-ref-field.md.
-  const { fields, primaryKey } = detail.collection.schema;
-  const displayField = "name" in fields ? "name" : "title" in fields ? "title" : primaryKey;
-  const map: RefDisplayMap = {};
-  for (const item of detail.items) {
-    const slugRaw = item[primaryKey];
-    if (typeof slugRaw !== "string" || slugRaw.length === 0) continue;
-    const displayRaw = item[displayField];
-    const display = typeof displayRaw === "string" && displayRaw.length > 0 ? displayRaw : slugRaw;
-    map[slugRaw] = display;
-  }
-  return map;
-}
-
-/** Index a target collection's items by primary-key slug, keeping the
- *  whole record (unlike buildRefDisplayMap, which reduces each to a
- *  label). Powers ref-dereferencing in derived formulas. Each record
- *  is enriched with the target's OWN derived fields first, because
- *  derived values are never persisted on disk — so a formula can
- *  deref a *computed* target column (e.g. `ticker.marketCap`). The
- *  empty refs (`{}`) resolve target-local derived fields (arithmetic /
- *  sum / top-level); a target derived field that itself derefs a
- *  *third* collection stays unresolved — only one hop is loaded. */
-function buildRefRecordMap(detail: CollectionDetailResponse): RefRecordMap {
-  const { schema } = detail.collection;
-  const map: RefRecordMap = {};
-  for (const item of detail.items) {
-    const slugRaw = item[schema.primaryKey];
-    if (typeof slugRaw === "string" && slugRaw.length > 0) map[slugRaw] = deriveAll(schema, item, {});
-  }
-  return map;
-}
-
-function refDisplay(targetSlug: string, itemSlug: string): string {
-  const map = refCache.value[targetSlug];
-  return (map && map[itemSlug]) || itemSlug;
-}
-
-function refOptions(targetSlug: string): { slug: string; display: string }[] {
-  const map = refCache.value[targetSlug];
-  if (!map) return [];
-  return Object.entries(map)
-    .map(([slug, display]) => ({ slug, display }))
-    .sort((left, right) => left.display.localeCompare(right.display));
-}
-
-/** Resolve the fixed record an `embed` field points at, from the
- *  embedCache. Returns the target schema + the matching record, or
- *  nulls when the target couldn't be loaded or has no record with
- *  that id — the detail view renders the fields when `item` is set,
- *  a "missing" message otherwise. */
-function resolveEmbed(field: FieldSpec): { schema: CollectionSchema | null; item: CollectionItem | null } {
-  if (field.type !== "embed" || !field.to || !field.id) return { schema: null, item: null };
-  const data = embedCache.value[field.to];
-  if (!data) return { schema: null, item: null };
-  const item = data.items.find((entry) => String(entry[data.schema.primaryKey] ?? "") === field.id) ?? null;
-  return { schema: data.schema, item };
-}
-
-/** Read-only string for one field of an embedded record. Booleans
- *  and markdown are handled in the template (icon / pre-wrap); money
- *  formats via Intl; everything else falls back to the full text
- *  value (a ref inside an embedded record can't resolve a label
- *  across the boundary, so it shows its raw slug). */
-function embedValue(field: FieldSpec, value: unknown, record: CollectionItem | null): string {
-  if (field.type === "money") return formatMoney(value, resolveCurrency(field, record), locale.value);
-  return detailText(value);
-}
-
-/** Render-ready model for each `embed` field of the current
- *  collection, resolved against the embedCache and keyed by field
- *  key. Pre-formatting the rows in script keeps the detail template
- *  simple and type-safe. Independent of which record is open — an
- *  embed shows a fixed record regardless. */
-const embedViews = computed<Record<string, EmbedView>>(() => {
-  const out: Record<string, EmbedView> = {};
-  if (!collection.value) return out;
-  for (const [key, field] of Object.entries(collection.value.schema.fields)) {
-    if (field.type !== "embed") continue;
-    const { schema, item } = resolveEmbed(field);
-    const rows: EmbedRow[] = [];
-    if (schema && item) {
-      for (const [subKey, subField] of Object.entries(schema.fields)) {
-        const value = item[subKey];
-        // Skip empty fields — the embed is a read-only summary of
-        // another record (e.g. a "From (issuer)" block), so unfilled
-        // optional fields would just be "—" noise rather than the
-        // editable blanks a form needs.
-        if (value === undefined || value === null || value === "") continue;
-        rows.push({ key: subKey, label: subField.label, type: subField.type, value, display: embedValue(subField, value, item) });
-      }
-    }
-    out[key] = { found: Boolean(item), rows, targetSlug: field.to ?? "", recordId: field.id ?? "" };
-  }
-  return out;
-});
 
 /** Schema fields excluding display-only `embed` fields — used by the
  *  list table only (a whole embedded record doesn't fit a table cell,
@@ -1405,196 +769,50 @@ const canDeleteCollection = computed<boolean>(() => {
   return current.source === "project" && !current.slug.startsWith("mc-");
 });
 
-function inputTypeFor(type: FieldType): string {
-  if (type === "email") return "email";
-  if (type === "number") return "number";
-  if (type === "money") return "number";
-  if (type === "date") return "date";
-  return "text";
-}
+// ── View mode (table | calendar) ──────────────────────────────────
+// Local UI state only — NEVER persisted to schema. The user toggles it;
+// the host never flips it programmatically. The calendar is offered only
+// when the schema has a `date` field, so date-less collections and the
+// initial load are unchanged (default "table").
+type CollectionViewMode = "table" | "calendar";
+const view = ref<CollectionViewMode>(props.initialView ?? "table");
 
-/** Resolve the ISO currency code for a money / derived-money field.
- *  A field may either pin a literal `currency` (same for every
- *  record) or name a `currencyField` whose per-record value carries
- *  the code (e.g. an invoice's `currency` enum). Precedence:
- *  `record[currencyField]` → literal `currency` → undefined (which
- *  `formatMoney` / `currencySymbol` then default to "USD"). Always
- *  resolved against the top-level record, including for money
- *  sub-fields inside a table — table rows don't carry currency. */
-function resolveCurrency(field: FieldSpec, record: CollectionItem | null | undefined): string | undefined {
-  if (field.currencyField && record) {
-    const code = record[field.currencyField];
-    if (typeof code === "string" && code.trim().length > 0) return code;
-  }
-  return field.currency;
-}
+/** `date` fields in declaration order — the calendar can anchor on any. */
+const dateFields = computed<string[]>(() =>
+  collection.value
+    ? Object.entries(collection.value.schema.fields)
+        .filter(([, field]) => field.type === "date")
+        .map(([key]) => key)
+    : [],
+);
 
-/** Extract the localized currency symbol for a given ISO code
- *  (`USD` → `$`, `JPY` → `¥`, `EUR` → `€`). Used in the form's
- *  money input so the user can see which currency they're typing
- *  into — the schema declares the code per-field, but a bare
- *  number input gave no visual hint of currency. Falls back to
- *  the raw code on any Intl failure. */
-function currencySymbol(currency: string | undefined): string {
-  const code = currency && currency.length > 0 ? currency : "USD";
-  try {
-    const parts = new Intl.NumberFormat(locale.value, { style: "currency", currency: code }).formatToParts(0);
-    const part = parts.find((entry) => entry.type === "currency");
-    return part?.value ?? code;
-  } catch {
-    return code;
-  }
-}
+/** Whether the table ↔ calendar toggle is offered. */
+const hasCalendar = computed<boolean>(() => dateFields.value.length > 0);
 
-/** Format a money value via `Intl.NumberFormat`. Falls back to the
- *  raw number on any failure (unknown currency code, non-finite
- *  amount, etc.) so a malformed record still renders something
- *  rather than blowing up the row. Locale comes from the active
- *  i18n locale so digit grouping / decimal separator follow the
- *  user's settings even though the currency is declared by the
- *  schema. */
-function formatMoney(value: unknown, currency: string | undefined, displayLocale: string): string {
-  // `null` is intentionally NOT in this guard — `derivedDisplay`
-  // short-circuits on null before calling here, and the table
-  // cell branch passes `item[key]` from JSON where missing keys
-  // arrive as `undefined`, not `null` (we never persist explicit
-  // null). CodeQL flagged the original `value === null` as
-  // unreachable; removed per github-code-quality on PR #1497.
-  if (value === undefined || value === "") return "—";
-  const amount = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(amount)) return String(value);
-  const currencyCode = currency && currency.length > 0 ? currency : "USD";
-  try {
-    return new Intl.NumberFormat(displayLocale, { style: "currency", currency: currencyCode }).format(amount);
-  } catch {
-    return String(amount);
-  }
-}
+/** True when the calendar is the active body (guards against a stale
+ *  `view = "calendar"` lingering after switching to a date-less one). */
+const calendarActive = computed<boolean>(() => view.value === "calendar" && hasCalendar.value);
 
-/** Live computed record from the current draft, used by `derived`
- *  fields in the form so subtotal/tax/total update as the user
- *  edits line items. For derived cells in the main table, we
- *  evaluate against the loaded item instead — see the table cell
- *  branch. */
-function emptyRow(subFields: Record<string, FieldSpec>): TableRowDraft {
-  const text: Record<string, string> = {};
-  const bool: Record<string, boolean> = {};
-  const boolOriginallyPresent: Record<string, boolean> = {};
-  const boolTouched: Record<string, boolean> = {};
-  for (const [subKey, subField] of Object.entries(subFields)) {
-    if (subField.type === "boolean") {
-      bool[subKey] = false;
-      boolOriginallyPresent[subKey] = false; // brand-new row
-      boolTouched[subKey] = false;
-    } else {
-      text[subKey] = "";
-    }
-  }
-  return { text, bool, boolOriginallyPresent, boolTouched };
-}
+// In-view override for which date field anchors the grid; null ⇒ the
+// schema hint, else the first date field.
+const anchorOverride = ref<string | null>(props.initialAnchorField ?? null);
+const calendarAnchorField = computed<string>(() => {
+  if (anchorOverride.value && dateFields.value.includes(anchorOverride.value)) return anchorOverride.value;
+  const hint = collection.value?.schema.calendarField;
+  if (hint && dateFields.value.includes(hint)) return hint;
+  return dateFields.value[0] ?? "";
+});
+// The end field pairs with `schema.calendarField`. If the user switches the
+// in-view anchor to a different date field, the span no longer applies —
+// drop it so chips don't render from the new start to the original end.
+const calendarEndField = computed<string | undefined>(() => {
+  const schema = collection.value?.schema;
+  if (!schema?.calendarEndField) return undefined;
+  return calendarAnchorField.value === schema.calendarField ? schema.calendarEndField : undefined;
+});
 
-function rowFromItem(item: Record<string, unknown>, subFields: Record<string, FieldSpec>): TableRowDraft {
-  const text: Record<string, string> = {};
-  const bool: Record<string, boolean> = {};
-  const boolOriginallyPresent: Record<string, boolean> = {};
-  const boolTouched: Record<string, boolean> = {};
-  for (const [subKey, subField] of Object.entries(subFields)) {
-    const raw = item[subKey];
-    if (subField.type === "boolean") {
-      bool[subKey] = raw === true;
-      // `typeof raw === "boolean"` (not `raw === true`) so an
-      // existing explicit `false` is recorded as present and
-      // round-trips on a no-op save.
-      boolOriginallyPresent[subKey] = typeof raw === "boolean";
-      boolTouched[subKey] = false;
-    } else {
-      text[subKey] = raw === undefined || raw === null ? "" : String(raw);
-    }
-  }
-  return { text, bool, boolOriginallyPresent, boolTouched };
-}
-
-function markRowBoolTouched(row: TableRowDraft, subKey: string): void {
-  row.boolTouched[subKey] = true;
-}
-
-function addTableRow(key: string, subFields: Record<string, FieldSpec>): void {
-  if (!editing.value) return;
-  const rows = editing.value.table[key] ?? [];
-  rows.push(emptyRow(subFields));
-  editing.value.table[key] = rows;
-}
-
-function removeTableRow(key: string, index: number): void {
-  if (!editing.value) return;
-  const rows = editing.value.table[key];
-  if (!rows) return;
-  rows.splice(index, 1);
-}
-
-/** Mirror of the create-mode primary-key carve-out in `saveEditor`:
- *  drop the HTML5 `required` flag on the primary field while creating
- *  so browser-level form validation doesn't pop a "Please fill out
- *  this field" tooltip when the user is intentionally leaving the
- *  primary blank for server-side ID generation. */
-function isFieldRequiredInUi(field: FieldSpec): boolean {
-  if (!field.required) return false;
-  if (editing.value?.mode === "create" && field.primary === true) return false;
-  return true;
-}
-
-function formatCell(value: unknown, type: FieldType): string {
-  if (value === undefined || value === null || value === "") return "—";
-  if (type === "markdown" && typeof value === "string") {
-    return value.length > 80 ? `${value.slice(0, 80)}…` : value;
-  }
-  if (typeof value === "string" || typeof value === "number") return String(value);
-  return JSON.stringify(value);
-}
-
-/** True iff `value` is a string starting with `http://` or `https://`
- *  — used by the detail view to auto-render URLs as external links
- *  (new tab). Schema-agnostic on purpose: any field whose value looks
- *  like a URL gets the link affordance, not just fields the schema
- *  flagged as URL-bearing. Restricted to the http(s) schemes so
- *  `javascript:` / `data:` / `mailto:` strings can't become clickable
- *  through this path. */
-function isExternalUrl(value: unknown): boolean {
-  return typeof value === "string" && /^https?:\/\//i.test(value);
-}
-
-/** Full (untruncated) text rendering for open mode. `formatCell`
- *  clips markdown to 80 chars for the dense table; the detail view
- *  has room to show the whole value. */
-function detailText(value: unknown): string {
-  if (value === undefined || value === null || value === "") return "—";
-  return String(value);
-}
-
-/** Coerce a persisted `table` cell into a typed row array for
- *  read-only rendering (open mode). Mirrors the filtering in
- *  `openEdit` so a malformed non-object row never reaches the
- *  template. */
-function tableRows(value: unknown): Record<string, unknown>[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object" && !Array.isArray(row));
-}
-
-function hasTableRows(value: unknown): boolean {
-  return tableRows(value).length > 0;
-}
-
-/** Format one cell of a `table` sub-field for open mode. Booleans
- *  are handled in the template (check / em-dash icon); everything
- *  else routes through the same formatters the top-level fields
- *  use. Sub-fields can't be `table`/`derived` (schema-rejected),
- *  so only money / ref / scalar need handling here. */
-function formatSubCell(subField: FieldSpec, value: unknown, record: CollectionItem | null): string {
-  if (subField.type === "money") return formatMoney(value, resolveCurrency(subField, record), locale.value);
-  if (subField.type === "ref" && subField.to && typeof value === "string" && value.length > 0) {
-    return refDisplay(subField.to, value);
-  }
-  return formatCell(value, subField.type);
+function setView(next: CollectionViewMode): void {
+  view.value = next;
 }
 
 function openCreate(): void {
@@ -1661,10 +879,6 @@ function openEdit(item: CollectionItem): void {
   viewing.value = null; // one panel open at a time
   editing.value = { mode: "edit", text, bool, boolOriginallyPresent, boolTouched, table, originalId };
   saveError.value = null;
-}
-
-function markBoolTouched(key: string): void {
-  if (editing.value) editing.value.boolTouched[key] = true;
 }
 
 function closeEditor(): void {
@@ -1781,167 +995,6 @@ const viewTitle = computed<string>(() => {
   return String(pkValue);
 });
 
-/** Decide whether and how to emit a boolean field's draft value.
- *  Extracted from `draftToRecord` to keep that function's
- *  cognitive complexity under the lint cap. */
-function shouldEmitBoolean(state: EditState, key: string, field: FieldSpec): boolean {
-  // Emit when any of:
-  //  - originally present (preserve prior choice + any in-session
-  //    toggle, including explicit false)
-  //  - user has actively interacted with the checkbox (required so
-  //    explicit `false` is round-trippable from create mode, where
-  //    every untouched checkbox would otherwise look like "omit")
-  //  - the schema marks the field required (downstream consumers
-  //    may depend on the key always being present)
-  // Otherwise omit so a brand-new record that didn't touch an
-  // optional boolean doesn't materialize `false`, letting the
-  // consumer's default apply (e.g. mc-worklog's "absent billable
-  // means true").
-  return Boolean(state.boolOriginallyPresent[key] || state.boolTouched[key] || field.required);
-}
-
-/** Convert a scalar draft slot (text bucket) to its persisted form
- *  per the field's type. Returns `undefined` to signal "omit". */
-function scalarDraftToValue(raw: string | undefined, fieldType: FieldType): unknown {
-  if (raw === undefined || raw === "") return undefined;
-  if (fieldType === "number" || fieldType === "money") {
-    const num = Number(raw);
-    return Number.isFinite(num) ? num : raw;
-  }
-  return raw;
-}
-
-/** True when a draft slot should count as "empty" for required-
- *  field validation. NOT a truthiness check: Vue coerces
- *  `<input type="number">` to a numeric `0`, and a required field
- *  whose value is `0` (a quantity of 0, a rate of 0) is a filled
- *  value, not a missing one. Only `undefined` / `null` / empty
- *  string count as missing. (CodeRabbit PR #1497.) */
-function isMissingDraftValue(value: unknown): boolean {
-  return value === undefined || value === null || value === "";
-}
-
-/** Convert one row of a `table` field's draft to its persisted
- *  row record. Sub-fields are restricted to non-table / non-derived
- *  types by the SubFieldSpecSchema, so we only need to handle the
- *  scalar + boolean branches. */
-function rowDraftToRecord(rowDraft: TableRowDraft, subFields: Record<string, FieldSpec>): Record<string, unknown> {
-  const row: Record<string, unknown> = {};
-  for (const [subKey, subField] of Object.entries(subFields)) {
-    if (subField.type === "boolean") {
-      // Full mirror of the top-level boolean omission rule: emit if
-      // it was originally present (preserve an existing explicit
-      // `false`), OR the user actively toggled it this session, OR
-      // it's required, OR it's now `true`. Otherwise omit so a
-      // brand-new untouched optional boolean stays absent (default
-      // applies) — round-tripping both "absent" and explicit
-      // "false" losslessly. (Codex PR #1497, two rounds.)
-      const value = rowDraft.bool[subKey] === true;
-      if (rowDraft.boolOriginallyPresent[subKey] || rowDraft.boolTouched[subKey] || value || subField.required) {
-        row[subKey] = value;
-      }
-      continue;
-    }
-    const value = scalarDraftToValue(rowDraft.text[subKey], subField.type);
-    if (value !== undefined) row[subKey] = value;
-  }
-  return row;
-}
-
-/** Walk every row of a `table` field's draft, returning the label
- *  of the first required sub-field that's empty in any row.
- *  Returns null when every required cell is filled (or when no
- *  rows / no required sub-fields exist).
- *
- *  Why this needs to exist: save is triggered via a `type="button"`
- *  click that calls `saveEditor` directly, which skips native HTML5
- *  form submission. The `:required` attributes on row inputs are
- *  therefore never enforced by the browser — we have to enforce
- *  them here. (Codex P1 review on PR #1497.) */
-function firstMissingTableSubField(field: FieldSpec, rows: TableRowDraft[] | undefined): string | null {
-  if (!field.of || !rows) return null;
-  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-    const row = rows[rowIdx];
-    for (const [subKey, subField] of Object.entries(field.of)) {
-      if (!subField.required) continue;
-      // Boolean required is a no-op (same reasoning as the
-      // top-level skip below).
-      if (subField.type === "boolean") continue;
-      if (isMissingDraftValue(row.text[subKey])) return `${field.label} #${rowIdx + 1}: ${subField.label}`;
-    }
-  }
-  return null;
-}
-
-/** Client-side required-field check. Returns the human-readable
- *  label of the first missing required field, or null if everything
- *  required is filled. Extracted from `saveEditor` to keep that
- *  function's cognitive complexity under the lint cap.
- *
- *  Skip rules:
- *  - fields hidden by a `when` gate (no visible input to fill, so a
- *    required gated field must not block save — otherwise a schema
- *    like `rating: { required, when: { field: "visited", in: ["true"] }}`
- *    is unsavable while `visited` is false; Codex P2 on #1555). Checked
- *    against the live draft `record` so it tracks the in-progress form.
- *  - primary key in create mode (server auto-generates an id when
- *    blank, so blocking here would deny the documented
- *    "blank → server-generated id" flow even for schemas that mark
- *    the primary field required)
- *  - booleans (`false` is a valid answer; required is a no-op)
- *  - derived (computed, not user-entered)
- *
- *  Table fields are special: their `required` flag means "at least
- *  one row", AND each row's sub-fields validate per their own
- *  `required` flags — even if the table itself is optional. The
- *  table block therefore runs OUTSIDE the `if (!field.required)`
- *  short-circuit. */
-function validateOneField(key: string, field: FieldSpec, draft: EditState, record: CollectionItem): string | null {
-  // A `when`-hidden field has no input the user can fill — never treat
-  // it as missing (covers the table branch below too, so it sits first).
-  if (!fieldVisible(field, record)) return null;
-  if (field.type === "table" && field.of) {
-    const rows = draft.table[key];
-    if (field.required && (!rows || rows.length === 0)) return field.label;
-    return firstMissingTableSubField(field, rows);
-  }
-  if (!field.required) return null;
-  if (draft.mode === "create" && field.primary === true) return null;
-  // embed has no draft slot (foreign display-only); derived is computed.
-  if (field.type === "boolean" || field.type === "derived" || field.type === "embed") return null;
-  return isMissingDraftValue(draft.text[key]) ? field.label : null;
-}
-
-function firstMissingRequiredField(draft: EditState, schema: CollectionSchema): string | null {
-  // Resolve `when` gates against the same draft record the form renders
-  // from, so visibility-skip matches exactly what the user sees.
-  const record = draftToRecord(draft, schema);
-  for (const [key, field] of Object.entries(schema.fields)) {
-    const missing = validateOneField(key, field, draft, record);
-    if (missing) return missing;
-  }
-  return null;
-}
-
-function draftToRecord(state: EditState, schema: CollectionSchema): CollectionItem {
-  const record: CollectionItem = {};
-  for (const [key, field] of Object.entries(schema.fields)) {
-    if (field.type === "derived" || field.type === "embed") continue; // never persisted (computed / foreign display-only)
-    if (field.type === "boolean") {
-      if (shouldEmitBoolean(state, key, field)) record[key] = state.bool[key] === true;
-      continue;
-    }
-    if (field.type === "table" && field.of) {
-      const subFields = field.of;
-      record[key] = (state.table[key] ?? []).map((rowDraft) => rowDraftToRecord(rowDraft, subFields));
-      continue;
-    }
-    const value = scalarDraftToValue(state.text[key], field.type);
-    if (value !== undefined) record[key] = value;
-  }
-  return record;
-}
-
 /** Live computed record from the current draft. Drives derived
  *  field displays in the form so subtotal/tax/total update as
  *  the user edits line items. */
@@ -1950,76 +1003,13 @@ const liveRecord = computed<CollectionItem | null>(() => {
   return draftToRecord(editing.value, collection.value.schema);
 });
 
-/** Evaluate every derived field against `base`, iterating until
- *  the values stop changing (or until we've used at most one pass
- *  per derived field — the natural upper bound on chain length,
- *  reached when the fields appear in worst-case dependency order
- *  and each pass settles only one slot).
- *
- *  Per CodeRabbit on PR #1497: the previous hard-coded 3-pass
- *  ceiling silently capped longer chains. The new bound is exact
- *  for any DAG over derived fields and an early `break` on
- *  fixed-point keeps the common-case cost the same. */
-/** Resolve every `ref` field on a record to its full target record,
- *  keyed by the local field name, for `<field>.<col>` derefs in
- *  formulas. The stored value is the target's slug; we look it up in
- *  the pre-fetched cache. Unknown slug ⇒ null ⇒ deref fails soft. */
-function resolveRowRefs(schema: CollectionSchema, record: CollectionItem, refRecords: RefRecordCache): NonNullable<FormulaContext["refs"]> {
-  const refs: NonNullable<FormulaContext["refs"]> = {};
-  for (const [key, field] of Object.entries(schema.fields)) {
-    if (field.type !== "ref" || !field.to) continue;
-    const slug = record[key];
-    refs[key] = typeof slug === "string" ? (refRecords[field.to]?.[slug] ?? null) : null;
-  }
-  return refs;
-}
-
-function deriveAll(schema: CollectionSchema, base: CollectionItem, refRecords: RefRecordCache): CollectionItem {
-  const enriched: CollectionItem = { ...base };
-  // Ref slugs aren't themselves derived, so the resolved targets are
-  // stable across passes — resolve once up front.
-  const refs = resolveRowRefs(schema, base, refRecords);
-  const maxPasses = Object.values(schema.fields).filter((field) => field.type === "derived").length;
-  for (let pass = 0; pass < maxPasses; pass++) {
-    let mutated = false;
-    for (const [key, field] of Object.entries(schema.fields)) {
-      if (field.type !== "derived" || !field.formula) continue;
-      const next = evaluateDerived(field.formula, { record: enriched, refs });
-      if (next !== null && enriched[key] !== next) {
-        enriched[key] = next;
-        mutated = true;
-      }
-    }
-    if (!mutated) break;
-  }
-  return enriched;
-}
-
+/** Live record with derived fields resolved (drives the form's
+ *  read-only derived inputs). Derivation lives in the shared
+ *  rendering composable; this binds it to the current draft. */
 const liveDerived = computed<CollectionItem | null>(() => {
   if (!collection.value || !liveRecord.value) return null;
-  return deriveAll(collection.value.schema, liveRecord.value, refRecordCache.value);
+  return render.deriveAll(collection.value.schema, liveRecord.value, refRecordCache.value);
 });
-
-function derivedDisplay(field: FieldSpec, computedValue: unknown, record: CollectionItem | null): string {
-  if (computedValue === null || computedValue === undefined) return "—";
-  if (field.display === "money") {
-    return formatMoney(computedValue, resolveCurrency(field, record), locale.value);
-  }
-  return formatCell(computedValue, field.display ?? "number");
-}
-
-/** Evaluate a derived field against a persisted item (for the
- *  main collection table). The form uses `liveDerived` instead so
- *  it can reflect uncommitted draft edits. */
-function evaluateDerivedAgainstItem(field: FieldSpec, fieldKey: string, item: CollectionItem): number | null {
-  if (!field.formula || !collection.value) return null;
-  // Walk derived chain: subtotal → tax → total. Same 3-pass cap as
-  // `deriveAll`; if a field's value is already on disk (Claude
-  // wrote it), prefer the disk value over re-computing.
-  const enriched = deriveAll(collection.value.schema, item, refRecordCache.value);
-  const result = enriched[fieldKey];
-  return typeof result === "number" && Number.isFinite(result) ? result : null;
-}
 
 /** Short summary for a `table`-typed cell in the main collection
  *  table. Counts rows; nothing fancier yet (per-row preview is
@@ -2124,9 +1114,40 @@ function goBack(): void {
 // prop) triggers the first fetch — replaces the old `onMounted` +
 // separate slug watch. Works identically for route mode (reads
 // `route.params.slug`) and embedded mode (reads the `slug` prop).
+/** Open the create form with the clicked calendar day prefilled into the
+ *  anchor date field. The calendar's empty-cell affordance; the create
+ *  flow itself is the same one the Add button uses. */
+function createOnDate(iso: string): void {
+  if (!canCreate.value) return;
+  openCreate();
+  const anchor = calendarAnchorField.value;
+  if (editing.value && anchor) editing.value.text[anchor] = iso;
+}
+
+/** Calendar chip click → open that record's detail below the grid (or
+ *  close when the calendar reports a deselect). Unlike `openView`, this
+ *  never toggles — a second click on the same chip keeps it open. */
+function onCalendarSelect(itemId: string | null): void {
+  if (!itemId) {
+    closeView();
+    return;
+  }
+  const item = findItemById(itemId);
+  if (!item) return;
+  if (editing.value) closeEditor();
+  showDetail(item);
+}
+
 watch(
   activeSlug,
-  (slug) => {
+  (slug, prevSlug) => {
+    // Reset view state when switching BETWEEN collections — but not on the
+    // initial run (prevSlug undefined), so an embedded card's restored
+    // `initialView` / `initialAnchorField` survive the first load.
+    if (prevSlug !== undefined && slug !== prevSlug) {
+      view.value = "table";
+      anchorOverride.value = null;
+    }
     if (slug) {
       loadCollection(slug);
     } else {
@@ -2138,6 +1159,12 @@ watch(
   },
   { immediate: true },
 );
+
+// Embedded mode: report view/anchor changes so the chat card persists them
+// in `viewState` (alongside `selected`). No-op in standalone route mode.
+watch([view, calendarAnchorField], () => {
+  if (embedded.value) emit("viewStateChange", { view: view.value, anchorField: calendarAnchorField.value });
+});
 
 // React to the active selection changing while already on this
 // collection: follow it to open the new record, OR close the modal when

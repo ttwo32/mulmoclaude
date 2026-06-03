@@ -267,6 +267,14 @@ const CollectionSchemaZ = z
     triggerLeadDays: z.number().int().min(0).optional(),
     // Host-driven recurrence; requires `triggerField`. See SpawnSchema.
     spawn: SpawnSchema.optional(),
+    // Calendar view anchor: names a `date` field whose value places each
+    // record on a month grid. Validated to name a real `date` field by a
+    // refine below. Optional — the toggle auto-derives from any `date`
+    // field when this is unset.
+    calendarField: z.string().trim().min(1).optional(),
+    // Multi-day span end: a second `date` field the calendar record spans
+    // to. Requires `calendarField`; validated to name a real `date` field.
+    calendarEndField: z.string().trim().min(1).optional(),
   })
   // The singleton value becomes a record id (and thus a `<id>.json`
   // filename), so it must satisfy the SAME `safeSlugName` rule the
@@ -368,6 +376,24 @@ const CollectionSchemaZ = z
     message:
       "`spawn` must leave the successor in a non-matching state (e.g. `set` the status to a pending value); seeding the predicate field to a matching value via `set`/`carry` would respawn forever",
     path: ["spawn"],
+  })
+  // `calendarField` must name a real `date` field — the calendar view
+  // parses its value as `YYYY-MM-DD` to place records on the month grid;
+  // any other type can't be put on a calendar.
+  .refine((schema) => schema.calendarField === undefined || schema.fields[schema.calendarField]?.type === "date", {
+    message: "schema `calendarField` must name a top-level `date` field declared in `fields`",
+    path: ["calendarField"],
+  })
+  // `calendarEndField` marks the end of a multi-day span, so it only means
+  // something alongside a start anchor.
+  .refine((schema) => schema.calendarEndField === undefined || schema.calendarField !== undefined, {
+    message: "schema `calendarEndField` requires `calendarField` (it marks the end of the span that starts at `calendarField`)",
+    path: ["calendarEndField"],
+  })
+  // `calendarEndField` must also name a real `date` field — same parse.
+  .refine((schema) => schema.calendarEndField === undefined || schema.fields[schema.calendarEndField]?.type === "date", {
+    message: "schema `calendarEndField` must name a top-level `date` field declared in `fields`",
+    path: ["calendarEndField"],
   });
 
 interface LoadedCollection {

@@ -247,6 +247,18 @@ export interface CollectionSchema {
   /** Host-driven recurrence. When set, requires `triggerField`. See
    *  {@link CollectionSpawn}. */
   spawn?: CollectionSpawn;
+  /** Name of a `date` field that anchors the optional calendar view: a
+   *  month grid where each record lands on the day cell matching this
+   *  field's value. When unset, the calendar toggle still appears if the
+   *  schema has any `date` field (the first one, in declaration order, is
+   *  used by default and is switchable in-view). Set this to pin a specific
+   *  anchor. Must name a real `date` field. */
+  calendarField?: string;
+  /** Name of a second `date` field marking the END of a multi-day span on
+   *  the calendar: the record renders from `calendarField` through this
+   *  date inclusive. Requires `calendarField`. Must name a real `date`
+   *  field. Absent ⇒ single-day placement. */
+  calendarEndField?: string;
 }
 
 export interface CollectionSummary {
