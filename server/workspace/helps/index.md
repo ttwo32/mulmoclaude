@@ -53,6 +53,7 @@ See [Wiki](config/helps/wiki.md) for details on how it works.
 - [Information Sources](config/helps/sources.md) — registering RSS feeds / GitHub repos / arXiv queries, the daily-brief pipeline, and where its files live on disk
 - [GitHub repositories in the workspace](config/helps/github.md) — clone-destination rules under `github/<name>/` and how to handle existing directories with matching or different remotes
 - [Collection skills](config/helps/collection-skills.md) — build a data app (model + UI + relations + computed fields + action buttons) by authoring a `schema.json` collection skill: the DSL, field types, derived formulas, actions, records
+- [Todo list collection](config/helps/todo-collection.md) — the canonical recipe for building or migrating a todo / task list: full schema (status enum + `done` toggle + priority bells), `SKILL.md`, and legacy `todo-plugin` migration steps
 
 ## Workspace Layout
 
