@@ -70,6 +70,14 @@ concurrency:
 
 jobs:
   codex-review:
+    # Skip on Dependabot PRs. GitHub strips repo secrets from PRs
+    # opened by Dependabot for security; `secrets.AZURE_OPENAI_API_KEY`
+    # resolves to "" and `codex exec` exits "Missing environment
+    # variable: OPENAI_API_KEY" within seconds, failing the check.
+    # Dependabot version bumps don't benefit from an LLM review
+    # anyway — let the rest of the matrix (CodeRabbit / Socket /
+    # lint_test / smoke) gate them.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
