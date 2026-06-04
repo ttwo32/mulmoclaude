@@ -38,9 +38,9 @@
           :placeholder="placeholderText"
           :aria-label="t('fileTree.newFileInputAria')"
           data-testid="file-tree-new-file-input"
-          @keydown="onAnyKeydown"
-          @keydown.enter.prevent="onNewFileSubmit"
-          @keydown.esc.prevent="cancelCreate"
+          @keydown="onInputKeydown"
+          @compositionstart="onCompositionStart"
+          @compositionend="onCompositionEnd"
           @blur="onInputBlur"
         />
         <span class="text-xs text-gray-400 font-mono shrink-0 select-none">{{ createPolicy?.extension }}</span>
@@ -216,8 +216,6 @@ const newFileInputRef = ref<HTMLInputElement | null>(null);
 let suppressBlur = false;
 
 function onFolderContextMenu(event: MouseEvent): void {
-  // eslint-disable-next-line no-console -- temporary diagnostic for #1598
-  console.log("[new-file] right-click", { folder: props.node.path, hasPolicy: !!createPolicy.value });
   if (!createPolicy.value) return;
   event.preventDefault();
   menuX.value = event.clientX;
@@ -230,8 +228,6 @@ function closeMenu(): void {
 }
 
 function onContextNewFile(): void {
-  // eslint-disable-next-line no-console -- temporary diagnostic for #1598
-  console.log("[new-file] context-menu New file clicked", { folder: props.node.path });
   closeMenu();
   if (!createPolicy.value) return;
   // Make sure the folder is open so the inline input is visible.
@@ -260,15 +256,36 @@ function onInputBlur(): void {
   cancelCreate();
 }
 
-function onAnyKeydown(event: KeyboardEvent): void {
-  // eslint-disable-next-line no-console -- temporary diagnostic for #1598
-  console.log("[new-file] keydown", { key: event.key, code: event.code, isComposing: event.isComposing, folder: props.node.path });
-  // Direct Enter handling — bypasses Vue's `.enter` modifier in case
-  // it's not matching for IME / keyboard-layout reasons. This is the
-  // canonical key check; `.enter` was a convenience wrapper around it.
-  if (event.key === "Enter" && !event.isComposing) {
+const composingFlag = ref(false);
+function onCompositionStart(): void {
+  composingFlag.value = true;
+}
+function onCompositionEnd(): void {
+  // Defer clearing so a keydown Enter that fires immediately after
+  // compositionend (Chromium IME-commit behaviour) still sees the
+  // flag true and is suppressed.
+  setTimeout(() => {
+    composingFlag.value = false;
+  }, 0);
+}
+
+function onInputKeydown(event: KeyboardEvent): void {
+  // Enter / Escape are wired here (not via Vue's `.enter` / `.esc`
+  // modifiers) because those modifiers were not firing for the user
+  // in #1598. Reading `event.key` directly matches the spec.
+  //
+  // IME guard: the Enter that commits a Japanese / Chinese / Korean
+  // composition fires keydown with either `isComposing === true`
+  // (Firefox) or `keyCode === 229` (Chrome / Safari). Without the
+  // 229 fallback the user gets an empty-filename error the moment
+  // they confirm an IME candidate. `composingFlag` covers the
+  // "compositionend just fired but the trailing keyup hasn't" gap
+  // some browsers expose.
+  if (event.key === "Enter") {
+    if (composingFlag.value || event.isComposing || event.keyCode === 229) return;
     event.preventDefault();
     onNewFileSubmit();
+    return;
   }
   if (event.key === "Escape") {
     event.preventDefault();
@@ -277,8 +294,6 @@ function onAnyKeydown(event: KeyboardEvent): void {
 }
 
 function onNewFileSubmit(): void {
-  // eslint-disable-next-line no-console -- temporary diagnostic for #1598
-  console.log("[new-file] submit", { folder: props.node.path, raw: newFileSlug.value, policy: createPolicy.value });
   if (!createPolicy.value) return;
   const result = normaliseNewFileSlug(newFileSlug.value, createPolicy.value);
   if (!result.ok) {
@@ -293,8 +308,6 @@ function onNewFileSubmit(): void {
   // failure leaves the user where they were typing. The parent
   // hands back ok / error via the `resolve` callback.
   suppressBlur = true;
-  // eslint-disable-next-line no-console -- temporary diagnostic for #1598
-  console.log("[new-file] emit createFile", { folder: props.node.path, filename: result.slug });
   emit("createFile", {
     folder: props.node.path,
     filename: result.slug,

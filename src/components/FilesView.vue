@@ -159,8 +159,6 @@ watch(content, () => {
 async function handleCreateFile(args: { folder: string; filename: string; resolve: (ok: boolean, error?: string) => void }): Promise<void> {
   const { folder, filename, resolve } = args;
   const targetPath = folder ? `${folder}/${filename}` : filename;
-  // eslint-disable-next-line no-console -- temporary diagnostic for #1598
-  console.log("[new-file] handler", { folder, filename, targetPath });
   // Client-side conflict pre-check via the local cache — cheap and
   // matches what the user sees. The server's create endpoint also
   // refuses on conflict (#1598), so a tab racing with another that
@@ -175,8 +173,6 @@ async function handleCreateFile(args: { folder: string; filename: string; resolv
     path: targetPath,
     content: "",
   });
-  // eslint-disable-next-line no-console -- temporary diagnostic for #1598
-  console.log("[new-file] POST result", result);
   if (!result.ok) {
     // Map HTTP status to a localised message so the inline error
     // matches the rest of the menu's language. 409 = a race lost
