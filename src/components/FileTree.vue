@@ -263,6 +263,17 @@ function onInputBlur(): void {
 function onAnyKeydown(event: KeyboardEvent): void {
   // eslint-disable-next-line no-console -- temporary diagnostic for #1598
   console.log("[new-file] keydown", { key: event.key, code: event.code, isComposing: event.isComposing, folder: props.node.path });
+  // Direct Enter handling — bypasses Vue's `.enter` modifier in case
+  // it's not matching for IME / keyboard-layout reasons. This is the
+  // canonical key check; `.enter` was a convenience wrapper around it.
+  if (event.key === "Enter" && !event.isComposing) {
+    event.preventDefault();
+    onNewFileSubmit();
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    cancelCreate();
+  }
 }
 
 function onNewFileSubmit(): void {
