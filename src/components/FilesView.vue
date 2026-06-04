@@ -12,6 +12,7 @@
       @select="selectFile"
       @load-children="loadDirChildren"
       @update:sort-mode="setSortMode"
+      @create-file="handleCreateFile"
     />
     <!-- Content pane -->
     <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -96,7 +97,7 @@ const emit = defineEmits<{
   loadSession: [sessionId: string];
 }>();
 
-const { rootNode, refRoots, childrenByPath, treeError, loadDirChildren, ensureAncestorsLoaded, reloadRoot, loadRefRoots } = useFileTree();
+const { rootNode, refRoots, childrenByPath, treeError, loadDirChildren, ensureAncestorsLoaded, reloadDirChildren, reloadRoot, loadRefRoots } = useFileTree();
 
 const { selectedPath, content, contentLoading, contentError, loadContent, selectFile, deselectFile, abortContent } = useFileSelection();
 
@@ -149,6 +150,38 @@ async function saveRawMarkdown(newSource: string): Promise<void> {
 watch(content, () => {
   rawSaveError.value = null;
 });
+
+// #1598 — folder-row context menu → "New file" inline flow. The
+// FileTree component handles input + slug validation; here we
+// only do the conflict check + PUT + refresh. The callback shape
+// lets the inline input close itself on success and stay open
+// (with the error label) on failure.
+async function handleCreateFile(args: { folder: string; filename: string; resolve: (ok: boolean, error?: string) => void }): Promise<void> {
+  const { folder, filename, resolve } = args;
+  const targetPath = folder ? `${folder}/${filename}` : filename;
+  // Conflict check via the local cache — avoids a round-trip and
+  // matches what the user sees on screen. The PUT itself doesn't
+  // refuse overwrites today, so this is the only barrier.
+  const cached = childrenByPath.value.get(folder);
+  if (Array.isArray(cached) && cached.some((child) => child.name === filename)) {
+    resolve(false, t("fileTree.newFileError.exists", { filename }));
+    return;
+  }
+  const result = await apiPut<{ path: string; size: number; modifiedMs: number }>(API_ROUTES.files.content, {
+    path: targetPath,
+    content: "",
+  });
+  if (!result.ok) {
+    resolve(false, result.error);
+    return;
+  }
+  resolve(true);
+  await reloadDirChildren(folder);
+  // Reveal the new file in the right-hand content pane so the user
+  // can start editing immediately. selectFile() also drives the URL
+  // bar + ancestor expansion via the existing watcher.
+  selectFile(result.data.path);
+}
 
 const schedulerResult = computed(() => toSchedulerResult(selectedPath.value, content.value?.kind === "text" ? content.value.content : null));
 

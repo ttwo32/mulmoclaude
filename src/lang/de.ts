@@ -151,6 +151,21 @@ const deMessages = {
   fileTree: {
     workspace: "(Arbeitsbereich)",
     recentlyChanged: "Kürzlich geändert",
+    newFileMenuItem: "Neue Datei",
+    newFileInputAria: "Name der neuen Datei",
+    newFilePlaceholder: {
+      wikiPage: "seiten-slug",
+      summary: "zusammenfassungsname",
+      document: "dokumentname",
+      html: "seitenname",
+      story: "story-name",
+    },
+    newFileError: {
+      empty: "Der Dateiname darf nicht leer sein.",
+      unsafe: "Der Dateiname enthält ungültige Zeichen.",
+      exists: "Eine Datei mit dem Namen {filename} existiert hier bereits.",
+      saveFailed: "Datei konnte nicht erstellt werden. Bitte erneut versuchen.",
+    },
   },
   lockStatusPopup: {
     sandboxEnabledTooltip: "Sandbox aktiviert (Docker)",

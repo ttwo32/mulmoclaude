@@ -150,6 +150,21 @@ const zhMessages = {
   fileTree: {
     workspace: "(工作区)",
     recentlyChanged: "最近修改",
+    newFileMenuItem: "新建文件",
+    newFileInputAria: "新文件名",
+    newFilePlaceholder: {
+      wikiPage: "页面 slug",
+      summary: "摘要名称",
+      document: "文档名称",
+      html: "页面名称",
+      story: "故事名称",
+    },
+    newFileError: {
+      empty: "文件名不能为空。",
+      unsafe: "文件名包含无效字符。",
+      exists: "此处已存在名为 {filename} 的文件。",
+      saveFailed: "无法创建文件，请重试。",
+    },
   },
   lockStatusPopup: {
     sandboxEnabledTooltip: "沙箱已启用 (Docker)",

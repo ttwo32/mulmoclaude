@@ -149,6 +149,21 @@ const ptBRMessages = {
   fileTree: {
     workspace: "(workspace)",
     recentlyChanged: "Alterados recentemente",
+    newFileMenuItem: "Novo arquivo",
+    newFileInputAria: "Nome do novo arquivo",
+    newFilePlaceholder: {
+      wikiPage: "slug-da-página",
+      summary: "nome-do-resumo",
+      document: "nome-do-documento",
+      html: "nome-da-página",
+      story: "nome-da-história",
+    },
+    newFileError: {
+      empty: "O nome do arquivo não pode ficar vazio.",
+      unsafe: "O nome do arquivo contém caracteres inválidos.",
+      exists: "Já existe um arquivo chamado {filename} aqui.",
+      saveFailed: "Não foi possível criar o arquivo. Tente novamente.",
+    },
   },
   lockStatusPopup: {
     sandboxEnabledTooltip: "Sandbox habilitado (Docker)",

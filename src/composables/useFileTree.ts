@@ -72,6 +72,16 @@ export function useFileTree() {
     }
   }
 
+  /** Drop a single folder's children from the cache and re-fetch.
+   *  Used after a file-create / -delete from the same View so the
+   *  user sees the change land without a full root reload. */
+  async function reloadDirChildren(path: string): Promise<void> {
+    const next = new Map(childrenByPath.value);
+    next.delete(path);
+    childrenByPath.value = next;
+    await loadDirChildren(path);
+  }
+
   return {
     rootNode,
     refRoots,
@@ -80,6 +90,7 @@ export function useFileTree() {
     loadDirChildren,
     ensureAncestorsLoaded,
     reloadRoot,
+    reloadDirChildren,
     loadRefRoots,
   };
 }
