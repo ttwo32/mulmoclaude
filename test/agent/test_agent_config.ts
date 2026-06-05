@@ -23,7 +23,7 @@ describe("buildMcpConfig", () => {
     const config = buildMcpConfig({
       chatSessionId: "s1",
       port: 3001,
-      activePlugins: ["manageTodoList", "presentDocument"],
+      activePlugins: ["manageBookmarks", "presentDocument"],
     }) as Record<string, unknown>;
 
     assert.ok(config.mcpServers);
@@ -37,7 +37,7 @@ describe("buildMcpConfig", () => {
     const env = server.env as Record<string, string>;
     assert.equal(env.SESSION_ID, "s1");
     assert.equal(env.PORT, "3001");
-    assert.equal(env.PLUGIN_NAMES, "manageTodoList,presentDocument");
+    assert.equal(env.PLUGIN_NAMES, "manageBookmarks,presentDocument");
   });
 
   it("handles empty plugins", async () => {
@@ -90,14 +90,14 @@ describe("buildCliArgs", () => {
   it("includes MCP tool names in allowedTools", async () => {
     const args = buildCliArgs({
       systemPrompt: "test",
-      activePlugins: ["manageTodoList"],
+      activePlugins: ["manageBookmarks"],
     });
 
     const allowedIdx = args.indexOf("--allowedTools");
     assert.ok(allowedIdx >= 0, "--allowedTools flag must exist");
     const allowedStr = args[allowedIdx + 1];
     assert.equal(typeof allowedStr, "string");
-    assert.ok(allowedStr.includes("mcp__mulmoclaude__manageTodoList"));
+    assert.ok(allowedStr.includes("mcp__mulmoclaude__manageBookmarks"));
     assert.ok(allowedStr.includes("Bash"));
   });
 
@@ -585,7 +585,7 @@ describe("buildMcpConfig — user servers", () => {
     const cfg = buildMcpConfig({
       chatSessionId: "s1",
       port: 3001,
-      activePlugins: ["manageTodoList"],
+      activePlugins: ["manageBookmarks"],
       userServers: {
         gmail: {
           type: "http",
@@ -602,7 +602,7 @@ describe("buildMcpConfig — user servers", () => {
     const cfg = buildMcpConfig({
       chatSessionId: "s1",
       port: 3001,
-      activePlugins: ["manageTodoList"],
+      activePlugins: ["manageBookmarks"],
       userServers: {
         mulmoclaude: {
           type: "http",

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { type Locator, type Page, type Response, expect, test } from "@playwright/test";
+import { type Locator, type Page, expect, test } from "@playwright/test";
 
 import { API_ROUTES } from "../../src/config/apiRoutes.ts";
 import { ONE_MINUTE_MS, ONE_SECOND_MS } from "../../server/utils/time.ts";
@@ -25,12 +25,8 @@ import {
 //     jsonl trace + the workspace DB file. Its own header notes it
 //     deliberately skips a View-mount assertion ("adding View testids
 //     per plugin is a separate refactor").
-//   - journey-todo.spec.ts (L-JOURNEY-TODO) drives a feature through
-//     its UI add button — but a pure UI click → REST → reload journey
-//     is reproducible under mock e2e, so it does not exercise the
-//     real LLM path that is the whole reason e2e-live exists.
 //
-// These three journeys are the missing middle: drive the *add* from
+// These journeys are the missing middle: drive the *add* from
 // chat (real LLM tool dispatch) and then assert the mutation is
 // REFLECTED IN THE VIEW the user looks at, then run an
 // add↔delete (or add→persist→delete) lifecycle. The marker only
@@ -38,12 +34,12 @@ import {
 // rendered it, so the View assertion subsumes the dispatch check.
 //
 // Per the 2026-05-30 design principle: add is always LLM-driven.
-// calendar / todo / accounting expose a role-gated manage* tool;
+// calendar / accounting expose a role-gated manage* tool;
 // collections have NO manage* tool — the recipe-authored clients
 // skill teaches the agent to add a client by Write-ing a workspace
 // JSON file, so the COLLECTION journey nets a path the others don't
 // (skill-driven file I/O reflected by <CollectionView>). Deletes mix
-// UI (calendar / collection) and LLM (todo / accounting) so the suite
+// UI (calendar / collection) and LLM (accounting) so the suite
 // canaries both teardown paths.
 //
 // Skip on E2E_LIVE_NO_LLM=1 — the fake-echo backend cannot route MCP
@@ -63,15 +59,6 @@ const JOURNEY_TIMEOUT_MS = 5 * ONE_MINUTE_MS;
 // poll fetch + render — 30s gives slow CI workers headroom without
 // masking a real "never rendered" regression.
 const VIEW_REFLECT_TIMEOUT_MS = 30 * ONE_SECOND_MS;
-// Cap on a todo-plugin runtime dispatch (checkbox toggle) flushing to
-// disk before the reload, mirroring journey-todo.spec.ts.
-const TODO_DISPATCH_FLUSH_TIMEOUT_MS = 10 * ONE_SECOND_MS;
-
-// `useTodos` routes every mutation through the host's
-// POST /api/plugins/runtime/<pkg>/dispatch; anchor the flush gate on
-// this fragment pair so unrelated SSE / metrics traffic is ignored.
-const RUNTIME_DISPATCH_URL_FRAGMENT = "/api/plugins/runtime/";
-const TODO_PLUGIN_SLUG_FRAGMENT = "todo-plugin";
 
 // Accounting book DB (mirrors plugin-dispatch.spec.ts). The inline
 // chat View collapses once a newer turn lands, so the delete leg is
@@ -137,27 +124,6 @@ test.describe("L-JOURNEY-* (real LLM add → View reflection → lifecycle)", ()
     }
   });
 
-  test("L-JOURNEY-TODO-LLM: chat で todo を add → /todos に反映 → check が reload で残る → chat で delete", async ({ page }) => {
-    test.setTimeout(JOURNEY_TIMEOUT_MS);
-    const marker = makeMarker("L-JOURNEY-TODO-LLM");
-    const sessions: string[] = [];
-    try {
-      const sessionId = await setupRoleSession(page, "personal", sessions);
-      await sendChatMessage(page, todoAddPrompt(marker));
-      await waitForAssistantTurn(page);
-
-      await assertTodoCardReflectedAndPersisted(page, marker);
-      await deleteTodoFromChat(page, sessionId, marker);
-
-      await openTodos(page);
-      await expect(todoCardByMarker(page, marker), "the LLM delete must remove the card from /todos").toHaveCount(0, {
-        timeout: VIEW_REFLECT_TIMEOUT_MS,
-      });
-    } finally {
-      for (const sid of sessions) await deleteSession(page, sid);
-    }
-  });
-
   test("L-JOURNEY-ACCT: chat で帳簿を作成して開く → switcher に反映 → chat で delete → DB から消える", async ({ page }) => {
     test.setTimeout(JOURNEY_TIMEOUT_MS);
     const marker = makeMarker("L-JOURNEY-ACCT");
@@ -209,7 +175,7 @@ test.describe("L-JOURNEY-* (real LLM add → View reflection → lifecycle)", ()
     const role = customRoleFixture(marker);
     const sessions: string[] = [];
     // Unlike the shared-array DBs the other journeys touch (calendar /
-    // todo / accounting items.json), a role is its own file
+    // accounting items.json), a role is its own file
     // (config/roles/<id>.json) keyed by an id we chose — so a leaked
     // role both pollutes the live selector AND can be pruned race-free
     // by id. Track create/delete so `finally` cleans up a role left by
@@ -297,72 +263,6 @@ async function deleteCalendarEventViaUi(page: Page, event: Locator): Promise<voi
   });
   await event.hover();
   await event.locator('[data-testid^="scheduler-item-delete-"]').click();
-}
-
-// ---------------------------------------------------------------------------
-// todo (manageTodoList — Personal role, runtime plugin)
-// ---------------------------------------------------------------------------
-
-function todoAddPrompt(marker: string): string {
-  return [
-    `Use the \`manageTodoList\` tool with action='add' to add one todo whose text is EXACTLY '${marker}' (verbatim, no edits).`,
-    "Do not use show / any other action. Do not use any other tool. Do not narrate the result.",
-  ].join(" ");
-}
-
-function todoDeletePrompt(marker: string): string {
-  return [
-    `Now delete every todo whose text equals EXACTLY '${marker}'.`,
-    "Use the manageTodoList tool with action='delete' (look it up via ToolSearch if needed). Do not narrate the result.",
-  ].join(" ");
-}
-
-async function openTodos(page: Page): Promise<void> {
-  await page.goto("/todos");
-  await expect(page.getByTestId("todo-view-root"), "/todos must mount").toBeVisible({ timeout: VIEW_REFLECT_TIMEOUT_MS });
-}
-
-function todoCardByMarker(page: Page, marker: string): Locator {
-  return page.locator('[data-testid^="todo-card-"]').filter({ hasText: marker }).first();
-}
-
-// Open /todos, prove the LLM-added card rendered, tick its checkbox,
-// wait for the runtime dispatch to flush, then reload and assert both
-// the card and its checked state survived — the round trip through
-// the todo-plugin REST + workspace JSON the View hydrates from.
-async function assertTodoCardReflectedAndPersisted(page: Page, marker: string): Promise<void> {
-  await openTodos(page);
-  const card = todoCardByMarker(page, marker);
-  await expect(card, "the LLM-added todo must reflect as a kanban card").toBeVisible({ timeout: VIEW_REFLECT_TIMEOUT_MS });
-
-  const checkbox = card.locator('input[type="checkbox"]').first();
-  const flushed = waitForTodoDispatch(page);
-  await checkbox.check();
-  await flushed;
-  await expect(checkbox, "the checked state flips immediately").toBeChecked();
-
-  await page.reload();
-  await expect(page.getByTestId("todo-view-root")).toBeVisible({ timeout: VIEW_REFLECT_TIMEOUT_MS });
-  const cardAfter = todoCardByMarker(page, marker);
-  await expect(cardAfter, "the todo persists across reload").toBeVisible();
-  await expect(cardAfter.locator('input[type="checkbox"]').first(), "the checked state persists across reload").toBeChecked();
-}
-
-function waitForTodoDispatch(page: Page): Promise<Response> {
-  return page.waitForResponse(
-    (resp) =>
-      resp.url().includes(RUNTIME_DISPATCH_URL_FRAGMENT) && resp.url().includes(TODO_PLUGIN_SLUG_FRAGMENT) && resp.request().method() === "POST" && resp.ok(),
-    { timeout: TODO_DISPATCH_FLUSH_TIMEOUT_MS },
-  );
-}
-
-// Re-enter the chat session (the View navigation detached it) and ask
-// the agent to delete the marker — a second real LLM turn so the
-// todo journey canaries the delete dispatch path too, not just add.
-async function deleteTodoFromChat(page: Page, sessionId: string, marker: string): Promise<void> {
-  await page.goto(`/chat/${sessionId}`);
-  await sendChatMessage(page, todoDeletePrompt(marker));
-  await waitForAssistantTurn(page);
 }
 
 // ---------------------------------------------------------------------------

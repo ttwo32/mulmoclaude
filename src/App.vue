@@ -196,7 +196,7 @@
             @update:layout-mode="setLayoutMode"
             @toggle-right-sidebar="toggleRightSidebar"
           />
-          <!-- Distinct pages. Plugin-owned views (Todo / Calendar /
+          <!-- Distinct pages. Plugin-owned views (Calendar /
                Automations / Wiki / Skills) call `useRuntime()` from
                `gui-chat-protocol/vue` inside their composables — that
                throws unless mounted under `<PluginScopedRoot>`. The
@@ -205,9 +205,6 @@
                same `pkg-name + endpoints` pair so the `useRuntime()`
                call resolves. -->
           <FilesView v-else-if="currentPage === 'files'" :refresh-token="filesRefreshToken" @load-session="handleSessionSelect" />
-          <PluginScopedRoot v-else-if="currentPage === 'todos'" pkg-name="@mulmoclaude/todo-plugin">
-            <TodoExplorer />
-          </PluginScopedRoot>
           <PluginScopedRoot v-else-if="currentPage === 'calendar'" pkg-name="scheduler" :endpoints="API_ROUTES.scheduler">
             <CalendarView />
           </PluginScopedRoot>
@@ -322,7 +319,6 @@ import ThinkingIndicator from "./components/ThinkingIndicator.vue";
 import PluginLauncher from "./components/PluginLauncher.vue";
 import StackView from "./components/StackView.vue";
 import FilesView from "./components/FilesView.vue";
-import TodoExplorer from "./components/TodoExplorer.vue";
 import CalendarView from "./plugins/scheduler/CalendarView.vue";
 import AutomationsView from "./plugins/scheduler/AutomationsView.vue";
 import WikiView from "./plugins/wiki/View.vue";
@@ -1066,7 +1062,7 @@ function navigateToWorkspacePath(href: string): void {
     case "spa-route":
       // Top-level SPA route — push the URL directly and let vue-router
       // resolve the matching route + params (it knows `/collections/:slug?`,
-      // `/todos/:itemId?`, etc.). This is what the bare push handles
+      // `/automations/:taskId?`, etc.). This is what the bare push handles
       // generically; we don't need to map per-route param names.
       router.push(target.path).catch(() => {});
       break;
@@ -1119,7 +1115,7 @@ onMounted(async () => {
   // role list (built-in + custom).
   await refreshRoles();
 
-  // Session bootstrap only applies on /chat. On /files, /todos, /wiki,
+  // Session bootstrap only applies on /chat. On /files, /wiki,
   // etc. we must not create or load a chat session — doing so would
   // replace the URL with /chat/<new-id> and pull the user off the page
   // they actually loaded.

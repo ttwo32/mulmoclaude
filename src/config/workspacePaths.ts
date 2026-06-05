@@ -22,15 +22,6 @@ export const WORKSPACE_FILES = {
   wikiSchema: "data/wiki/SCHEMA.md",
   wikiSummary: "data/wiki/summary.md",
   summariesIndex: "conversations/summaries/_index.md",
-  // todos lives under the plugin's `files.data` scope after the
-  // #1145 migration. The encoded segment matches `encodeURIComponent`
-  // of the plugin name `@mulmoclaude/todo-plugin` (see
-  // `server/plugins/runtime.ts:sanitisePackageNameForFs`). These
-  // entries stay so the file-explorer preview at
-  // `src/utils/filesPreview/todoPreview.ts` still renders the kanban
-  // when the user clicks the JSON file.
-  todosItems: "data/plugins/%40mulmoclaude%2Ftodo-plugin/todos.json",
-  todosColumns: "data/plugins/%40mulmoclaude%2Ftodo-plugin/columns.json",
   schedulerItems: "data/scheduler/items.json",
   schedulerUserTasks: "config/scheduler/tasks.json",
   schedulerOverrides: "config/scheduler/overrides.json",

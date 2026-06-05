@@ -28,12 +28,6 @@
             <CalendarView :selected-result="schedulerResult" />
           </PluginScopedRoot>
         </div>
-        <!-- Todos todos.json: full kanban / table / list explorer. -->
-        <div v-else-if="todoExplorerResult" class="h-full">
-          <PluginScopedRoot pkg-name="@mulmoclaude/todo-plugin">
-            <TodoExplorer :selected-result="todoExplorerResult" />
-          </PluginScopedRoot>
-        </div>
         <!-- Markdown rendered: frontmatter panel + body -->
         <div v-else-if="isMarkdown && !mdRawMode" class="h-full flex flex-col overflow-auto">
           <div v-if="mdFrontmatter && mdFrontmatter.fields.length > 0" class="shrink-0 m-4 mb-0 rounded border border-gray-200 bg-gray-50 p-3 text-xs">
@@ -197,14 +191,12 @@ import { computed, defineAsyncComponent, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import TextResponseView from "../plugins/textResponse/View.vue";
 import CalendarView from "../plugins/scheduler/CalendarView.vue";
-import TodoExplorer from "./TodoExplorer.vue";
 import PluginScopedRoot from "./PluginScopedRoot.vue";
 import SystemFileBanner from "./SystemFileBanner.vue";
 import type { FileContent } from "../composables/useFileSelection";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import type { TextResponseData } from "../plugins/textResponse/types";
 import type { SchedulerData } from "../plugins/scheduler/index";
-import type { TodoData } from "@mulmoclaude/todo-plugin/shared";
 import { JSON_TOKEN_CLASS } from "../utils/format/jsonSyntax";
 import type { JsonToken, JsonlLine } from "../utils/format/jsonSyntax";
 import { formatScalarField, type MarkdownDocView } from "../composables/useMarkdownDoc";
@@ -223,7 +215,6 @@ const props = defineProps<{
   contentError: string | null;
   contentLoading: boolean;
   schedulerResult: ToolResultComplete<SchedulerData> | null;
-  todoExplorerResult: ToolResultComplete<TodoData> | null;
   isMarkdown: boolean;
   isHtml: boolean;
   isJson: boolean;

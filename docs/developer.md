@@ -205,7 +205,6 @@ Three independent Node processes cooperate at runtime:
     summaries/        journal output (daily/, topics/, archive/)
   data/               # user-managed content (the app treats these as authoritative)
     wiki/             personal knowledge wiki (index.md, pages/, sources/, log.md)
-    todos/            todos.json + columns.json
     calendar/         calendar events
     contacts/         contact records
     scheduler/        scheduled tasks (items.json)
@@ -324,7 +323,6 @@ Clicking a bell entry calls `router.push` with whatever its `action.target` reso
 | `target.view` | Identifier(s)                        | Resolves to URL                                       |
 | ------------- | ------------------------------------ | ----------------------------------------------------- |
 | `chat`        | `sessionId` (required)               | `/chat/:sessionId`                                    |
-| `todos`       | `itemId?`                            | `/todos` or `/todos/:itemId` (scrolls + flashes card) |
 | `calendar`    | _none_                               | `/calendar`                                           |
 | `automations` | `taskId?`                            | `/automations` or `/automations/:taskId`              |
 | `sources`     | `slug?`                              | `/sources` or `/sources/:slug`                        |
@@ -354,14 +352,14 @@ MULMOCLAUDE_AUTH_TOKEN=$(openssl rand -hex 32) yarn dev
 MULMOCLAUDE_AUTH_TOKEN=<same value> ./scripts/dev/fire-sample-notifications.sh
 ```
 
-After firing, open the bell in the Web UI and click each entry; every click should land on the URL noted in the script's `→` output line. The `automations`, `sources`, and `todos` rows additionally scroll + flash the matching item via `scrollIntoViewByTestId` (`src/utils/dom/`).
+After firing, open the bell in the Web UI and click each entry; every click should land on the URL noted in the script's `→` output line. The `automations` and `sources` rows additionally scroll + flash the matching item via `scrollIntoViewByTestId` (`src/utils/dom/`).
 
 #### Automated coverage
 
 - **Unit**: `test/utils/notification/test_dispatch.ts` — every target variant + edge cases (missing sessionId, file path splitting, wiki anchor hash).
 - **E2E**: `e2e/tests/notifications.spec.ts` — boots the app with a mocked pub-sub socket that delivers one canned payload per scenario, clicks bell + item, asserts the resulting URL. Run via `yarn test:e2e notifications`.
 
-Plan doc: `plans/done/feat-notification-permalinks.md`. Implementation lives in `src/types/notification.ts` (typed targets), `src/utils/notification/dispatch.ts` (dispatcher), `src/router/pageRoutes.ts` (route names), and per-page mount-time scroll handlers (`TodoExplorer.vue`, `SourcesView.vue`, `TasksTab.vue`).
+Plan doc: `plans/done/feat-notification-permalinks.md`. Implementation lives in `src/types/notification.ts` (typed targets), `src/utils/notification/dispatch.ts` (dispatcher), `src/router/pageRoutes.ts` (route names), and per-page mount-time scroll handlers (`SourcesView.vue`, `TasksTab.vue`).
 
 ---
 
@@ -399,7 +397,7 @@ Cross-module string literals (endpoint paths, tool names, role IDs, etc.) are de
 
 | Constant                               | Module                         | Consumers                                                                                                                                            |
 | -------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `API_ROUTES`                           | `src/config/apiRoutes.ts`      | Server route files (`router.post(API_ROUTES.todos.items, ...)`), frontend fetch calls (`fetch(API_ROUTES.todos.items)`), MCP bridge `postJson` calls |
+| `API_ROUTES`                           | `src/config/apiRoutes.ts`      | Server route files (`router.post(API_ROUTES.scheduler.tasks, ...)`), frontend fetch calls (`fetch(API_ROUTES.scheduler.tasks)`), MCP bridge `postJson` calls |
 | `EVENT_TYPES` / `EventType`            | `src/types/events.ts`          | SSE stream emitters, pub-sub session events, chat jsonl parsers, `AgentEvent` union discriminators                                                   |
 | `WORKSPACE_PATHS` / `WORKSPACE_DIRS`   | `server/workspace/paths.ts`    | Every server module that reads or writes workspace files                                                                                             |
 | `TOOL_NAMES` / `ToolName`              | `src/config/toolNames.ts`      | Role definitions (`availablePlugins`), plugin registry, session-store tool matching                                                                  |
@@ -696,7 +694,7 @@ The standard pattern above keeps the entire plugin under `src/plugins/<name>/` b
 
 | field                                     | purpose                                                                                                                                                                                                     | example                                               |
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `endpoints`                               | resolved route map. Cast to your plugin's `*Endpoints` type.                                                                                                                                                | `(useRuntime().endpoints as TodoEndpoints).list.url`  |
+| `endpoints`                               | resolved route map. Cast to your plugin's `*Endpoints` type.                                                                                                                                                | `(useRuntime().endpoints as SchedulerEndpoints).list.url`  |
 | `dispatch(args)`                          | MCP-style single-call dispatch (`POST /api/plugins/runtime/:pkg/dispatch`). Built-in plugins typically prefer their own typed routes via `endpoints`; runtime-loaded plugins commonly only have `dispatch`. | `await runtime.dispatch({ action: "create", title })` |
 | `pubsub.subscribe(eventName, handler)`    | Subscribe to a plugin-scoped channel. Returns an unsubscribe function. The host fans events as `unknown`; validate the shape at the call site.                                                              | `runtime.pubsub.subscribe("changed", (data) => …)`    |
 | `log.{debug,info,warn,error}(msg, data?)` | Frontend logger that prefixes `[plugin/<pkg>]` so console output is owner-tagged.                                                                                                                           | `runtime.log.warn("retrying", { attempt })`           |
@@ -710,10 +708,10 @@ Plugin code is also bound by ESLint's plugin import rule (#1144): under `src/plu
 A plugin's `View` / `Preview` components mount in two distinct trees, and both must provide the plugin runtime so descendant `useRuntime()` calls resolve:
 
 1. **Chat canvas** (tool-result rendering). The `wrapWithScope(scope, View)` helper in `src/plugins/scope.ts` produces a component that mounts `<PluginScopedRoot pkg-name :endpoints>` around the inner View. Used by `BUILT_IN_PLUGINS` entries.
-2. **Standalone routes / file previews** (`/todos`, `/calendar`, `FileContentRenderer` showing `data/todos/todos.json`, etc.). These mount the View directly, outside the plugin registry, so the host wraps them at the call site:
+2. **Standalone routes / file previews** (`/calendar`, `FileContentRenderer` showing `data/scheduler/items.json`, etc.). These mount the View directly, outside the plugin registry, so the host wraps them at the call site:
    ```vue
-   <PluginScopedRoot pkg-name="todos" :endpoints="API_ROUTES.todos">
-     <TodoExplorer />
+   <PluginScopedRoot pkg-name="scheduler" :endpoints="API_ROUTES.scheduler">
+     <CalendarView />
    </PluginScopedRoot>
    ```
    `App.vue` and `FileContentRenderer.vue` carry these wrappers for the routed page and file-preview surfaces respectively. A new standalone route for a plugin needs the same wrapping pattern, or `useRuntime()` will throw at first render.

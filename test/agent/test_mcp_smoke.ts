@@ -97,7 +97,7 @@ describe("MCP server subprocess smoke test", () => {
     const env: Record<string, string> = {
       SESSION_ID: "test-smoke",
       PORT: "0",
-      PLUGIN_NAMES: ["manageTodoList", TOOL_NAMES.presentMulmoScript].join(","),
+      PLUGIN_NAMES: [TOOL_NAMES.manageSkills, TOOL_NAMES.presentMulmoScript].join(","),
     };
 
     const responses = await sendAndReceive(
@@ -139,7 +139,7 @@ describe("MCP server subprocess smoke test", () => {
 
     // The tools we requested via PLUGIN_NAMES should be present.
     const toolNames = toolsResp.result.tools.map((tool: { name: string }) => tool.name);
-    assert.ok(toolNames.includes("manageTodoList"), `${"manageTodoList"} not in tools: ${toolNames.join(", ")}`);
+    assert.ok(toolNames.includes(TOOL_NAMES.manageSkills), `${TOOL_NAMES.manageSkills} not in tools: ${toolNames.join(", ")}`);
     assert.ok(toolNames.includes(TOOL_NAMES.presentMulmoScript), `${TOOL_NAMES.presentMulmoScript} not in tools: ${toolNames.join(", ")}`);
 
     // manageWiki is intentionally absent (#963 Stage 3b) — the MCP

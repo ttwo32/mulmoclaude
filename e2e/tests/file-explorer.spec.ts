@@ -1,6 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
 import { mockAllApis } from "../fixtures/api";
-import { WORKSPACE_FILES } from "../../src/config/workspacePaths";
 import { API_ROUTES } from "../../src/config/apiRoutes";
 
 import { ONE_SECOND_MS } from "../../server/utils/time.ts";
@@ -18,10 +17,7 @@ async function mockFileTree(page: Page) {
             name: "",
             path: "",
             type: "dir",
-            children: [
-              { name: "data", path: "data", type: "dir" },
-              { name: "wiki", path: "wiki", type: "dir" },
-            ],
+            children: [{ name: "wiki", path: "wiki", type: "dir" }],
           },
         });
       }
@@ -37,33 +33,6 @@ async function mockFileTree(page: Page) {
                 path: "wiki/hello.md",
                 type: "file",
                 size: 42,
-              },
-            ],
-          },
-        });
-      }
-      if (path === "data") {
-        return route.fulfill({
-          json: {
-            name: "data",
-            path: "data",
-            type: "dir",
-            children: [{ name: "todos", path: "data/todos", type: "dir" }],
-          },
-        });
-      }
-      if (path === "data/todos") {
-        return route.fulfill({
-          json: {
-            name: "todos",
-            path: "data/todos",
-            type: "dir",
-            children: [
-              {
-                name: "todos.json",
-                path: WORKSPACE_FILES.todosItems,
-                type: "file",
-                size: 100,
               },
             ],
           },

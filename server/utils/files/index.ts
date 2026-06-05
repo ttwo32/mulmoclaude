@@ -27,8 +27,6 @@ export {
 } from "./workspace-io.js";
 
 export * from "./session-io.js";
-// todos-io.js removed (#1145) — todo persistence moved into the
-// `@mulmoclaude/todo-plugin` workspace package.
 export * from "./scheduler-io.js";
 export * from "./html-io.js";
 export * from "./reference-dirs-io.js";

@@ -1,7 +1,6 @@
-// Calendar (scheduler plugin) delete confirmation — mirrors the
-// todo explorer pattern: every delete path routes through a
-// `window.confirm` gate so a stray click on the ✕ button cannot
-// silently drop an event. See TodoExplorer.confirmAndDelete.
+// Calendar (scheduler plugin) delete confirmation — every delete
+// path routes through a `window.confirm` gate so a stray click on
+// the ✕ button cannot silently drop an event.
 
 import { test, expect, type Page, type Route } from "@playwright/test";
 import { mockAllApis } from "../fixtures/api";

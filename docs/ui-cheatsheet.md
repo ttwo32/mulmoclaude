@@ -19,8 +19,8 @@ A quick visual reference so chat instructions about UI ("the bell at the top rig
 │ │                                              ⚙ settings          │  │
 │ └──────────────────────────────────────────────────────────────────┘  │
 │ ┌─<PluginLauncher> [plugin-launcher]──────────────────────────────┐   │
-│ │ ✓Todos │📅Calendar │⏰Actions │📖Wiki │📡Sources │🧠Skills │🎭Roles│📁Files│   │
-│ │ [plugin-launcher-todos] [plugin-launcher-calendar] ...          │   │
+│ │ 📅Calendar │⏰Actions │📖Wiki │📡Sources │🧠Skills │🎭Roles│📁Files│   │
+│ │ [plugin-launcher-calendar] [plugin-launcher-automations] ...    │   │
 │ └─────────────────────────────────────────────────────────────────┘   │
 │ ┌─[main pane — route-specific]────┐ ┌─<SessionHistoryPanel>────────┐  │
 │ │                                 │ │ [session-history-side-panel] │  │
@@ -341,34 +341,6 @@ Clicking a list row marks it read (badge decrements). The "Mark all read" button
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-## /todos — Kanban / table / list of tasks
-
-```
-┌─[<TodoExplorer> — [todo-view-root]]────────────────────────────────┐
-│ Top bar:                                                           │
-│  [todo-search]   [todo-add-btn]   [todo-column-add-btn]            │
-│  view mode: [todo-view-kanban] [todo-view-table] [todo-view-list]  │
-│                                                                    │
-│ Kanban (default):                                                  │
-│ ┌─Backlog─────┐ ┌─Todo──────┐ ┌─In Progress─┐ ┌─Done────────┐      │
-│ │             │ │           │ │             │ │             │      │
-│ │ [todo-card- │ │           │ │             │ │             │      │
-│ │  <id>]      │ │           │ │             │ │             │      │
-│ │   Title     │ │           │ │             │ │             │      │
-│ │   #label    │ │           │ │             │ │             │      │
-│ │             │ │           │ │             │ │             │      │
-│ └─────────────┘ └───────────┘ └─────────────┘ └─────────────┘      │
-│                                                                    │
-│ Drag cards across columns to change state.                         │
-│                                                                    │
-│ Add dialog (TodoAddDialog):                                        │
-│  [todo-add-dialog-text]   [todo-add-dialog-submit]                 │
-│                                                                    │
-│ Edit dialog (TodoEditDialog) — opens on card click:                │
-│  [todo-edit-dialog-delete]                                         │
-└────────────────────────────────────────────────────────────────────┘
-```
-
 ## /files — workspace file explorer
 
 ```
@@ -385,7 +357,6 @@ Clicking a list row marks it read (badge decrements). The "Mark all read" button
 │ │   • foo.md   ←sel  │ │  │                                        │ │ │
 │ │   • bar.md         │ │  │  • markdown → marked + Vue             │ │ │
 │ │ ...                │ │  │  • images → <img>                      │ │ │
-│ │                    │ │  │  • todos JSON → <TodoExplorer>         │ │ │
 │ │                    │ │  │  • scheduler items.json → <CalendarView>│ │ │
 │ │                    │ │  │  • code → text                         │ │ │
 │ │                    │ │  └────────────────────────────────────────┘ │ │

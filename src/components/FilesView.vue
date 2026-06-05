@@ -30,7 +30,6 @@
         :content-error="contentError"
         :content-loading="contentLoading"
         :scheduler-result="schedulerResult"
-        :todo-explorer-result="todoExplorerResult"
         :is-markdown="isMarkdown"
         :is-html="isHtml"
         :is-json="isJson"
@@ -78,7 +77,6 @@ import { useMarkdownLinkHandler } from "../composables/useMarkdownLinkHandler";
 import { apiPut } from "../utils/api";
 import { API_ROUTES } from "../config/apiRoutes";
 import { toSchedulerResult } from "../utils/filesPreview/schedulerPreview";
-import { toTodoExplorerResult } from "../utils/filesPreview/todoPreview";
 
 const RECENT_THRESHOLD_MS = 60 * 1000;
 
@@ -151,8 +149,6 @@ watch(content, () => {
 });
 
 const schedulerResult = computed(() => toSchedulerResult(selectedPath.value, content.value?.kind === "text" ? content.value.content : null));
-
-const todoExplorerResult = computed(() => toTodoExplorerResult(selectedPath.value, content.value?.kind === "text" ? content.value.content : null));
 
 const recentPaths = computed(() => {
   const set = new Set<string>();

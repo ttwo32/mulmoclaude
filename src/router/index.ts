@@ -1,10 +1,10 @@
 // Vue-router setup (history mode — clean URLs without #).
 //
-// Each page has its own route: /chat, /files, /todos, /calendar,
+// Each page has its own route: /chat, /files, /calendar,
 // /automations, /wiki, /skills, /roles, /sources. Layout preference
 // (single vs. stack) is a separate concern persisted in localStorage
 // — it is not part of the URL. Several pages accept an optional
-// identifier (todos :itemId, automations :taskId, sources :slug) so
+// identifier (automations :taskId, sources :slug) so
 // notifications and external links can deep-link to a specific item.
 //
 // History mode requires the server to serve index.html for any path
@@ -40,10 +40,6 @@ const routes: RouteRecordRaw[] = [
   // (`/files`) yields an empty array, which we treat as "no file
   // selected". See plans/done/feat-files-path-url.md.
   { path: "/files/:pathMatch(.*)*", name: PAGE_ROUTES.files, component: Stub },
-  // Todos accepts an optional `:itemId` so notifications / deep-links
-  // can jump to a specific card. Missing id falls through to the
-  // board index view. See plans/done/feat-notification-permalinks.md.
-  { path: "/todos/:itemId?", name: PAGE_ROUTES.todos, component: Stub },
   { path: "/calendar", name: PAGE_ROUTES.calendar, component: Stub },
   // Automations accepts an optional `:taskId` for the same reason —
   // scheduled-task notifications deep-link to a specific task row.

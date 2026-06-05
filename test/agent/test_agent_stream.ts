@@ -92,7 +92,7 @@ describe("parseStreamEvent", () => {
           {
             type: "tool_use",
             id: "tu_123",
-            name: "manageTodoList",
+            name: "manageBookmarks",
             input: { action: "show" },
           },
         ],
@@ -104,7 +104,7 @@ describe("parseStreamEvent", () => {
     assert.deepEqual(result[1], {
       type: "tool_call",
       toolUseId: "tu_123",
-      toolName: "manageTodoList",
+      toolName: "manageBookmarks",
       args: { action: "show" },
     });
   });

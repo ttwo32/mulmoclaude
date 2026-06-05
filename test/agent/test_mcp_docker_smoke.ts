@@ -77,7 +77,7 @@ describe("MCP server Docker smoke test", { skip: !canRunDocker }, () => {
       "-e",
       "PORT=9999",
       "-e",
-      "PLUGIN_NAMES=manageTodoList,presentMulmoScript",
+      "PLUGIN_NAMES=manageSkills,presentMulmoScript",
       "mulmoclaude-sandbox",
       "tsx",
       "/app/server/agent/mcp-server.ts",
@@ -159,6 +159,6 @@ describe("MCP server Docker smoke test", { skip: !canRunDocker }, () => {
 
     const toolNames = toolsResp.result.tools.map((tool) => tool.name);
     assert.ok(toolNames.includes("presentMulmoScript"), `presentMulmoScript not in tools: ${toolNames.join(", ")}`);
-    assert.ok(toolNames.includes("manageTodoList"), `manageTodoList not in tools: ${toolNames.join(", ")}`);
+    assert.ok(toolNames.includes("manageSkills"), `manageSkills not in tools: ${toolNames.join(", ")}`);
   });
 });

@@ -369,41 +369,12 @@ async function runDispatchCase(page: Page, kase: PluginDispatchCase): Promise<vo
   }
 }
 
-// Workspace DB paths the cleanup verification reads back. Kept here
-// as string literals because the runtime-plugin path is
-// URL-encoded (`%40mulmoclaude%2Ftodo-plugin` for
-// `@mulmoclaude/todo-plugin`) and there is no host-side constant
-// that exposes the encoded form — a centralization PR (CodeRabbit
-// "as-const refactor" suggestion) would land both these and the
-// MCP tool-name literals in one go, but stays out of scope here.
-const TODO_DB_REL = "data/plugins/%40mulmoclaude%2Ftodo-plugin/todos.json";
+// Workspace DB paths the cleanup verification reads back.
 const CALENDAR_DB_REL = "data/scheduler/items.json";
 const ACCOUNTING_CONFIG_REL = "data/accounting/config.json";
 
 test.describe("plugin dispatch (real LLM, one-turn canaries)", () => {
   test.skip(process.env.E2E_LIVE_NO_LLM === "1", "needs real LLM dispatch (fake-echo backend cannot route MCP tool calls)");
-
-  test("L-DISPATCH-TODO: Personal role + manageTodoList が一ターンで dispatch される", async ({ page }) => {
-    const marker = makeMarker("L-DISPATCH-TODO");
-    await runDispatchCase(page, {
-      testId: "L-DISPATCH-TODO",
-      role: "personal",
-      toolName: "manageTodoList",
-      marker,
-      prompt: [
-        `Use the \`manageTodoList\` tool with action='add' to add one todo whose text is EXACTLY '${marker}' (verbatim, no edits).`,
-        "Do not use show / list_labels / any other action. Do not use any other tool. Do not narrate the result.",
-      ].join(" "),
-      expectedAddAction: "add",
-      cleanupPrompt: [
-        `Now delete every todo whose text equals EXACTLY '${marker}'.`,
-        "Use the manageTodoList tool with action='delete' (look it up via ToolSearch if needed).",
-        "Do not narrate the result.",
-      ].join(" "),
-      expectedCleanupAction: "delete",
-      markerScopedFile: { workspaceRel: TODO_DB_REL, matchField: "text" },
-    });
-  });
 
   test("L-DISPATCH-CAL: Personal role + manageCalendar が一ターンで dispatch される", async ({ page }) => {
     const marker = makeMarker("L-DISPATCH-CAL");

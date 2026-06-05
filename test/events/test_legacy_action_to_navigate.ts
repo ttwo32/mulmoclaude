@@ -39,23 +39,7 @@ describe("legacyActionToNavigateTarget — chat target", () => {
   });
 });
 
-describe("legacyActionToNavigateTarget — todos / automations / sources", () => {
-  it("/todos with optional itemId", () => {
-    assert.equal(
-      legacyActionToNavigateTarget({
-        type: NOTIFICATION_ACTION_TYPES.navigate,
-        target: { view: NOTIFICATION_VIEWS.todos, itemId: "todo-42" },
-      }),
-      "/todos/todo-42",
-    );
-    assert.equal(
-      legacyActionToNavigateTarget({
-        type: NOTIFICATION_ACTION_TYPES.navigate,
-        target: { view: NOTIFICATION_VIEWS.todos },
-      }),
-      "/todos",
-    );
-  });
+describe("legacyActionToNavigateTarget — automations / sources", () => {
   it("/automations with optional taskId", () => {
     assert.equal(
       legacyActionToNavigateTarget({
@@ -156,12 +140,12 @@ describe("legacyActionToNavigateTarget — reserved characters", () => {
     assert.equal(result, "/sources/a%2Fb");
   });
 
-  it("encodes an itemId containing '%' so it isn't seen as a stray escape", () => {
+  it("encodes a taskId containing '%' so it isn't seen as a stray escape", () => {
     const result = legacyActionToNavigateTarget({
       type: NOTIFICATION_ACTION_TYPES.navigate,
-      target: { view: NOTIFICATION_VIEWS.todos, itemId: "x%y" },
+      target: { view: NOTIFICATION_VIEWS.automations, taskId: "x%y" },
     });
-    assert.equal(result, "/todos/x%25y");
+    assert.equal(result, "/automations/x%25y");
   });
 
   it("encodes a sessionId with whitespace", () => {
@@ -196,7 +180,7 @@ describe("legacyActionToNavigateTarget — dot-segment safety", () => {
   // the intended view's namespace (e.g. /files/../chat/sess →
   // /chat/sess). The guards below pin the safe behaviour:
   //   - files: any unsafe segment ⇒ fall back to /files index
-  //   - single-segment fields (todos, automations, sources, wiki
+  //   - single-segment fields (automations, sources, wiki
   //     slug): unsafe value ⇒ fall back to that view's index
   //   - chat: unsafe sessionId ⇒ drop the action (chat has no usable
   //     index without sessionId)
@@ -240,14 +224,6 @@ describe("legacyActionToNavigateTarget — dot-segment safety", () => {
     assert.equal(result, undefined);
   });
 
-  it("todos: dot-segment itemId falls back to /todos", () => {
-    const result = legacyActionToNavigateTarget({
-      type: NOTIFICATION_ACTION_TYPES.navigate,
-      target: { view: NOTIFICATION_VIEWS.todos, itemId: ".." },
-    });
-    assert.equal(result, "/todos");
-  });
-
   it("automations: dot-segment taskId falls back to /automations", () => {
     const result = legacyActionToNavigateTarget({
       type: NOTIFICATION_ACTION_TYPES.navigate,
@@ -288,7 +264,6 @@ describe("legacyActionToNavigateTarget — engine constraints", () => {
   it("every emitted target starts with a single '/' (no scheme, no '//')", () => {
     const targets: { view: string; expected: string }[] = [
       { view: "chat", expected: "/chat" },
-      { view: "todos", expected: "/todos" },
       { view: "calendar", expected: "/calendar" },
       { view: "automations", expected: "/automations" },
       { view: "sources", expected: "/sources" },

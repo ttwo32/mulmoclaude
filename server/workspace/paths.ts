@@ -112,8 +112,6 @@ const HOST_WORKSPACE_DIRS = {
   searches: "conversations/searches",
   // data/
   wiki: "data/wiki",
-  // todos: removed (#1145) — todo data now lives under the plugin's
-  // own `files.data` scope at `data/plugins/%40mulmoclaude%2Ftodo-plugin/`.
   calendar: "data/calendar",
   contacts: "data/contacts",
   clients: "data/clients",

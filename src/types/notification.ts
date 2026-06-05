@@ -47,7 +47,6 @@ export type NotificationActionType = (typeof NOTIFICATION_ACTION_TYPES)[keyof ty
 // after the #758 split; Automations is where scheduled tasks live.
 export const NOTIFICATION_VIEWS = {
   chat: "chat",
-  todos: "todos",
   calendar: "calendar",
   automations: "automations",
   sources: "sources",
@@ -71,7 +70,6 @@ export type NotificationPriority = (typeof NOTIFICATION_PRIORITIES)[keyof typeof
 // the identifier lands on the feature's index view.
 export type NotificationTarget =
   | { view: typeof NOTIFICATION_VIEWS.chat; sessionId: string }
-  | { view: typeof NOTIFICATION_VIEWS.todos; itemId?: string }
   | { view: typeof NOTIFICATION_VIEWS.calendar }
   | { view: typeof NOTIFICATION_VIEWS.automations; taskId?: string }
   | { view: typeof NOTIFICATION_VIEWS.sources; slug?: string }

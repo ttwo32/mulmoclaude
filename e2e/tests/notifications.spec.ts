@@ -81,16 +81,6 @@ const SCENARIOS: readonly Scenario[] = [
     expectedUrl: "/chat/sess-xyz",
   },
   {
-    description: "todos target with itemId",
-    entry: buildEntry("notif-todo-1", "New todo assigned", "/todos/todo-42"),
-    expectedUrl: "/todos/todo-42",
-  },
-  {
-    description: "todos index when itemId is absent",
-    entry: buildEntry("notif-todo-index", "Todos need review", "/todos"),
-    expectedUrl: "/todos",
-  },
-  {
     description: "automations target with taskId",
     entry: buildEntry("notif-auto-1", "Scheduled task fired", "/automations/finance-daily-briefing"),
     expectedUrl: "/automations/finance-daily-briefing",
@@ -187,8 +177,8 @@ test.describe("notification bell — navigation", () => {
       await mockAllApis(page, { sessions });
       await primeNotifierList(page, [scenario.entry]);
 
-      // /todos is a quiet page — no auto-session-create races.
-      await page.goto("/todos");
+      // /files is a quiet page — no auto-session-create races.
+      await page.goto("/files");
 
       // Badge appears once `apiPost(..., {action: "list"})` resolves
       // and the composable populates entries.
@@ -218,7 +208,7 @@ test.describe("notification bell — dismiss", () => {
     await mockAllApis(page, { sessions: [] });
     await primeNotifierList(page, [entry]);
 
-    await page.goto("/todos");
+    await page.goto("/files");
     await expect(page.getByTestId("notification-badge")).toBeVisible({ timeout: 5000 });
 
     await page.getByTestId("notification-bell").click();
@@ -238,7 +228,7 @@ test.describe("notification bell — dismiss", () => {
     await mockAllApis(page, { sessions: [] });
     await primeNotifierList(page, [entry]);
 
-    await page.goto("/todos");
+    await page.goto("/files");
     await expect(page.getByTestId("notification-badge")).toBeVisible({ timeout: 5000 });
 
     await page.getByTestId("notification-bell").click();
@@ -291,7 +281,7 @@ test.describe("notification bell — history more / less toggle", () => {
     await mockAllApis(page, { sessions: [] });
     await primeNotifierHistory(page, history);
 
-    await page.goto("/todos");
+    await page.goto("/files");
     await page.getByTestId("notification-bell").click();
     await expect(page.getByTestId("notification-panel")).toBeVisible();
 
@@ -324,7 +314,7 @@ test.describe("notification bell — history more / less toggle", () => {
     await mockAllApis(page, { sessions: [] });
     await primeNotifierHistory(page, history);
 
-    await page.goto("/todos");
+    await page.goto("/files");
     await page.getByTestId("notification-bell").click();
     await page.getByTestId("notification-history-toggle").click();
     // Confirm we're expanded before the close-reopen cycle.
@@ -346,7 +336,7 @@ test.describe("notification bell — history more / less toggle", () => {
     await mockAllApis(page, { sessions: [] });
     await primeNotifierHistory(page, history);
 
-    await page.goto("/todos");
+    await page.goto("/files");
     await page.getByTestId("notification-bell").click();
     await expect(page.getByTestId(`notification-history-${history[0].id}`)).toBeVisible();
     await expect(page.getByTestId("notification-history-toggle")).toHaveCount(0);
@@ -360,7 +350,7 @@ test.describe("notification bell — history more / less toggle", () => {
     await mockAllApis(page, { sessions: [] });
     await primeNotifierHistory(page, history);
 
-    await page.goto("/todos");
+    await page.goto("/files");
     await page.getByTestId("notification-bell").click();
     const toggle = page.getByTestId("notification-history-toggle");
     await expect(toggle).toBeVisible();

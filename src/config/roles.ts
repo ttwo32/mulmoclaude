@@ -99,7 +99,6 @@ export const ROLES: Role[] = [
       // installed runtime plugins (`~/mulmoclaude/plugins/*`) are
       // added to roles via Settings → Roles.
       TOOL_NAMES.manageBookmarks,
-      TOOL_NAMES.manageTodoList,
       TOOL_NAMES.manageSpotify,
     ],
     queries: [
@@ -398,7 +397,6 @@ export const ROLES: Role[] = [
       // by `availablePlugins` (see `general` role's note); listing
       // them here keeps the debug role's "kitchen sink" promise.
       TOOL_NAMES.manageBookmarks,
-      TOOL_NAMES.manageTodoList,
       TOOL_NAMES.manageSpotify,
       // manageRecipes removed (#1286) — recipe-book-plugin no longer
       // in PRESET_PLUGINS; recipes drive via the `mc-cooking-coach`

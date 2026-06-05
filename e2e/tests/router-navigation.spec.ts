@@ -116,12 +116,6 @@ test.describe("page routing", () => {
     expect(new URL(page.url()).pathname).toBe("/files");
   });
 
-  test("/todos loads the todos page", async ({ page }) => {
-    await page.goto("/todos");
-    await expect(page.getByText("MulmoClaude")).toBeVisible();
-    expect(new URL(page.url()).pathname).toBe("/todos");
-  });
-
   test("/calendar loads the calendar page", async ({ page }) => {
     await page.goto("/calendar");
     await expect(page.getByText("MulmoClaude")).toBeVisible();

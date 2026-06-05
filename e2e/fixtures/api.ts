@@ -31,18 +31,6 @@ function parseDispatchAction(body: string | null): string | undefined {
 
 const DEFAULT_ROLES: unknown[] = [];
 
-const DEFAULT_TODOS = {
-  data: {
-    items: [],
-    columns: [
-      { id: "backlog", label: "Backlog" },
-      { id: "todo", label: "Todo" },
-      { id: "in-progress", label: "In Progress" },
-      { id: "done", label: "Done", isDone: true },
-    ],
-  },
-};
-
 const DEFAULT_HEALTH = {
   status: "OK",
   geminiAvailable: true,
@@ -108,15 +96,6 @@ export async function mockAllApis(page: Page, opts: MockApiOptions = {}): Promis
       }
       return route.fulfill({ status: 404, json: { error: "not found" } });
     },
-  );
-
-  // Todo plugin moved to the runtime-plugin shape (#1145) — the
-  // single dispatch endpoint replaces the old REST `/api/todos*`
-  // routes. Default mock echoes DEFAULT_TODOS for every kind so
-  // read-only specs keep working without per-test scaffolding.
-  await page.route(
-    (url) => url.pathname === "/api/plugins/runtime/%40mulmoclaude%2Ftodo-plugin/dispatch",
-    (route) => route.fulfill({ json: DEFAULT_TODOS }),
   );
 
   // Defensive defaults for the broader runtime-plugin surface — the
