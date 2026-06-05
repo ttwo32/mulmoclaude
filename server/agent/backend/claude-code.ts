@@ -81,7 +81,7 @@ function createMcpTracker() {
   };
 }
 
-async function* readAgentEvents(proc: ClaudeProc): AsyncGenerator<AgentEvent> {
+async function* readAgentEvents(proc: ClaudeProc, abortSignal?: AbortSignal): AsyncGenerator<AgentEvent> {
   let stderrOutput = "";
   let stderrBuffer = "";
   proc.stderr.on("data", (chunk: Buffer) => {
@@ -135,7 +135,10 @@ async function* readAgentEvents(proc: ClaudeProc): AsyncGenerator<AgentEvent> {
   log.info("agent", "claude exited", { exitCode });
   mcpTracker.logIfSuspicious();
 
-  if (exitCode !== 0) {
+  // A non-zero exit caused by our own abort (stop button → proc.kill()
+  // → SIGTERM → exit 143) is expected, not a failure. Surfacing it as an
+  // error event makes a deliberate stop look like a crash, so suppress it.
+  if (exitCode !== 0 && !abortSignal?.aborted) {
     yield {
       type: EVENT_TYPES.error,
       message: stderrOutput || `claude exited with code ${exitCode}`,
@@ -197,7 +200,7 @@ async function* runClaudeAgent(input: AgentInput): AsyncGenerator<AgentEvent> {
   input.abortSignal?.addEventListener("abort", onAbort, { once: true });
 
   try {
-    yield* readAgentEvents(proc);
+    yield* readAgentEvents(proc, input.abortSignal);
   } finally {
     input.abortSignal?.removeEventListener("abort", onAbort);
     if (!proc.killed) proc.kill();
