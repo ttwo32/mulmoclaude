@@ -47,6 +47,17 @@ export const META = definePluginMeta({
     /** GET /api/mulmoScript/download-movie — download a generated
      *  movie file. */
     downloadMovie: { method: "GET", path: "/download-movie" },
+    /** GET /api/mulmoScript/pdf-status — poll for a generated PDF's
+     *  status / availability (slide-mode, A4). */
+    pdfStatus: { method: "GET", path: "/pdf-status" },
+    /** POST /api/mulmoScript/generate-pdf — kick off PDF generation
+     *  (slide mode, A4 size). Returns an SSE stream of image-render
+     *  progress mirroring `generateMovie`; PDF assembly itself is a
+     *  single short step after images are ready. */
+    generatePdf: { method: "POST", path: "/generate-pdf" },
+    /** GET /api/mulmoScript/download-pdf — download a generated
+     *  PDF file. */
+    downloadPdf: { method: "GET", path: "/download-pdf" },
   },
   mcpDispatch: "save",
   // mulmocast shells out to ffmpeg for movie/beat rendering. Without

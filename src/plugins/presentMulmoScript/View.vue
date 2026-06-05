@@ -86,6 +86,47 @@
             <span>{{ t("pluginMulmoScript.movie") }}</span>
           </template>
         </button>
+        <!-- PDF (#1614): same Generate / Download / Regenerate pattern
+             as the Movie cluster above, kept structurally separate so
+             the two outputs can be requested independently and report
+             status independently. -->
+        <button
+          v-if="pdfPath && !pdfGenerating"
+          class="h-8 px-2.5 flex items-center gap-1 rounded bg-red-600 hover:bg-red-700 text-white text-sm disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          :disabled="pdfDownloading"
+          data-testid="mulmo-script-download-pdf-button"
+          @click="downloadPdf"
+        >
+          <span class="material-icons text-base">download</span>
+          <span>{{ t("pluginMulmoScript.pdf") }}</span>
+        </button>
+        <button
+          v-if="pdfPath && !pdfGenerating"
+          class="h-8 w-8 flex items-center justify-center rounded border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors"
+          :title="t('pluginMulmoScript.regeneratePdf')"
+          :aria-label="t('pluginMulmoScript.regeneratePdf')"
+          data-testid="mulmo-script-regenerate-pdf-button"
+          @click="generatePdf"
+        >
+          <span class="material-icons text-base">refresh</span>
+        </button>
+        <button
+          v-else
+          class="h-8 px-2.5 flex items-center gap-1 text-sm rounded border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          :disabled="pdfGenerating"
+          data-testid="mulmo-script-generate-pdf-button"
+          @click="generatePdf"
+        >
+          <svg v-if="pdfGenerating" class="animate-spin w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          <span v-if="pdfGenerating">{{ t("pluginMulmoScript.generatingPdf") }}</span>
+          <template v-else>
+            <span class="material-icons text-sm">picture_as_pdf</span>
+            <span>{{ t("pluginMulmoScript.pdf") }}</span>
+          </template>
+        </button>
       </div>
     </div>
 
@@ -569,6 +610,12 @@ const moviePath = ref<string | null>(null);
 // area can surface it inline with a retry button (#1197). Cleared
 // at the start of every generate / regenerate attempt.
 const movieError = ref<string | null>(null);
+// PDF generation (#1614). Mirrors the movie triple — path / spinner /
+// downloading flag — kept independent so a PDF and a movie can be
+// generated for the same script without state collision.
+const pdfGenerating = ref(false);
+const pdfDownloading = ref(false);
+const pdfPath = ref<string | null>(null);
 const beatAudios = reactive<Record<number, string>>({});
 const audioState = reactive<Record<number, "generating" | "done" | "error">>({});
 const audioErrors = reactive<Record<number, string>>({});
@@ -1383,6 +1430,7 @@ async function initializeScript() {
   Object.keys(charErrors).forEach((key) => Reflect.deleteProperty(charErrors, key));
   Object.keys(beatDragOver).forEach((key) => Reflect.deleteProperty(beatDragOver, key));
   moviePath.value = null;
+  pdfPath.value = null;
   if (sourceDetails.value) sourceDetails.value.open = false;
 
   // #1074 — re-read the script file from disk before per-beat
@@ -1427,6 +1475,13 @@ async function initializeScript() {
       moviePath.value = response.data.moviePath;
     }
     // ignore errors
+    // Also check whether a PDF was previously generated and is still
+    // newer than the source; status returns null otherwise so the UI
+    // re-offers the Generate button.
+    const pdfResponse = await apiGet<{ pdfPath?: string }>(endpoints.pdfStatus.url, { filePath: filePath.value });
+    if (pdfResponse.ok && pdfResponse.data.pdfPath) {
+      pdfPath.value = pdfResponse.data.pdfPath;
+    }
   }
 
   // Reflect any generations that were already in flight when we
@@ -1491,6 +1546,9 @@ async function reflectGenerationFinish(entry: PendingGeneration): Promise<void> 
   } else if (entry.kind === GENERATION_KINDS.movie) {
     movieGenerating.value = false;
     await refreshMoviePath();
+  } else if (entry.kind === GENERATION_KINDS.pdf) {
+    pdfGenerating.value = false;
+    await refreshPdfPath();
   }
 }
 
@@ -1566,6 +1624,86 @@ async function downloadMovie() {
   } finally {
     if (objectUrl) URL.revokeObjectURL(objectUrl);
     movieDownloading.value = false;
+  }
+}
+
+// --- PDF (#1614) ---------------------------------------------------
+//
+// Same triple as movie: status poll → SSE generate → bearer-auth
+// download. Reuses `streamMovieEvents`'s shape — the server emits
+// `beat_image_done` (per-beat image progress) and `done` (final
+// PDF), with `done` carrying `pdfPath` instead of `moviePath`.
+
+async function refreshPdfPath(): Promise<void> {
+  if (!filePath.value) return;
+  const response = await apiGet<{ pdfPath?: string }>(endpoints.pdfStatus.url, { filePath: filePath.value });
+  if (response.ok && response.data.pdfPath) {
+    pdfPath.value = response.data.pdfPath;
+  }
+}
+
+async function generatePdf() {
+  pdfGenerating.value = true;
+  try {
+    const res = await apiFetchRaw(endpoints.generatePdf.url, {
+      method: "POST",
+      body: JSON.stringify({
+        filePath: filePath.value,
+        chatSessionId: chatSessionId.value,
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!res.ok || !res.body) throw new Error("PDF generation failed");
+    // Re-use `streamMovieEvents`: the server emits the same per-beat
+    // image progress + a terminal `done` event whose payload here is
+    // `{ pdfPath }` (not `moviePath`). `onDone`'s argument is the
+    // raw string parser surfaced via `moviePath`, so we just rebind
+    // it locally.
+    await streamMovieEvents(res.body, {
+      onBeatImageDone: (beatIndex) => {
+        loadExistingBeatImage(beatIndex);
+        refreshMissingCharacterImages();
+      },
+      onBeatAudioDone: () => {
+        // PDF flow doesn't run audio; ignore.
+      },
+      onDone: (path) => {
+        pdfPath.value = path;
+      },
+    });
+  } catch (err) {
+    alert(extractErrorMessage(err));
+  } finally {
+    pdfGenerating.value = false;
+  }
+}
+
+async function downloadPdf() {
+  if (!pdfPath.value || pdfDownloading.value) return;
+  pdfDownloading.value = true;
+  let objectUrl: string | null = null;
+  try {
+    const res = await apiFetchRaw(endpoints.downloadPdf.url, {
+      method: "GET",
+      query: { pdfPath: pdfPath.value },
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    objectUrl = URL.createObjectURL(blob);
+    const filename = pdfPath.value.split("/").pop() ?? "deck.pdf";
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } catch (err) {
+    alert(extractErrorMessage(err));
+  } finally {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    pdfDownloading.value = false;
   }
 }
 </script>

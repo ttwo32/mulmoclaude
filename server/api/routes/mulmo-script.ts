@@ -18,6 +18,8 @@ import {
   audio,
   movie,
   movieFilePath,
+  pdf,
+  pdfFilePath,
   setGraphAILogger,
   addSessionProgressCallback,
   removeSessionProgressCallback,
@@ -108,6 +110,7 @@ interface ErrorResponse {
 type BeatImageResponse = { image: string | null } | ErrorResponse;
 type BeatAudioResponse = { audio: string | null } | ErrorResponse;
 type MovieStatusResponse = { moviePath: string | null } | ErrorResponse;
+type PdfStatusResponse = { pdfPath: string | null } | ErrorResponse;
 type GenerateBeatAudioResponse = { audio: string } | ErrorResponse;
 
 interface BeatQuery {
@@ -256,6 +259,11 @@ async function loadScriptFromDisk(filePath: string, res: Response): Promise<Scri
 // still collide. The set is intentionally process-local — a multi-
 // process deployment would need an external lock; that's out of scope.
 const inFlightMovies = new Set<string>();
+
+// Same dedup model as inFlightMovies, scoped to PDF generation
+// (#1614). PDFs and movies don't share the lock — they write to
+// different output files and can safely run in parallel.
+const inFlightPdfs = new Set<string>();
 
 function triggerAutoBackgroundMovie(absoluteFilePath: string, wireFilePath: string, chatSessionId: string | undefined): void {
   if (inFlightMovies.has(absoluteFilePath)) return;
@@ -966,6 +974,137 @@ bindRoute(router, API_ROUTES.mulmoScript.downloadMovie, (req: Request, res: Resp
   const absolutePath = resolveStoryPath(moviePath, res);
   if (!absolutePath) return;
 
+  res.download(absolutePath);
+});
+
+// ── PDF (#1614) ────────────────────────────────────────────────
+//
+// PDF is the third output channel for a MulmoScript, alongside the
+// existing movie pipeline. Same three-endpoint shape: poll status,
+// kick off generation (SSE), download. We pin pdfMode="slide" +
+// pdfSize="a4" — that's the configured default for MulmoClaude's
+// editor; mulmocast's other modes (talk / handout / letter) stay
+// reachable via the CLI for power users.
+
+const PDF_MODE = "slide" as const;
+const PDF_SIZE = "a4" as const;
+
+bindRoute(
+  router,
+  API_ROUTES.mulmoScript.pdfStatus,
+  async (req: Request<object, PdfStatusResponse, object, FilePathQuery>, res: Response<PdfStatusResponse>) => {
+    const { filePath } = req.query;
+    if (!filePath) {
+      badRequest(res, "filePath is required");
+      return;
+    }
+    const absoluteFilePath = resolveStoryPath(filePath, res);
+    if (!absoluteFilePath) return;
+    try {
+      const context = await buildContext(absoluteFilePath);
+      if (!context) {
+        res.json({ pdfPath: null });
+        return;
+      }
+      const outputPath = pdfFilePath(context, PDF_MODE);
+      if (!existsSync(outputPath)) {
+        res.json({ pdfPath: null });
+        return;
+      }
+      // Same "newer than source" gate the movie status uses: a stale
+      // PDF (script edited after PDF was generated) reports null so
+      // the UI re-offers the Generate button.
+      const pdfMtime = statSync(outputPath).mtimeMs;
+      const sourceMtime = statSync(absoluteFilePath).mtimeMs;
+      if (pdfMtime < sourceMtime) {
+        res.json({ pdfPath: null });
+        return;
+      }
+      res.json({ pdfPath: toStoryRef(outputPath) });
+    } catch (err) {
+      serverError(res, errorMessage(err));
+    }
+  },
+);
+
+bindRoute(router, API_ROUTES.mulmoScript.generatePdf, async (req: Request<object, object, { filePath: string; chatSessionId?: string }>, res: Response) => {
+  const { filePath, chatSessionId } = req.body;
+  if (!filePath) {
+    badRequest(res, "filePath is required");
+    return;
+  }
+  if (ffmpegUnavailable(res)) return;
+
+  const absoluteFilePath = resolveStoryPath(filePath, res);
+  if (!absoluteFilePath) return;
+
+  if (inFlightPdfs.has(absoluteFilePath)) {
+    badRequest(res, "PDF generation is already in progress for this script");
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  const send = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+  inFlightPdfs.add(absoluteFilePath);
+  publishGeneration(chatSessionId, GENERATION_KINDS.pdf, filePath, "", false);
+  let genError: string | undefined;
+  try {
+    const context = await buildContext(absoluteFilePath);
+    if (!context) {
+      genError = "Failed to initialize mulmo context";
+      send({ type: "error", message: genError });
+      return;
+    }
+    // Mirror the movie pipeline's per-beat progress reporting so the
+    // UI's pendingGenerations watcher can light spinners during the
+    // image pass. The PDF action itself doesn't emit progress events.
+    const idToIndex = new Map<string, number>();
+    (context.studio.script.beats as MulmoBeat[]).forEach((beat, index) => {
+      const key = beat.id ?? `__index__${index}`;
+      idToIndex.set(key, index);
+    });
+    const onProgress = (event: { kind: string; sessionType: string; id?: string; inSession: boolean }) => {
+      if (event.kind !== "beat" || event.inSession || event.id === undefined) return;
+      const beatIndex = idToIndex.get(event.id);
+      if (beatIndex === undefined) return;
+      if (event.sessionType !== "image") return;
+      send({ type: "beat_image_done", beatIndex });
+    };
+    addSessionProgressCallback(onProgress);
+    try {
+      const imagesContext = await images(context);
+      await pdf(imagesContext, PDF_MODE, PDF_SIZE);
+      const outputPath = pdfFilePath(imagesContext, PDF_MODE);
+      if (!existsSync(outputPath)) {
+        genError = "PDF was not generated";
+        send({ type: "error", message: genError });
+        return;
+      }
+      send({ type: "done", pdfPath: toStoryRef(outputPath) });
+    } finally {
+      removeSessionProgressCallback(onProgress);
+    }
+  } catch (err) {
+    genError = errorMessage(err);
+    send({ type: "error", message: genError });
+  } finally {
+    inFlightPdfs.delete(absoluteFilePath);
+    publishGeneration(chatSessionId, GENERATION_KINDS.pdf, filePath, "", true, genError);
+    res.end();
+  }
+});
+
+bindRoute(router, API_ROUTES.mulmoScript.downloadPdf, (req: Request, res: Response) => {
+  const pdfPath = getOptionalStringQuery(req, "pdfPath");
+  if (!pdfPath) {
+    badRequest(res, "pdfPath is required");
+    return;
+  }
+  const absolutePath = resolveStoryPath(pdfPath, res);
+  if (!absolutePath) return;
   res.download(absolutePath);
 });
 

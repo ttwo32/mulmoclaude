@@ -43,6 +43,7 @@ export const GENERATION_KINDS = {
   characterImage: "characterImage",
   beatAudio: "beatAudio",
   movie: "movie",
+  pdf: "pdf",
 } as const;
 
 export type GenerationKind = (typeof GENERATION_KINDS)[keyof typeof GENERATION_KINDS];
