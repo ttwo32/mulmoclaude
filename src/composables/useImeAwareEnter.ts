@@ -22,13 +22,27 @@ export interface ImeAwareEnterHandlers {
   onCompositionEnd: () => void;
   onKeydown: (event: KeyboardEvent) => void;
   onBlur: () => void;
+  /**
+   * True when this keydown is (or is likely) an IME confirmation rather than a
+   * deliberate keypress: mid-composition, or within the Safari post-
+   * `compositionend` race window where `isComposing` is already false. Other
+   * keydown consumers (e.g. the slash-command menu's Enter handler) call this
+   * to avoid hijacking an IME-confirming Enter.
+   */
+  isImeConfirmation: (event: KeyboardEvent) => boolean;
 }
 
 export function useImeAwareEnter(onSend: () => void, now: () => number = () => performance.now()): ImeAwareEnterHandlers {
   let isImeComposing = false;
   let lastCompositionEndAt = 0;
 
+  function isImeConfirmation(event: KeyboardEvent): boolean {
+    if (event.isComposing || isImeComposing) return true;
+    return now() - lastCompositionEndAt < SAFARI_IME_RACE_WINDOW_MS;
+  }
+
   return {
+    isImeConfirmation,
     onCompositionStart() {
       isImeComposing = true;
     },

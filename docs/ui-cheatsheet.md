@@ -111,6 +111,8 @@ In **Stack layout** this sidebar isn't rendered; the same data flows through `<S
 │ │                                       │ │ the top of certain views │  │
 │ │  ┌─<ChatInput> [chat-input/wrapper]─┐ │ │                          │  │
 │ │  │ <SuggestionsPanel> (when open)   │ │ │                          │  │
+│ │  │ <SlashCommandMenu> (typing "/")  │ │ │                          │  │
+│ │  │   [slash-command-menu]           │ │ │                          │  │
 │ │  │ [user-input]                  …  │ │ │                          │  │
 │ │  │ [suggestions-btn] (if queries)   │ │ │                          │  │
 │ │  │ [send-btn] [stop-btn]            │ │ │                          │  │
@@ -230,8 +232,9 @@ several layouts: the **index** (page list), a **single page** body, the activity
 │ ┌─[wiki-linked-references] (pages whose [[links]] point here)┐ │
 │ │ • [wiki-linked-reference-<slug>] → /wiki/pages/<slug>     │ │
 │ └───────────────────────────────────────────────────────────┘ │
-│ Per-page chat composer:                                       │
+│ Per-page chat composer (<PageChatComposer>):                  │
 │   [wiki-page-chat-input]  [wiki-page-chat-send]               │
+│   typing "/" → <SlashCommandMenu> [slash-command-menu]        │
 └───────────────────────────────────────────────────────────────┘
 ```
 

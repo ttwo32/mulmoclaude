@@ -153,3 +153,29 @@ describe("useImeAwareEnter", () => {
     assert.equal(sends.length, 1);
   });
 });
+
+describe("useImeAwareEnter.isImeConfirmation", () => {
+  const enterEvent = (opts: { isComposing?: boolean }) => fakeKeydown({ key: "Enter", isComposing: opts.isComposing }) as unknown as KeyboardEvent;
+
+  it("is true mid-composition (event flag or internal flag)", () => {
+    const { handlers } = setup();
+    assert.equal(handlers.isImeConfirmation(enterEvent({ isComposing: true })), true);
+    handlers.onCompositionStart();
+    assert.equal(handlers.isImeConfirmation(enterEvent({ isComposing: false })), true);
+  });
+
+  it("is true within the Safari post-compositionend race window, false past it", () => {
+    const { handlers, advance } = setup();
+    handlers.onCompositionStart();
+    handlers.onCompositionEnd();
+    advance(1);
+    assert.equal(handlers.isImeConfirmation(enterEvent({ isComposing: false })), true);
+    advance(SAFARI_IME_RACE_WINDOW_MS);
+    assert.equal(handlers.isImeConfirmation(enterEvent({ isComposing: false })), false);
+  });
+
+  it("is false for an ordinary keydown with no recent composition", () => {
+    const { handlers } = setup();
+    assert.equal(handlers.isImeConfirmation(enterEvent({ isComposing: false })), false);
+  });
+});
