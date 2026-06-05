@@ -216,6 +216,7 @@ export const ROLES: Role[] = [
       "Explain how sorting algorithms compare visually",
       "Help me understand fractions and decimals",
       "Teach me about the water cycle",
+      "I want to build my vocabulary in a new language — ask me which language I'm learning and my current level, then read config/helps/vocabulary.md, set up a vocabulary collection, and fill it with fifty words and sample sentences appropriate for my level to track my progress",
     ],
   },
   {
