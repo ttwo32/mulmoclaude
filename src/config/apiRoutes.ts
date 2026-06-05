@@ -96,6 +96,10 @@ const HOST_API_ROUTES = {
     tree: "/api/files/tree",
     dir: "/api/files/dir",
     content: "/api/files/content",
+    /** POST — create a new file. Refuses on conflict (409) so the
+     *  client doesn't have to gate creation through PUT, which is
+     *  update-only and 404s on non-existent paths (#1598). */
+    create: "/api/files/create",
     raw: "/api/files/raw",
     refRoots: "/api/files/ref-roots",
   },

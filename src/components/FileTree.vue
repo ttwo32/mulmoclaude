@@ -5,6 +5,7 @@
       class="w-full flex items-center gap-1 px-2 py-1 text-left text-sm hover:bg-gray-100 rounded"
       :data-testid="`file-tree-dir-${node.name || 'root'}`"
       @click="onToggle"
+      @contextmenu="onFolderContextMenu"
     >
       <span class="material-icons text-sm text-gray-400 shrink-0">{{ expanded ? "folder_open" : "folder" }}</span>
       <span class="text-gray-700 truncate">{{ node.name || t("fileTree.workspace") }}</span>
@@ -23,6 +24,28 @@
       <span v-if="isRecent" class="ml-auto w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" :title="t('fileTree.recentlyChanged')" />
     </button>
     <div v-if="node.type === 'dir' && expanded" class="pl-4">
+      <!-- New-file inline input (#1598). Shown when the user picked
+           "New file" from the folder's context menu. Mounted as the
+           first child so the new entry sits where the user expects
+           it (top of the folder). Esc / blur close; Enter submits. -->
+      <div v-if="createPending" class="flex items-center gap-1 px-2 py-1 text-sm" :data-testid="`file-tree-new-file-input-${node.name || 'root'}`">
+        <span class="material-icons text-sm text-gray-400 shrink-0">description</span>
+        <input
+          ref="newFileInputRef"
+          v-model="newFileSlug"
+          type="text"
+          class="flex-1 min-w-0 px-1 py-0.5 text-sm border border-blue-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+          :placeholder="placeholderText"
+          :aria-label="t('fileTree.newFileInputAria')"
+          data-testid="file-tree-new-file-input"
+          @keydown="onInputKeydown"
+          @compositionstart="onCompositionStart"
+          @compositionend="onCompositionEnd"
+          @blur="onInputBlur"
+        />
+        <span class="text-xs text-gray-400 font-mono shrink-0 select-none">{{ createPolicy?.extension }}</span>
+      </div>
+      <div v-if="createError" class="px-2 py-1 text-xs text-red-600" data-testid="file-tree-new-file-error">{{ createError }}</div>
       <!-- Loading state: children not in the cache yet. Rendered
            once per dir so a slow network shows where the wait is,
            not as a global overlay. -->
@@ -37,17 +60,42 @@
         :sort-mode="sortMode"
         @select="(p) => emit('select', p)"
         @load-children="(p) => emit('loadChildren', p)"
+        @create-file="(args) => emit('createFile', args)"
       />
     </div>
+    <!-- Floating context menu (#1598). Position-fixed near the
+         click point so it floats above the tree row regardless of
+         the scrollable pane. One-shot; clicking the option starts
+         the inline input flow above. -->
+    <Teleport to="body">
+      <div
+        v-if="menuOpen"
+        class="fixed z-50 min-w-32 bg-white border border-gray-200 rounded shadow-md py-1 text-sm"
+        :style="{ top: `${menuY}px`, left: `${menuX}px` }"
+        data-testid="file-tree-context-menu"
+        @click.stop
+      >
+        <button
+          type="button"
+          class="w-full text-left px-3 py-1.5 hover:bg-gray-100 flex items-center gap-2"
+          data-testid="file-tree-context-new-file"
+          @click="onContextNewFile"
+        >
+          <span class="material-icons text-sm text-gray-400">note_add</span>
+          {{ t("fileTree.newFileMenuItem") }}
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useExpandedDirs } from "../composables/useExpandedDirs";
 import { sortChildren } from "../utils/files/sortChildren";
 import { descriptorForPath, EDIT_POLICY_ICON_COLOR } from "../config/systemFileDescriptors";
+import { normaliseNewFileSlug, policyForFolder } from "../config/createFilePolicy";
 import type { FileSortMode } from "../composables/useFileSortMode";
 import type { TreeNode } from "../types/fileTree";
 
@@ -75,13 +123,18 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [path: string];
   loadChildren: [path: string];
+  // Bubbled up to FilesView, which performs the PUT and refreshes
+  // the tree. Per-instance FileTree state is reset by the parent
+  // setting `childrenByPath` for this folder; the inline input here
+  // closes itself when its commit resolves.
+  createFile: [args: { folder: string; filename: string; resolve: (ok: boolean, error?: string) => void }];
 }>();
 
 // Expand/collapse state lives in a module-level singleton so every
 // recursive FileTree instance shares it, and survives remounts (e.g.
 // the agent-run refresh that bumps filesRefreshToken in FilesView).
 // Default on first run: only the workspace root ("") is expanded.
-const { isExpanded, toggle } = useExpandedDirs();
+const { isExpanded, toggle, expand } = useExpandedDirs();
 const expanded = computed(() => isExpanded(props.node.path));
 
 const cached = computed(() => props.childrenByPath.get(props.node.path));
@@ -142,5 +195,167 @@ const iconColorClass = computed(() => {
   if (props.node.type !== "file") return DEFAULT_FILE_ICON_COLOR;
   const descriptor = descriptorForPath(props.node.path);
   return descriptor ? EDIT_POLICY_ICON_COLOR[descriptor.editPolicy] : DEFAULT_FILE_ICON_COLOR;
+});
+
+// --- Context menu + inline new-file input (#1598) -------------------
+
+const createPolicy = computed(() => (props.node.type === "dir" ? policyForFolder(props.node.path) : null));
+const placeholderText = computed(() => (createPolicy.value ? t(createPolicy.value.placeholderKey) : ""));
+
+const menuOpen = ref(false);
+const menuX = ref(0);
+const menuY = ref(0);
+const createPending = ref(false);
+const newFileSlug = ref("");
+const createError = ref<string | null>(null);
+const newFileInputRef = ref<HTMLInputElement | null>(null);
+// `blur` would close the input on every focus change. We mute it for
+// a single tick when the user clicks the trailing extension label or
+// re-focuses the field programmatically, so the cancel-on-blur path
+// doesn't fight legitimate re-focus.
+let suppressBlur = false;
+
+function onFolderContextMenu(event: MouseEvent): void {
+  if (!createPolicy.value) return;
+  event.preventDefault();
+  menuX.value = event.clientX;
+  menuY.value = event.clientY;
+  menuOpen.value = true;
+}
+
+function closeMenu(): void {
+  menuOpen.value = false;
+}
+
+function onContextNewFile(): void {
+  closeMenu();
+  if (!createPolicy.value) return;
+  // Make sure the folder is open so the inline input is visible.
+  if (!isExpanded(props.node.path)) expand(props.node.path);
+  newFileSlug.value = "";
+  createError.value = null;
+  createPending.value = true;
+  void nextTick(() => {
+    newFileInputRef.value?.focus();
+  });
+}
+
+function cancelCreate(): void {
+  createPending.value = false;
+  newFileSlug.value = "";
+  createError.value = null;
+}
+
+function onInputBlur(): void {
+  if (suppressBlur) {
+    suppressBlur = false;
+    return;
+  }
+  // Cancel on blur — matches Finder/VSCode's "click away to discard"
+  // behaviour. Submit still happens on Enter explicitly.
+  cancelCreate();
+}
+
+const composingFlag = ref(false);
+function onCompositionStart(): void {
+  composingFlag.value = true;
+}
+function onCompositionEnd(): void {
+  // Defer clearing so a keydown Enter that fires immediately after
+  // compositionend (Chromium IME-commit behaviour) still sees the
+  // flag true and is suppressed.
+  setTimeout(() => {
+    composingFlag.value = false;
+  }, 0);
+}
+
+function onInputKeydown(event: KeyboardEvent): void {
+  // Enter / Escape are wired here (not via Vue's `.enter` / `.esc`
+  // modifiers) because those modifiers were not firing for the user
+  // in #1598. Reading `event.key` directly matches the spec.
+  //
+  // IME guard: the Enter that commits a Japanese / Chinese / Korean
+  // composition fires keydown with either `isComposing === true`
+  // (Firefox) or `keyCode === 229` (Chrome / Safari). Without the
+  // 229 fallback the user gets an empty-filename error the moment
+  // they confirm an IME candidate. `composingFlag` covers the
+  // "compositionend just fired but the trailing keyup hasn't" gap
+  // some browsers expose.
+  if (event.key === "Enter") {
+    if (composingFlag.value || event.isComposing || event.keyCode === 229) return;
+    event.preventDefault();
+    onNewFileSubmit();
+    return;
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    cancelCreate();
+  }
+}
+
+function refocusInput(): void {
+  // Arm `suppressBlur` for the SINGLE blur that the focus() call
+  // may produce before settling, then clear it so the next real
+  // click-away triggers cancel-on-blur as expected. Without the
+  // post-focus clear the flag stays armed after a validation /
+  // save failure and silently swallows the user's next blur
+  // (CodeRabbit review on #1608).
+  suppressBlur = true;
+  void nextTick(() => {
+    newFileInputRef.value?.focus();
+    setTimeout(() => {
+      suppressBlur = false;
+    }, 0);
+  });
+}
+
+function onNewFileSubmit(): void {
+  if (!createPolicy.value) return;
+  const result = normaliseNewFileSlug(newFileSlug.value, createPolicy.value);
+  if (!result.ok) {
+    createError.value = result.reason === "empty" ? t("fileTree.newFileError.empty") : t("fileTree.newFileError.unsafe");
+    refocusInput();
+    return;
+  }
+  // Keep the input open until the parent's PUT resolves so a save
+  // failure leaves the user where they were typing. The parent
+  // hands back ok / error via the `resolve` callback.
+  suppressBlur = true;
+  emit("createFile", {
+    folder: props.node.path,
+    filename: result.filename,
+    resolve: (ok, error) => {
+      if (ok) {
+        cancelCreate();
+        return;
+      }
+      createError.value = error ?? t("fileTree.newFileError.saveFailed");
+      refocusInput();
+    },
+  });
+}
+
+// Global click closes the menu — Teleport puts it on body, so a
+// click outside the menu but inside the tree pane will still trigger
+// this. The Teleport's @click.stop above keeps clicks inside the
+// menu from being treated as outside.
+function onWindowClick(): void {
+  if (menuOpen.value) closeMenu();
+}
+function onWindowKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape" && menuOpen.value) closeMenu();
+}
+watch(menuOpen, (open) => {
+  if (open) {
+    window.addEventListener("click", onWindowClick);
+    window.addEventListener("keydown", onWindowKeydown);
+  } else {
+    window.removeEventListener("click", onWindowClick);
+    window.removeEventListener("keydown", onWindowKeydown);
+  }
+});
+onBeforeUnmount(() => {
+  window.removeEventListener("click", onWindowClick);
+  window.removeEventListener("keydown", onWindowKeydown);
 });
 </script>

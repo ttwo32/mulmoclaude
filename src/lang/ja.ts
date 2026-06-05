@@ -158,6 +158,21 @@ const jaMessages = {
   fileTree: {
     workspace: "（ワークスペース）",
     recentlyChanged: "最近変更されました",
+    newFileMenuItem: "新規ファイル",
+    newFileInputAria: "新規ファイル名",
+    newFilePlaceholder: {
+      wikiPage: "ページのスラッグ",
+      summary: "サマリー名",
+      document: "ドキュメント名",
+      html: "ページ名",
+      story: "ストーリー名",
+    },
+    newFileError: {
+      empty: "ファイル名を入力してください。",
+      unsafe: "ファイル名に使用できない文字が含まれています。",
+      exists: "{filename} は既に存在します。",
+      saveFailed: "ファイルを作成できませんでした。もう一度お試しください。",
+    },
   },
   lockStatusPopup: {
     sandboxEnabledTooltip: "サンドボックス有効 (Docker)",

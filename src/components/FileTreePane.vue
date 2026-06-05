@@ -40,6 +40,7 @@
       :sort-mode="sortMode"
       @select="emit('select', $event)"
       @load-children="emit('loadChildren', $event)"
+      @create-file="emit('createFile', $event)"
     />
     <template v-if="refRoots.length > 0">
       <div class="mt-2 pt-2 border-t border-gray-200 px-1 mb-1 flex items-center gap-1">
@@ -83,6 +84,7 @@ const emit = defineEmits<{
   select: [path: string];
   loadChildren: [path: string];
   "update:sortMode": [mode: FileSortMode];
+  createFile: [args: { folder: string; filename: string; resolve: (ok: boolean, error?: string) => void }];
 }>();
 
 // Shared empty set for reference roots (they don't highlight recents).

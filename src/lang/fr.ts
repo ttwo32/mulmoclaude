@@ -155,6 +155,21 @@ const frMessages = {
   fileTree: {
     workspace: "(espace de travail)",
     recentlyChanged: "Modifiés récemment",
+    newFileMenuItem: "Nouveau fichier",
+    newFileInputAria: "Nom du nouveau fichier",
+    newFilePlaceholder: {
+      wikiPage: "slug-de-page",
+      summary: "nom-du-résumé",
+      document: "nom-du-document",
+      html: "nom-de-page",
+      story: "nom-de-histoire",
+    },
+    newFileError: {
+      empty: "Le nom de fichier ne peut pas être vide.",
+      unsafe: "Le nom de fichier contient des caractères non valides.",
+      exists: "Un fichier nommé {filename} existe déjà ici.",
+      saveFailed: "Impossible de créer le fichier. Veuillez réessayer.",
+    },
   },
   lockStatusPopup: {
     sandboxEnabledTooltip: "Sandbox activé (Docker)",

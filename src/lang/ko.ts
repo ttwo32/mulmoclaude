@@ -161,6 +161,21 @@ const koMessages = {
   fileTree: {
     workspace: "(워크스페이스)",
     recentlyChanged: "최근 변경됨",
+    newFileMenuItem: "새 파일",
+    newFileInputAria: "새 파일 이름",
+    newFilePlaceholder: {
+      wikiPage: "페이지 slug",
+      summary: "요약 이름",
+      document: "문서 이름",
+      html: "페이지 이름",
+      story: "스토리 이름",
+    },
+    newFileError: {
+      empty: "파일 이름을 입력하세요.",
+      unsafe: "파일 이름에 사용할 수 없는 문자가 포함되어 있습니다.",
+      exists: "{filename} 파일이 이미 존재합니다.",
+      saveFailed: "파일을 생성할 수 없습니다. 다시 시도해 주세요.",
+    },
   },
   lockStatusPopup: {
     sandboxEnabledTooltip: "샌드박스 활성화 (Docker)",

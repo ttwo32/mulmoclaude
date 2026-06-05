@@ -160,6 +160,21 @@ const esMessages = {
   fileTree: {
     workspace: "(área de trabajo)",
     recentlyChanged: "Modificados recientemente",
+    newFileMenuItem: "Nuevo archivo",
+    newFileInputAria: "Nombre del nuevo archivo",
+    newFilePlaceholder: {
+      wikiPage: "slug-de-página",
+      summary: "nombre-de-resumen",
+      document: "nombre-de-documento",
+      html: "nombre-de-página",
+      story: "nombre-de-historia",
+    },
+    newFileError: {
+      empty: "El nombre del archivo no puede estar vacío.",
+      unsafe: "El nombre del archivo contiene caracteres no válidos.",
+      exists: "Ya existe un archivo llamado {filename} aquí.",
+      saveFailed: "No se pudo crear el archivo. Inténtalo de nuevo.",
+    },
   },
   lockStatusPopup: {
     sandboxEnabledTooltip: "Sandbox activado (Docker)",

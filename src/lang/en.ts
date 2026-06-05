@@ -175,6 +175,21 @@ const enMessages = {
   fileTree: {
     workspace: "(workspace)",
     recentlyChanged: "Recently changed",
+    newFileMenuItem: "New file",
+    newFileInputAria: "New file name",
+    newFilePlaceholder: {
+      wikiPage: "page-slug",
+      summary: "summary-name",
+      document: "document-name",
+      html: "page-name",
+      story: "story-name",
+    },
+    newFileError: {
+      empty: "Filename can't be empty.",
+      unsafe: "Filename contains invalid characters.",
+      exists: "A file named {filename} already exists here.",
+      saveFailed: "Couldn't create the file. Please try again.",
+    },
   },
   lockStatusPopup: {
     sandboxEnabledTooltip: "Sandbox enabled (Docker)",

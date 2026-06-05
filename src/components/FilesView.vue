@@ -12,6 +12,7 @@
       @select="selectFile"
       @load-children="loadDirChildren"
       @update:sort-mode="setSortMode"
+      @create-file="handleCreateFile"
     />
     <!-- Content pane -->
     <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -74,7 +75,7 @@ import { useMarkdownMode } from "../composables/useMarkdownMode";
 import { useFileSortMode } from "../composables/useFileSortMode";
 import { useContentDisplay } from "../composables/useContentDisplay";
 import { useMarkdownLinkHandler } from "../composables/useMarkdownLinkHandler";
-import { apiPut } from "../utils/api";
+import { apiPost, apiPut } from "../utils/api";
 import { API_ROUTES } from "../config/apiRoutes";
 import { toSchedulerResult } from "../utils/filesPreview/schedulerPreview";
 
@@ -94,7 +95,7 @@ const emit = defineEmits<{
   loadSession: [sessionId: string];
 }>();
 
-const { rootNode, refRoots, childrenByPath, treeError, loadDirChildren, ensureAncestorsLoaded, reloadRoot, loadRefRoots } = useFileTree();
+const { rootNode, refRoots, childrenByPath, treeError, loadDirChildren, ensureAncestorsLoaded, reloadDirChildren, reloadRoot, loadRefRoots } = useFileTree();
 
 const { selectedPath, content, contentLoading, contentError, loadContent, selectFile, deselectFile, abortContent } = useFileSelection();
 
@@ -147,6 +148,48 @@ async function saveRawMarkdown(newSource: string): Promise<void> {
 watch(content, () => {
   rawSaveError.value = null;
 });
+
+// #1598 — folder-row context menu → "New file" inline flow. The
+// FileTree component handles input + slug validation; here we
+// only do the conflict check + PUT + refresh. The callback shape
+// lets the inline input close itself on success and stay open
+// (with the error label) on failure.
+async function handleCreateFile(args: { folder: string; filename: string; resolve: (ok: boolean, error?: string) => void }): Promise<void> {
+  const { folder, filename, resolve } = args;
+  const targetPath = folder ? `${folder}/${filename}` : filename;
+  // Client-side conflict pre-check via the local cache — cheap and
+  // matches what the user sees. The server's create endpoint also
+  // refuses on conflict (#1598), so a tab racing with another that
+  // already won would still get a 409 below — this just turns the
+  // common case into a localised inline error without a round-trip.
+  const cached = childrenByPath.value.get(folder);
+  if (Array.isArray(cached) && cached.some((child) => child.name === filename)) {
+    resolve(false, t("fileTree.newFileError.exists", { filename }));
+    return;
+  }
+  const result = await apiPost<{ path: string; size: number; modifiedMs: number }>(API_ROUTES.files.create, {
+    path: targetPath,
+    content: "",
+  });
+  if (!result.ok) {
+    // Map HTTP status to a localised message so the inline error
+    // matches the rest of the menu's language. 409 = a race lost
+    // to another tab/agent that just created the same file.
+    if (result.status === 409) {
+      resolve(false, t("fileTree.newFileError.exists", { filename }));
+      await reloadDirChildren(folder);
+      return;
+    }
+    resolve(false, t("fileTree.newFileError.saveFailed"));
+    return;
+  }
+  resolve(true);
+  await reloadDirChildren(folder);
+  // Reveal the new file in the right-hand content pane so the user
+  // can start editing immediately. selectFile() also drives the URL
+  // bar + ancestor expansion via the existing watcher.
+  selectFile(result.data.path);
+}
 
 const schedulerResult = computed(() => toSchedulerResult(selectedPath.value, content.value?.kind === "text" ? content.value.content : null));
 
