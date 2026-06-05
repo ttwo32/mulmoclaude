@@ -12,7 +12,14 @@
       @send="onSuggestionSend"
       @edit="onSuggestionEdit"
     />
-    <div class="p-2">
+    <div class="p-2 relative">
+      <SlashCommandMenu
+        v-if="slashMenuOpen"
+        :items="slashItems"
+        :highlighted-index="slashHighlightedIndex"
+        @select="selectSlashSkill"
+        @hover="slashMenu.setHighlight($event)"
+      />
       <div v-if="fileError" class="mb-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-1.5" data-testid="file-error">
         {{ fileError }}
       </div>
@@ -35,8 +42,8 @@
           @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
           @compositionstart="imeEnter.onCompositionStart"
           @compositionend="imeEnter.onCompositionEnd"
-          @keydown="imeEnter.onKeydown"
-          @blur="imeEnter.onBlur"
+          @keydown="onKeydown"
+          @blur="onBlur"
           @paste="onPasteFile"
         />
         <div class="flex flex-col gap-1">
@@ -93,18 +100,21 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref } from "vue";
+import { nextTick, ref, toRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import ChatAttachmentPreview from "./ChatAttachmentPreview.vue";
+import SlashCommandMenu from "./SlashCommandMenu.vue";
 import SuggestionsPanel from "./SuggestionsPanel.vue";
 import { useImeAwareEnter } from "../composables/useImeAwareEnter";
+import { useSkillsList, type SkillSummary } from "../composables/useSkillsList";
+import { useSlashCommandMenu } from "../composables/useSlashCommandMenu";
 import type { PastedFile } from "../types/pastedFile";
 
 export type { PastedFile };
 
 const { t } = useI18n();
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     modelValue: string;
     pastedFile: PastedFile | null;
@@ -207,6 +217,78 @@ function onFilePicked(event: Event): void {
 }
 
 const imeEnter = useImeAwareEnter(() => emit("send"));
+
+// Inline "/" command palette. Shares the lightbulb Skills tab's data store;
+// owns only open/filter/highlight state here, with the keyboard interception
+// below running ahead of `imeEnter` so Enter selects instead of sending.
+const { skills, refresh: refreshSkills } = useSkillsList();
+const slashMenu = useSlashCommandMenu(toRef(props, "modelValue"), () => skills.value);
+const slashMenuOpen = slashMenu.isOpen;
+const slashItems = slashMenu.items;
+const slashHighlightedIndex = slashMenu.highlightedIndex;
+
+// Refresh the skill list each time the menu first opens (cheap, dedup'd) so a
+// skill added since boot shows up; collapse the lightbulb panel so the two
+// menus are never open at once.
+watch(
+  () => slashMenu.query.value,
+  (query, prev) => {
+    if (query !== null && prev === null) void refreshSkills();
+  },
+);
+watch(slashMenuOpen, (open) => {
+  if (open) suggestionsExpanded.value = false;
+});
+
+function onKeydown(event: KeyboardEvent): void {
+  if (slashMenuOpen.value && handleSlashKeydown(event)) return;
+  imeEnter.onKeydown(event);
+}
+
+function handleSlashKeydown(event: KeyboardEvent): boolean {
+  if (event.isComposing) return false; // let IME own the keys mid-composition
+  switch (event.key) {
+    case "ArrowDown":
+      event.preventDefault();
+      slashMenu.moveHighlight(1);
+      return true;
+    case "ArrowUp":
+      event.preventDefault();
+      slashMenu.moveHighlight(-1);
+      return true;
+    case "Enter":
+    case "Tab": {
+      if (event.shiftKey) return false; // Shift+Enter = newline, Shift+Tab = focus out
+      const skill = slashMenu.highlightedSkill.value;
+      if (!skill) return false;
+      event.preventDefault();
+      selectSlashSkill(skill);
+      return true;
+    }
+    case "Escape":
+      event.preventDefault();
+      slashMenu.dismiss();
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Selection populates `/<name> ` (trailing space dismisses the menu via the
+// no-bare-token rule and lets the user type arguments) — it never sends.
+function selectSlashSkill(skill: SkillSummary): void {
+  emit("update:modelValue", `/${skill.name} `);
+  nextTick(() => {
+    const field = textarea.value;
+    field?.focus();
+    if (field) field.setSelectionRange(field.value.length, field.value.length);
+  });
+}
+
+function onBlur(): void {
+  imeEnter.onBlur();
+  slashMenu.dismiss();
+}
 
 function onSuggestionSend(query: string): void {
   emit("suggestion-send", query);

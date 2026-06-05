@@ -7,7 +7,14 @@
       @send="onSuggestionSend"
       @edit="onSuggestionEdit"
     />
-    <div class="px-4 py-3 flex gap-2">
+    <div class="px-4 py-3 flex gap-2 relative">
+      <SlashCommandMenu
+        v-if="slashMenuOpen"
+        :items="slashItems"
+        :highlighted-index="slashHighlightedIndex"
+        @select="selectSlashSkill"
+        @hover="slashMenu.setHighlight($event)"
+      />
       <textarea
         ref="textareaRef"
         v-model="draft"
@@ -17,8 +24,8 @@
         class="flex-1 bg-white border border-gray-300 rounded px-3 py-2 text-sm text-gray-900 placeholder-gray-400 resize-none"
         @compositionstart="imeEnter.onCompositionStart"
         @compositionend="imeEnter.onCompositionEnd"
-        @keydown="imeEnter.onKeydown"
-        @blur="imeEnter.onBlur"
+        @keydown="onKeydown"
+        @blur="onBlur"
       />
       <div class="flex flex-col gap-1 shrink-0">
         <button
@@ -48,10 +55,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAppApi } from "../composables/useAppApi";
 import { useImeAwareEnter } from "../composables/useImeAwareEnter";
+import { useSkillsList, type SkillSummary } from "../composables/useSkillsList";
+import { useSlashCommandMenu } from "../composables/useSlashCommandMenu";
+import SlashCommandMenu from "./SlashCommandMenu.vue";
 import SuggestionsPanel from "./SuggestionsPanel.vue";
 
 const props = withDefaults(
@@ -99,4 +109,73 @@ function onSuggestionEdit(query: string) {
 }
 
 const imeEnter = useImeAwareEnter(submit);
+
+// Inline "/" command palette — same behaviour as ChatInput, sharing the
+// lightbulb Skills data store; keyboard interception runs ahead of `imeEnter`
+// so Enter selects instead of sending.
+const { skills, refresh: refreshSkills } = useSkillsList();
+const slashMenu = useSlashCommandMenu(draft, () => skills.value);
+const slashMenuOpen = slashMenu.isOpen;
+const slashItems = slashMenu.items;
+const slashHighlightedIndex = slashMenu.highlightedIndex;
+
+watch(
+  () => slashMenu.query.value,
+  (query, prev) => {
+    if (query !== null && prev === null) void refreshSkills();
+  },
+);
+watch(slashMenuOpen, (open) => {
+  if (open) suggestionsExpanded.value = false;
+});
+
+function onKeydown(event: KeyboardEvent): void {
+  if (slashMenuOpen.value && handleSlashKeydown(event)) return;
+  imeEnter.onKeydown(event);
+}
+
+function handleSlashKeydown(event: KeyboardEvent): boolean {
+  if (event.isComposing) return false; // let IME own the keys mid-composition
+  switch (event.key) {
+    case "ArrowDown":
+      event.preventDefault();
+      slashMenu.moveHighlight(1);
+      return true;
+    case "ArrowUp":
+      event.preventDefault();
+      slashMenu.moveHighlight(-1);
+      return true;
+    case "Enter":
+    case "Tab": {
+      if (event.shiftKey) return false; // Shift+Enter = newline, Shift+Tab = focus out
+      const skill = slashMenu.highlightedSkill.value;
+      if (!skill) return false;
+      event.preventDefault();
+      selectSlashSkill(skill);
+      return true;
+    }
+    case "Escape":
+      event.preventDefault();
+      slashMenu.dismiss();
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Selection populates `/<name> ` (never sends); the trailing space closes the
+// menu and lets the user type arguments.
+function selectSlashSkill(skill: SkillSummary): void {
+  draft.value = `/${skill.name} `;
+  nextTick(() => {
+    const field = textareaRef.value;
+    field?.focus();
+    if (field) field.setSelectionRange(field.value.length, field.value.length);
+  });
+}
+
+function onBlur(): void {
+  imeEnter.onBlur();
+  slashMenu.dismiss();
+}
 </script>
