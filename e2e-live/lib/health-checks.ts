@@ -2,8 +2,8 @@
 //
 // L-HAPPY-TOUR exists to catch the "individual specs all pass but the
 // whole app is broken" class of regression (2026-05-25 preset plugin
-// bundle drop that left `/todos` failing to load is the canonical
-// example). The spec walks each major View / endpoint; this module
+// bundle drop that left a plugin route failing to load is the
+// canonical example). The spec walks each major View / endpoint; this module
 // is the *pure* layer of those checks so the same assertions can be
 // reused by:
 //   - the Playwright spec (`e2e-live/tests/happy-tour.spec.ts`)
@@ -51,7 +51,7 @@ export function assertHealthBody(body: unknown): HealthCheckResult {
  * `server/plugins/preset-list.ts` — those packages are stripped from
  * the published `mulmoclaude` tarball, so a doctor CLI running there
  * should not require them. The spec lives in a dev checkout so all
- * four show up; we keep the metadata here so the same module can be
+ * of them show up; we keep the metadata here so the same module can be
  * reused from a packaged-tarball harness without forking.
  */
 export interface ExpectedPresetPlugin {
@@ -60,7 +60,6 @@ export interface ExpectedPresetPlugin {
 }
 
 export const EXPECTED_PRESET_PLUGINS: readonly ExpectedPresetPlugin[] = [
-  { name: "@mulmoclaude/todo-plugin", devOnly: false },
   { name: "@mulmoclaude/spotify-plugin", devOnly: false },
   { name: "@mulmoclaude/debug-plugin", devOnly: true },
   { name: "@mulmoclaude/edgar-plugin", devOnly: true },

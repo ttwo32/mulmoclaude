@@ -46,7 +46,7 @@ test.describe("right sidebar toggle (useRightSidebar)", () => {
   });
 
   test("is hidden on plugin views even when the preference is on", async ({ page }) => {
-    // User has the panel toggled on — should still hide on wiki / todos /
+    // User has the panel toggled on — should still hide on wiki /
     // calendar / automations etc. because those views have no agent context.
     await page.addInitScript(() => localStorage.setItem("right_sidebar_visible", "true"));
 
@@ -56,7 +56,7 @@ test.describe("right sidebar toggle (useRightSidebar)", () => {
     await expect(page.getByRole("heading", { name: "Tool Call History" })).toBeVisible();
     await expect(page.getByTitle("Tool call history", { exact: true })).toBeVisible();
 
-    for (const route of ["/wiki", "/todos", "/calendar", "/automations", "/skills", "/roles", "/files"] as const) {
+    for (const route of ["/wiki", "/calendar", "/automations", "/skills", "/roles", "/files"] as const) {
       await page.goto(route);
       await expect(page.getByText("MulmoClaude")).toBeVisible();
       // Panel content gone.

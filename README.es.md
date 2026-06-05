@@ -500,13 +500,12 @@ El canvas (panel derecho) admite 8 modos de vista, intercambiables mediante la b
 | `Cmd/Ctrl+1` | Single    | (default)         | Muestra el resultado de la herramienta seleccionada |
 | `Cmd/Ctrl+2` | Stack     | `?view=stack`     | Todos los resultados apilados verticalmente         |
 | `Cmd/Ctrl+3` | Files     | `?view=files`     | Explorador de archivos del workspace                |
-| `Cmd/Ctrl+4` | Todos     | `?view=todos`     | Tablero de pendientes Kanban / tabla / lista        |
 | `Cmd/Ctrl+5` | Scheduler | `?view=scheduler` | Calendario de tareas programadas                    |
 | `Cmd/Ctrl+6` | Wiki      | `?view=wiki`      | Índice de páginas de la wiki                        |
 | `Cmd/Ctrl+7` | Skills    | `?view=skills`    | Lista y editor de skills                            |
 | `Cmd/Ctrl+8` | Roles     | `?view=roles`     | Gestión de roles                                    |
 
-Cada modo de vista está impulsado por la URL: hacer clic en un botón del lanzador actualiza `?view=`, y aterrizar en una URL con `?view=todos` (por ejemplo) restaura la vista correspondiente. La lista de modos de vista se define una sola vez en `src/utils/canvas/viewMode.ts` — añadir un nuevo modo es un simple append al array.
+Cada modo de vista está impulsado por la URL: hacer clic en un botón del lanzador actualiza `?view=`, y aterrizar en una URL con `?view=wiki` (por ejemplo) restaura la vista correspondiente. La lista de modos de vista se define una sola vez en `src/utils/canvas/viewMode.ts` — añadir un nuevo modo es un simple append al array.
 
 ## Workspace
 
@@ -524,25 +523,9 @@ Todos los datos se almacenan como archivos planos en el directorio del workspace
 
 Consulta [`docs/developer.md`](docs/developer.md#workspace-layout-mulmoclaude) para la referencia completa.
 
-### Explorador de pendientes
+### Listas de pendientes
 
-El Explorador de Pendientes es accesible mediante `Cmd/Ctrl+4`, el botón del lanzador de Todos, o seleccionando `data/todos/todos.json` en el explorador de archivos. Ofrece tres sub-modos de vista:
-
-- **Kanban** — columnas al estilo de GitHub Projects. Arrastra tarjetas entre
-  columnas para cambiar el estado. Cada columna tiene un menú para renombrar, marcar como
-  hecho o eliminar. Se pueden añadir nuevas columnas desde la barra de herramientas.
-- **Tabla** — tabla ordenable con columnas de estado / prioridad / etiquetas / fecha
-  de vencimiento / creación. Haz clic en una fila para editarla inline.
-- **Lista** — checklist plana con el mismo editor inline.
-
-Las columnas de estado se almacenan en `data/todos/columns.json` y por defecto son
-`Backlog / Todo / In Progress / Done`. Cada pendiente lleva campos opcionales de
-`status`, `priority` (low / medium / high / urgent) y `dueDate`
-además de los campos originales de texto / nota / etiquetas / completado.
-
-La herramienta MCP `manageTodoList` del lado del chat mantiene su comportamiento existente
-sin cambios — puede leer y editar texto / nota / etiquetas / pendientes completados,
-y los campos adicionales del explorador se preservan a través de las ediciones de MCP.
+Las listas de pendientes se construyen como **colecciones** basadas en esquema, no como una vista dedicada. Pídele a Claude que "configure una lista de pendientes" y seguirá `config/helps/todo-collection.md` para crear una colección `todos` — con un enum de estado (`Backlog / Todo / In Progress / Done`), un toggle `done`, y campos opcionales de prioridad / fecha de vencimiento, eligiendo automáticamente una vista kanban / tabla / calendario según el esquema.
 
 ### Programador y programación de skills
 

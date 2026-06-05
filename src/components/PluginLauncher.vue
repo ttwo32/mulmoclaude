@@ -26,7 +26,7 @@ import { useI18n } from "vue-i18n";
 const { t } = useI18n();
 
 // Quick-access toolbar sitting above the canvas. Each button
-// navigates to a dedicated page (/todos, /wiki, etc.). The "invoke"
+// navigates to a dedicated page (/wiki, /calendar, etc.). The "invoke"
 // kind is kept in the union for future use but currently all targets
 // use "view".
 
@@ -44,7 +44,7 @@ export type PluginLauncherKind = "view"; // Switch the canvas to a dedicated vie
 // out of this file avoids duplication across the 8 locales.
 export interface PluginLauncherTarget {
   /** Stable key for testid + dispatch in App.vue. */
-  key: "todos" | "calendar" | "automations" | "wiki" | "collections" | "sources" | "news" | "skills" | "roles" | "files" | "debug";
+  key: "calendar" | "automations" | "wiki" | "collections" | "sources" | "news" | "skills" | "roles" | "files" | "debug";
   kind: PluginLauncherKind;
   /** Material-icons glyph. */
   icon: string;
@@ -63,7 +63,6 @@ export interface PluginLauncherTarget {
 
 const TARGETS: PluginLauncherTarget[] = [
   // ─── Data plugins ───
-  { key: "todos", kind: "view", icon: "checklist" },
   // Calendar + Automations were a single "Scheduler" entry until
   // #758 split them. Calendar keeps the former ⌘4 shortcut; the
   // Automations entry picks up ⌘9 (the first unused number).
@@ -97,9 +96,9 @@ const TARGETS: PluginLauncherTarget[] = [
 
 // Index AFTER which the visual separator is inserted (between data
 // plugins on the left and management on the right). Data plugins are
-// todos / calendar / automations / wiki / collections / sources /
-// news (indices 0-6), so the divider renders before index 7 (skills).
-const SEPARATOR_AFTER_INDEX = 7;
+// calendar / automations / wiki / collections / sources /
+// news (indices 0-5), so the divider renders before index 6 (skills).
+const SEPARATOR_AFTER_INDEX = 6;
 
 // Dev-mode flag — set `VITE_DEV_MODE=1` in `.env`. Anything else
 // (including unset) hides any target with `devOnly: true`.

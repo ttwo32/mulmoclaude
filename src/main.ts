@@ -46,9 +46,6 @@ const pluginEndpointRegistry: EndpointRegistry = {
   // Plugin-owned top-level groups. Each value is a `Record<string,
   // ResolvedRoute>` produced by the host aggregator from the
   // plugin's META `{ apiNamespace, apiRoutes }`.
-  // todos: removed (#1145) — runtime plugin uses
-  // `/api/plugins/runtime/<pkg>/dispatch` directly via
-  // `runtime.dispatch`, so no entry in the endpoint registry.
   scheduler: API_ROUTES.scheduler,
   mulmoScript: API_ROUTES.mulmoScript,
   skills: API_ROUTES.skills,

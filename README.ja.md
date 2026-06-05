@@ -49,7 +49,7 @@ yarn dev
 | 「プロジェクト提案書を書いて」                   | キャンバスに表示されるリッチな Markdown ドキュメント |
 | 「前四半期の売上をグラフにして」                 | インタラクティブな ECharts ビジュアライゼーション    |
 | 「京都の旅行プランを作って」                     | 画像付きのイラスト入りガイド                         |
-| 「ToDo を管理して」                              | ドラッグ & ドロップ対応の Kanban ボード              |
+| 「ToDo リストを作って」                          | Kanban ボード付きのスキーマ駆動コレクション          |
 | 「この記事を取り込んで: URL」                    | 長期記憶のための `[[links]]` 付き Wiki ページ        |
 | 「毎日のニュースダイジェストをスケジュールして」 | 自動実行される繰り返しタスク                         |
 | 「夕日の画像を生成して」                         | AI 生成画像 (Gemini)                                 |
@@ -519,13 +519,12 @@ PPTX 変換は Docker サンドボックスイメージ内 (`libreoffice --headl
 | `Cmd/Ctrl+1`   | Single    | (デフォルト)      | 選択したツールの結果を表示                   |
 | `Cmd/Ctrl+2`   | Stack     | `?view=stack`     | すべての結果を縦に積み重ねて表示             |
 | `Cmd/Ctrl+3`   | Files     | `?view=files`     | ワークスペースのファイルエクスプローラ       |
-| `Cmd/Ctrl+4`   | Todos     | `?view=todos`     | Kanban / テーブル / リスト形式の ToDo ボード |
 | `Cmd/Ctrl+5`   | Scheduler | `?view=scheduler` | スケジュールタスクのカレンダー               |
 | `Cmd/Ctrl+6`   | Wiki      | `?view=wiki`      | Wiki ページインデックス                      |
 | `Cmd/Ctrl+7`   | Skills    | `?view=skills`    | skill 一覧とエディタ                         |
 | `Cmd/Ctrl+8`   | Roles     | `?view=roles`     | ロール管理                                   |
 
-すべてのビューモードは URL 駆動です: ランチャーボタンをクリックすると `?view=` が更新され、(例えば) `?view=todos` の URL で開くと対応するビューが復元されます。ビューモードのリストは `src/utils/canvas/viewMode.ts` で一度だけ定義されています — 新しいモードの追加は配列への追記 1 つで済みます。
+すべてのビューモードは URL 駆動です: ランチャーボタンをクリックすると `?view=` が更新され、(例えば) `?view=wiki` の URL で開くと対応するビューが復元されます。ビューモードのリストは `src/utils/canvas/viewMode.ts` で一度だけ定義されています — 新しいモードの追加は配列への追記 1 つで済みます。
 
 ## ワークスペース
 
@@ -543,17 +542,9 @@ PPTX 変換は Docker サンドボックスイメージ内 (`libreoffice --headl
 
 完全なリファレンスは [`docs/developer.md`](docs/developer.md#workspace-layout-mulmoclaude) を参照してください。
 
-### Todo エクスプローラ
+### ToDo リスト
 
-Todo Explorer は `Cmd/Ctrl+4`、Todos ランチャーボタン、またはファイルエクスプローラで `data/todos/todos.json` を選択することでアクセスできます。3 つのサブビューモードを提供します:
-
-- **Kanban** — GitHub Projects スタイルのカラム。ステータスを変更するにはカードをカラム間でドラッグします。各カラムには名前変更、完了済みに設定、削除のためのメニューがあります。新しいカラムはツールバーから追加できます。
-- **Table** — ステータス / 優先度 / ラベル / 期限 / 作成日のカラムを持つソート可能なテーブル。行をクリックするとインライン編集できます。
-- **List** — 同じインラインエディタを持つフラットなチェックリスト。
-
-ステータスカラムは `data/todos/columns.json` に保存され、デフォルトは `Backlog / Todo / In Progress / Done` です。各 ToDo には元の text / note / labels / completed フィールドに加えて、オプションの `status`、`priority` (low / medium / high / urgent)、`dueDate` フィールドが付きます。
-
-チャット側の `manageTodoList` MCP ツールは既存の動作を維持します — text / note / labels / completed の ToDo を読み書きでき、エクスプローラの追加フィールドは MCP 編集を跨いで保持されます。
+ToDo リストは専用ビューではなく、スキーマ駆動の **コレクション** として構築します。Claude に「ToDo リストを作って」と頼むと、`config/helps/todo-collection.md` に従って `todos` コレクションを作成します — ステータス enum (`Backlog / Todo / In Progress / Done`)、`done` トグル、任意の優先度 / 期限フィールドを持ち、スキーマに応じて kanban / テーブル / カレンダービューが自動的に選択されます。
 
 ### スケジューラと skill のスケジューリング
 

@@ -10,7 +10,7 @@ const NON_ASCII_HASH_LEN = 16;
 // (acceptance cap). 120 leaves plenty of room for filename slugs while
 // staying well under filesystem path limits and URL-segment conventions.
 // Bumped from 64 alongside the slug-rule unification (#732) so journal /
-// todo / wiki / files can all share one rule without truncating their
+// wiki / files can all share one rule without truncating their
 // previously-longer inputs.
 //
 // Exported so callers that compose a base slug with their own suffix
@@ -70,9 +70,8 @@ export function slugify(title: string, defaultSlug = "page", maxLength = DEFAULT
 // within `DEFAULT_MAX_LENGTH` — required because a 120-char base + "-2"
 // would otherwise produce a 122-char id that fails `isValidSlug`.
 //
-// Shared between server (`todosColumnsHandlers#uniqueId`) and the
-// Playwright mock (`e2e/tests/todo-columns.spec.ts`) so the e2e
-// dispatcher mirrors server behavior at the truncation boundary.
+// Shared collision-disambiguation helper so any caller composing a
+// base slug with a numeric suffix mirrors the same truncation boundary.
 //
 // Precondition: `base` must already be a canonical slug — typically
 // the output of `slugify`. Concretely: lowercase ASCII alnum +

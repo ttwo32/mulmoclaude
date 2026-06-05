@@ -11,8 +11,8 @@ npx create-mulmoclaude-plugin @example/cool-plugin
 Creates a directory in the current working directory with a runnable
 counter sample plugin: server-side `definePlugin` factory, `View.vue`
 canvas component, plugin-local i18n, and the build / lint config the
-in-tree reference plugins (`bookmarks-plugin`, `accounting-plugin`,
-`todo-plugin`) use.
+in-tree reference plugins (`bookmarks-plugin`, `accounting-plugin`)
+use.
 
 The output is a starting point — rename the tool, replace the counter
 logic with whatever your plugin actually does, ship.

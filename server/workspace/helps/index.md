@@ -20,7 +20,7 @@ Under the hood it uses the Claude Code Agent SDK as its LLM core. Claude has ful
 
 ## Key Capabilities
 
-- Manage a todo list and calendar scheduler
+- Build todo lists and other record collections; manage a calendar scheduler
 - Present documents and spreadsheets with rich formatting
 - Generate and edit images
 - Create interactive mind maps

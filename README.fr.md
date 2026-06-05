@@ -501,13 +501,12 @@ Le canevas (panneau de droite) prend en charge 8 modes d'affichage, permutables 
 | `Cmd/Ctrl+1` | Single    | (par défaut)      | Afficher le résultat de l'outil sélectionné    |
 | `Cmd/Ctrl+2` | Stack     | `?view=stack`     | Tous les résultats empilés verticalement       |
 | `Cmd/Ctrl+3` | Files     | `?view=files`     | Explorateur de fichiers de l'espace de travail |
-| `Cmd/Ctrl+4` | Todos     | `?view=todos`     | Tableau de tâches Kanban / tableau / liste     |
 | `Cmd/Ctrl+5` | Scheduler | `?view=scheduler` | Calendrier des tâches planifiées               |
 | `Cmd/Ctrl+6` | Wiki      | `?view=wiki`      | Index des pages du wiki                        |
 | `Cmd/Ctrl+7` | Skills    | `?view=skills`    | Liste et éditeur de skills                     |
 | `Cmd/Ctrl+8` | Roles     | `?view=roles`     | Gestion des rôles                              |
 
-Chaque mode d'affichage est piloté par l'URL : cliquer sur un bouton du lanceur met à jour `?view=`, et atterrir sur une URL avec `?view=todos` (par exemple) restaure la vue correspondante. La liste des modes d'affichage est définie une seule fois dans `src/utils/canvas/viewMode.ts` — ajouter un nouveau mode est un simple ajout à un tableau.
+Chaque mode d'affichage est piloté par l'URL : cliquer sur un bouton du lanceur met à jour `?view=`, et atterrir sur une URL avec `?view=wiki` (par exemple) restaure la vue correspondante. La liste des modes d'affichage est définie une seule fois dans `src/utils/canvas/viewMode.ts` — ajouter un nouveau mode est un simple ajout à un tableau.
 
 ## Espace de travail
 
@@ -525,25 +524,9 @@ Toutes les données sont stockées sous forme de fichiers en clair dans le répe
 
 Consultez [`docs/developer.md`](docs/developer.md#workspace-layout-mulmoclaude) pour la référence complète.
 
-### Explorateur de tâches
+### Listes de tâches
 
-L'explorateur de tâches est accessible via `Cmd/Ctrl+4`, le bouton de lanceur Todos, ou en sélectionnant `data/todos/todos.json` dans l'explorateur de fichiers. Il fournit trois sous-modes d'affichage :
-
-- **Kanban** — colonnes de type GitHub Projects. Glissez les cartes entre
-  colonnes pour changer le statut. Chaque colonne a un menu pour renommer, marquer comme
-  terminé ou supprimer. De nouvelles colonnes peuvent être ajoutées depuis la barre d'outils.
-- **Table** — tableau triable avec les colonnes statut / priorité / étiquettes / date
-  d'échéance / date de création. Cliquez sur une ligne pour éditer en ligne.
-- **List** — liste de contrôle plate avec le même éditeur en ligne.
-
-Les colonnes de statut sont stockées dans `data/todos/columns.json` et par défaut à
-`Backlog / Todo / In Progress / Done`. Chaque tâche porte des champs optionnels
-`status`, `priority` (low / medium / high / urgent), et `dueDate`
-en plus des champs originaux texte / note / étiquettes / terminé.
-
-L'outil MCP côté chat `manageTodoList` conserve son comportement existant
-inchangé — il peut lire et modifier les tâches texte / note / étiquettes /
-terminé, et les champs supplémentaires de l'explorateur sont préservés lors des modifications MCP.
+Les listes de tâches se construisent comme des **collections** pilotées par schéma, et non comme une vue dédiée. Demandez à Claude de « configurer une liste de tâches » et il suivra `config/helps/todo-collection.md` pour créer une collection `todos` — avec un enum de statut (`Backlog / Todo / In Progress / Done`), un toggle `done` et des champs optionnels de priorité / date d'échéance, en choisissant automatiquement une vue kanban / tableau / calendrier selon le schéma.
 
 ### Planificateur et planification des skills
 

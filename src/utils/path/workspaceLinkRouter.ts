@@ -13,7 +13,7 @@ export type WorkspaceLinkTarget =
   | { kind: "file"; path: string }
   | { kind: "session"; sessionId: string }
   /** A top-level SPA route like `/collections/mc-clients`,
-   *  `/calendar`, `/todos/<id>`. `path` includes the leading slash
+   *  `/calendar`, `/automations/<id>`. `path` includes the leading slash
    *  so callers can pass it directly to `router.push(string)`. */
   | { kind: "spa-route"; path: string };
 
@@ -89,7 +89,7 @@ export function classifyWorkspacePath(href: string): WorkspaceLinkTarget | null 
   }
 
   // Top-level SPA route: leading segment names one of the host's
-  // pages (collections, calendar, todos, automations, skills, …).
+  // pages (collections, calendar, automations, skills, …).
   // Without this branch, those links would be routed to the Files
   // view (with `files/` prepended) and 404 — the trigger for this
   // generalization was `[X](/collections/mc-clients)` from the

@@ -253,12 +253,6 @@ const HOST_API_ROUTES = {
     readState: "/api/news/read-state",
   },
 
-  // todos: removed — todo is now a runtime plugin
-  // (`@mulmoclaude/todo-plugin`, #1145 migration). The frontend
-  // calls into it via `runtime.dispatch({kind: ...})` from
-  // `useTodos` (`@mulmoclaude/todo-plugin/composables`); no
-  // host-managed routes remain.
-
   hooks: {
     /** Internal endpoint hit by the PostToolUse dispatcher
      *  (`<workspace>/.claude/hooks/mulmoclaude-dispatcher.mjs`) to

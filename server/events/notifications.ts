@@ -180,8 +180,8 @@ function buildWikiTarget(target: Extract<NavigateTarget, { view: typeof NOTIFICA
 }
 
 function buildSingleSegmentTarget(view: string, segment: string | undefined): string {
-  // Helper for views with a single optional path component: todos
-  // (itemId), automations (taskId), sources (slug). Unsafe values
+  // Helper for views with a single optional path component:
+  // automations (taskId), sources (slug). Unsafe values
   // fall back to the view's index — a soft-fail since these views
   // all have a usable index page.
   if (segment && isSafePathComponent(segment)) return `/${view}/${encodeURIComponent(segment)}`;
@@ -192,8 +192,6 @@ function buildNavigateTarget(target: NavigateTarget): string | undefined {
   switch (target.view) {
     case NOTIFICATION_VIEWS.chat:
       return buildChatTarget(target);
-    case NOTIFICATION_VIEWS.todos:
-      return buildSingleSegmentTarget(PAGE_ROUTES.todos, target.itemId);
     case NOTIFICATION_VIEWS.calendar:
       return `/${PAGE_ROUTES.calendar}`;
     case NOTIFICATION_VIEWS.automations:

@@ -26,7 +26,6 @@ const HOST_TOOL_NAMES = {
   textResponse: "text-response",
 
   // Management plugins (not yet migrated to META)
-  // manageTodoList migrated — see `src/plugins/todo/meta.ts`.
   // manageCalendar migrated — see `src/plugins/scheduler/calendarMeta.ts`.
   // manageAutomations migrated — see `src/plugins/scheduler/automationsMeta.ts`.
   // manageSkills migrated — see `src/plugins/manageSkills/meta.ts`.
@@ -79,7 +78,6 @@ const HOST_TOOL_NAMES = {
   // strings via the schema's permissive branch — see
   // `availablePluginsSchema` in `src/config/roles.ts`.
   manageBookmarks: "manageBookmarks",
-  manageTodoList: "manageTodoList",
   manageSpotify: "manageSpotify",
   // manageRecipes removed (#1286) — recipe-book-plugin dropped from
   // PRESET_PLUGINS; recipe management moved to the `mc-cooking-coach`

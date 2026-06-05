@@ -136,7 +136,7 @@ describe("isValidSlug", () => {
   it("rejects empty and too-long strings", () => {
     // Cap is DEFAULT_MAX_LENGTH (120); 121 chars must fail. Bumped from
     // 64→120 alongside the slug-rule unification (#732) so journal /
-    // todo / wiki / files share one rule.
+    // wiki / files share one rule.
     assert.equal(isValidSlug(""), false);
     assert.equal(isValidSlug("a".repeat(121)), false);
   });

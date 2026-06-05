@@ -19,7 +19,6 @@ All data lives in the workspace directory as plain files:
 - `conversations/chat/` — chat session history (one .jsonl per session)
 - `conversations/memory/` — distilled user facts as topic files (`<type>/<topic>.md`); see the Memory section below for the index and read rules.
 - `conversations/summaries/` — journal output (daily / topics / archive)
-- `data/plugins/%40mulmoclaude%2Ftodo-plugin/` — todo items (plugin-scoped after #1145; the encoded segment is `encodeURIComponent` of the npm package name)
 - `data/calendar/` — calendar events
 - `data/contacts/` — address book entries
 - `data/wiki/` — personal knowledge wiki (index.md, pages/, sources/, log.md)

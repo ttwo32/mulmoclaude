@@ -1,14 +1,13 @@
 // L-HAPPY-TOUR: capability-axis sweep of the major Views / endpoints.
 //
 // This spec is intentionally shallow. Per-feature regressions belong
-// in their own L-XX specs (`/wiki` linking → wiki-nav.spec.ts, todo
-// schema → unit tests, etc.); happy-tour exists to catch the class of
-// regression where an *individual feature* works in its own spec but
-// the *whole app* is broken in production. The canonical incident is
-// 2026-05-25, where `@mulmoclaude/todo-plugin` was dropped from the
-// published `mulmoclaude` tarball — every per-feature spec passed
-// against the dev checkout, but `npx mulmoclaude@latest` failed to
-// load `/todos`.
+// in their own L-XX specs (`/wiki` linking → wiki-nav.spec.ts, etc.);
+// happy-tour exists to catch the class of regression where an
+// *individual feature* works in its own spec but the *whole app* is
+// broken in production. The canonical incident is 2026-05-25, where a
+// preset plugin was dropped from the published `mulmoclaude` tarball —
+// every per-feature spec passed against the dev checkout, but
+// `npx mulmoclaude@latest` failed to load that plugin's route.
 //
 // Each step is wrapped in `test.step()` so a happy-tour failure
 // reports the broken station directly (Playwright surfaces the step
@@ -86,7 +85,6 @@ interface RouteSweepEntry {
 //   `force-tab`. happy-tour only checks "view mounted at all";
 //   tab-switch internals are scheduler-spec territory.
 const LAUNCHER_ROUTE_SWEEP: readonly RouteSweepEntry[] = [
-  { stepTitle: "6. /todos が mount + 読み込みエラー無し", path: "/todos", rootTestId: "todo-view-root", errorBannerTestId: "todo-api-error" },
   { stepTitle: "7. /calendar が mount", path: "/calendar", rootTestId: "scheduler-view-root", errorBannerTestId: "scheduler-api-error" },
   { stepTitle: "8. /wiki が mount", path: "/wiki", rootTestId: "wiki-lint-chat-button" },
   { stepTitle: "9. /files が mount", path: "/files", rootTestId: "files-view-root" },
@@ -140,8 +138,8 @@ async function assertSpaSidebarMount(page: Page): Promise<void> {
   });
 }
 
-// `requireDevOnly: true` for step 2 against `yarn dev`: all four
-// presets resolve via yarn-workspace symlinks, so we hard-require
+// `requireDevOnly: true` for step 2 against `yarn dev`: all preset
+// packages resolve via yarn-workspace symlinks, so we hard-require
 // them. CAVEAT — this catches the *shape* of the 2026-05-25 bundle
 // drop (preset entry disappears from the runtime registry), not the
 // published-tarball composition itself. The full tarball-mode catch
@@ -193,7 +191,7 @@ async function runLauncherRouteSweep(page: Page): Promise<void> {
 
 // Best-effort gate for async fetches to settle before asserting an
 // error banner is absent. `view-root` becoming visible only proves
-// the template mounted — the on-mount fetch (todo list / scheduler
+// the template mounted — the on-mount fetch (scheduler
 // items / …) is still in-flight and may surface `*-api-error` a
 // moment later. Without this gate, `toHaveCount(0)` resolves
 // instantly in the pre-fetch state and false-passes regressions

@@ -49,7 +49,7 @@ yarn dev
 | „Schreibe einen Projektvorschlag"                         | Umfangreiches Markdown-Dokument im Canvas             |
 | „Stelle den Umsatz des letzten Quartals als Diagramm dar" | Interaktive ECharts-Visualisierung                    |
 | „Erstelle einen Reiseplan für Kyoto"                      | Illustrierter Reiseführer mit Bildern                 |
-| „Verwalte meine Todos"                                    | Kanban-Board mit Drag-and-Drop                        |
+| „Richte eine Todo-Liste ein“                              | Schema-gesteuerte Collection mit Kanban-Board         |
 | „Nimm diesen Artikel auf: URL"                            | Wiki-Seite mit `[[links]]` für das Langzeitgedächtnis |
 | „Plane eine tägliche Nachrichtenübersicht"                | Wiederkehrende Aufgabe, die automatisch läuft         |
 | „Erzeuge ein Bild eines Sonnenuntergangs"                 | KI-generiertes Bild (Gemini)                          |
@@ -502,13 +502,12 @@ Das Canvas (rechtes Panel) unterstützt 8 Ansichtsmodi, umschaltbar über die La
 | `Cmd/Ctrl+1` | Single    | (Standard)        | Zeigt das ausgewählte Tool-Ergebnis  |
 | `Cmd/Ctrl+2` | Stack     | `?view=stack`     | Alle Ergebnisse vertikal gestapelt   |
 | `Cmd/Ctrl+3` | Files     | `?view=files`     | Workspace-Datei-Explorer             |
-| `Cmd/Ctrl+4` | Todos     | `?view=todos`     | Kanban / Tabelle / Listen-Todo-Board |
 | `Cmd/Ctrl+5` | Scheduler | `?view=scheduler` | Kalender geplanter Aufgaben          |
 | `Cmd/Ctrl+6` | Wiki      | `?view=wiki`      | Wiki-Seitenindex                     |
 | `Cmd/Ctrl+7` | Skills    | `?view=skills`    | Skills-Liste und Editor              |
 | `Cmd/Ctrl+8` | Roles     | `?view=roles`     | Rollenverwaltung                     |
 
-Jeder Ansichtsmodus ist URL-gesteuert: Das Klicken auf eine Launcher-Schaltfläche aktualisiert `?view=`, und das Aufrufen einer URL mit `?view=todos` (zum Beispiel) stellt die entsprechende Ansicht wieder her. Die Liste der Ansichtsmodi wird einmal in `src/utils/canvas/viewMode.ts` definiert — das Hinzufügen eines neuen Modus ist ein einzelnes Array-Append.
+Jeder Ansichtsmodus ist URL-gesteuert: Das Klicken auf eine Launcher-Schaltfläche aktualisiert `?view=`, und das Aufrufen einer URL mit `?view=wiki` (zum Beispiel) stellt die entsprechende Ansicht wieder her. Die Liste der Ansichtsmodi wird einmal in `src/utils/canvas/viewMode.ts` definiert — das Hinzufügen eines neuen Modus ist ein einzelnes Array-Append.
 
 ## Workspace
 
@@ -526,25 +525,9 @@ Alle Daten werden als einfache Dateien im Workspace-Verzeichnis gespeichert, gru
 
 Siehe [`docs/developer.md`](docs/developer.md#workspace-layout-mulmoclaude) für die vollständige Referenz.
 
-### Todo-Explorer
+### Todo-Listen
 
-Der Todo-Explorer ist über `Cmd/Ctrl+4`, die Todos-Launcher-Schaltfläche oder durch Auswahl von `data/todos/todos.json` im Datei-Explorer zugänglich. Er bietet drei Unteransichtsmodi:
-
-- **Kanban** — GitHub-Projects-artige Spalten. Ziehen Sie Karten zwischen
-  Spalten, um den Status zu ändern. Jede Spalte hat ein Menü zum Umbenennen, als
-  erledigt markieren oder Löschen. Neue Spalten können über die Toolbar hinzugefügt werden.
-- **Table** — sortierbare Tabelle mit Spalten für Status / Priorität / Labels / Fälligkeitsdatum
-  / Erstellungsdatum. Klicken Sie auf eine Zeile zur Inline-Bearbeitung.
-- **List** — flache Checkliste mit demselben Inline-Editor.
-
-Statusspalten werden in `data/todos/columns.json` gespeichert und haben standardmäßig
-`Backlog / Todo / In Progress / Done`. Jedes Todo trägt optionale
-Felder `status`, `priority` (low / medium / high / urgent) und `dueDate`
-zusätzlich zu den ursprünglichen Feldern text / note / labels / completed.
-
-Das chat-seitige `manageTodoList`-MCP-Tool behält sein bestehendes Verhalten
-unverändert bei — es kann text / note / labels / completed-Todos lesen und bearbeiten,
-und die zusätzlichen Felder des Explorers bleiben über MCP-Änderungen hinweg erhalten.
+Todo-Listen werden als schema-gesteuerte **Collections** erstellt, nicht als dedizierte Ansicht. Bitten Sie Claude, „eine Todo-Liste einzurichten“, und es folgt `config/helps/todo-collection.md`, um eine `todos`-Collection zu erstellen — mit einem Status-Enum (`Backlog / Todo / In Progress / Done`), einem `done`-Toggle und optionalen Prioritäts- / Fälligkeitsdatumsfeldern, wobei je nach Schema automatisch eine Kanban- / Tabellen- / Kalenderansicht gewählt wird.
 
 ### Scheduler und Skill-Scheduling
 
