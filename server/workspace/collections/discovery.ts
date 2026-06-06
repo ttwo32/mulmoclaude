@@ -11,6 +11,8 @@ import { z } from "zod";
 import { log } from "../../system/logger/index.js";
 import { workspacePath } from "../workspace.js";
 import { USER_SKILLS_DIR, projectSkillsDir } from "../skills/paths.js";
+import { feedsRoot } from "../feeds/paths.js";
+import { INGEST_KINDS, FEED_SCHEDULES } from "../feeds/ingestTypes.js";
 import { SCHEMA_FILE, resolveDataDir, safeSlugName } from "./paths.js";
 import { isSafeActionTemplatePath } from "./templatePath.js";
 import type { CollectionDetail, CollectionSchema, CollectionSource, CollectionSummary } from "./types.js";
@@ -264,7 +266,26 @@ function spawnSuccessorStartsInert(schema: {
   return !(spawn.carry ?? []).includes(field); // carried ⇒ inherits the matching value
 }
 
-const CollectionSchemaZ = z
+// Declarative retrieval config for a Feed (a collection that refills
+// itself from the internet). Optional on every schema — skill-backed
+// collections omit it; only feeds discovered from `<workspace>/feeds/`
+// carry it. `http-json` needs a path to the items array; rss/atom
+// yield items natively and ignore `itemsAt`.
+const IngestSchemaZ = z
+  .object({
+    kind: z.enum(INGEST_KINDS),
+    url: z.string().url(),
+    schedule: z.enum(FEED_SCHEDULES),
+    itemsAt: z.string().trim().min(1).optional(),
+    map: z.record(z.string().trim().min(1), z.string().trim().min(1)),
+    idFrom: z.string().trim().min(1).optional(),
+  })
+  .refine((spec) => spec.kind !== "http-json" || (typeof spec.itemsAt === "string" && spec.itemsAt.trim().length > 0), {
+    message: "ingest.kind 'http-json' requires `itemsAt` — the path to the items array in the response (e.g. 'hourly[]')",
+    path: ["itemsAt"],
+  });
+
+export const CollectionSchemaZ = z
   .object({
     title: z.string().min(1),
     icon: z.string().min(1),
@@ -316,6 +337,10 @@ const CollectionSchemaZ = z
     // (e.g. high-priority todos). Reuses the `when` shape; requires
     // `completionField`; field validated to exist by refines below.
     notifyWhen: WhenSchema.optional(),
+    // Declarative retrieval config. Present only on Feeds (collections in
+    // the `<workspace>/feeds/` registry). Optional, so every existing
+    // skill schema validates unchanged.
+    ingest: IngestSchemaZ.optional(),
   })
   // The singleton value becomes a record id (and thus a `<id>.json`
   // filename), so it must satisfy the SAME `safeSlugName` rule the
@@ -589,9 +614,15 @@ export async function discoverCollections(opts: DiscoveryOptions = {}): Promise<
   const workspaceRoot = opts.workspaceRoot ?? workspacePath;
   const userDir = opts.userSkillsDir ?? USER_SKILLS_DIR;
   const projectDir = projectSkillsDir(workspaceRoot);
+  // Feeds (the non-skill `<workspace>/feeds/` registry) are scanned as a
+  // third root. They merge FIRST so a real skill collection (user or
+  // project) always overrides a feed on slug collision — a feed must
+  // never shadow a genuine skill-backed collection.
+  const feedCollections = await collectFromDir(feedsRoot(workspaceRoot), "feed", workspaceRoot);
   const userCollections = await collectFromDir(userDir, "user", workspaceRoot);
   const projectCollections = await collectFromDir(projectDir, "project", workspaceRoot);
   const merged = new Map<string, LoadedCollection>();
+  for (const entry of feedCollections) merged.set(entry.slug, entry);
   for (const entry of userCollections) merged.set(entry.slug, entry);
   for (const entry of projectCollections) merged.set(entry.slug, entry);
   return [...merged.values()].sort((left, right) => left.slug.localeCompare(right.slug));
@@ -605,10 +636,14 @@ export async function loadCollection(slug: string, opts: DiscoveryOptions = {}):
   const workspaceRoot = opts.workspaceRoot ?? workspacePath;
   const userDir = opts.userSkillsDir ?? USER_SKILLS_DIR;
   const projectDir = projectSkillsDir(workspaceRoot);
-  // Project first (overrides user).
+  // Project first (overrides user), then user, then the feeds registry
+  // last — mirroring the merge precedence in `discoverCollections` so a
+  // skill collection always wins over a feed of the same slug.
   const projectCollection = await loadOneCollection(projectDir, safeName, "project", workspaceRoot);
   if (projectCollection) return projectCollection;
-  return loadOneCollection(userDir, safeName, "user", workspaceRoot);
+  const userCollection = await loadOneCollection(userDir, safeName, "user", workspaceRoot);
+  if (userCollection) return userCollection;
+  return loadOneCollection(feedsRoot(workspaceRoot), safeName, "feed", workspaceRoot);
 }
 
 export function toSummary(collection: LoadedCollection): CollectionSummary {

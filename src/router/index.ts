@@ -63,6 +63,11 @@ const routes: RouteRecordRaw[] = [
   // News viewer (#761). Optional `?source=<slug>` query for the
   // Sources-page deep link.
   { path: "/news", name: PAGE_ROUTES.news, component: Stub },
+  // Data-source Feeds — the declarative retrieval registry. `/feeds`
+  // lists every feed; `/feeds/:slug` opens that feed's records in
+  // <CollectionView> (the same component collections use), with the
+  // back arrow returning to the feed list.
+  { path: "/feeds/:slug?", name: PAGE_ROUTES.feeds, component: Stub },
   // Debug page (#feat-encore PR 1 follow-up). Standalone playground for
   // experimental plugin features (notifier engine, etc.). Rendered by
   // the @mulmoclaude/debug-plugin runtime plugin.

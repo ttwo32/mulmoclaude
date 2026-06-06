@@ -27,6 +27,18 @@
       </div>
 
       <button
+        v-if="collection?.schema.ingest"
+        type="button"
+        class="h-8 px-2.5 flex items-center gap-1 rounded border border-indigo-200 bg-white hover:bg-indigo-50 text-indigo-600 font-bold text-xs transition-colors disabled:opacity-50"
+        :disabled="refreshing"
+        data-testid="collections-refresh-feed"
+        @click="refreshFeed"
+      >
+        <span class="material-icons text-sm">{{ refreshing ? "hourglass_empty" : "refresh" }}</span>
+        <span>{{ t("collectionsView.refreshFeed") }}</span>
+      </button>
+
+      <button
         v-if="collection"
         type="button"
         class="h-8 px-2.5 flex items-center gap-1 rounded border border-indigo-200 bg-white hover:bg-indigo-50 text-indigo-600 font-bold text-xs transition-colors"
@@ -56,6 +68,18 @@
         :aria-label="t('collectionsView.deleteCollection')"
         data-testid="collections-delete"
         @click="confirmCollectionDelete"
+      >
+        <span class="material-icons text-sm">delete_forever</span>
+      </button>
+
+      <button
+        v-if="canDeleteFeed && !embedded"
+        type="button"
+        class="h-8 w-8 flex items-center justify-center rounded border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 transition-colors"
+        :title="t('collectionsView.deleteFeed')"
+        :aria-label="t('collectionsView.deleteFeed')"
+        data-testid="feeds-delete"
+        @click="confirmFeedDelete"
       >
         <span class="material-icons text-sm">delete_forever</span>
       </button>
@@ -647,6 +671,8 @@ const collection = ref<CollectionDetail | null>(null);
 const items = ref<CollectionItem[]>([]);
 const loading = ref(true);
 const loadError = ref<string | null>(null);
+/** True while a feed collection's manual refresh is in flight. */
+const refreshing = ref(false);
 const editing = ref<EditState | null>(null);
 /** The record currently shown in read-only "open" mode. Distinct
  *  from `editing`: open mode renders formatted values (no inputs)
@@ -787,6 +813,22 @@ function shouldExpand(item: CollectionItem): boolean {
 
 function detailUrl(slug: string): string {
   return API_ROUTES.collections.detail.replace(":slug", encodeURIComponent(slug));
+}
+
+/** Re-run a feed collection's retrieval now, then reload its records.
+ *  Only reachable when `schema.ingest` is present (button is gated). */
+async function refreshFeed(): Promise<void> {
+  const current = collection.value;
+  if (!current?.schema.ingest || refreshing.value) return;
+  refreshing.value = true;
+  const url = API_ROUTES.collections.refresh.replace(":slug", encodeURIComponent(current.slug));
+  const result = await apiPost<{ refreshed: boolean; written: number; errors: string[] }>(url, {});
+  refreshing.value = false;
+  if (!result.ok) {
+    loadError.value = result.error;
+    return;
+  }
+  await loadCollection(current.slug);
 }
 
 function itemsUrl(slug: string): string {
@@ -936,6 +978,16 @@ const canDeleteCollection = computed<boolean>(() => {
   if (!current) return false;
   return current.source === "project" && !current.slug.startsWith("mc-");
 });
+
+// True when this view was opened as a feed (`/feeds/:slug`): the schema
+// carries an `ingest` block. Feeds are deleted via the feeds registry
+// (manageFeed remove), not the project-scope collection delete above.
+const isFeed = computed<boolean>(() => Boolean(collection.value?.schema.ingest));
+const canDeleteFeed = computed<boolean>(() => isFeed.value && !embedded.value);
+
+// Which list to return to from the back arrow: feeds opened via /feeds
+// go back to the feed list; everything else to the collections index.
+const isFeedRoute = computed<boolean>(() => !embedded.value && route.name === PAGE_ROUTES.feeds);
 
 // ── View mode (table | calendar | kanban) ─────────────────────────
 // Local UI state only — NEVER persisted to schema. The user toggles it;
@@ -1387,7 +1439,31 @@ async function confirmCollectionDelete(): Promise<void> {
 }
 
 function goBack(): void {
-  router.push({ name: PAGE_ROUTES.collections, params: {} }).catch(() => {});
+  const name = isFeedRoute.value ? PAGE_ROUTES.feeds : PAGE_ROUTES.collections;
+  router.push({ name, params: {} }).catch(() => {});
+}
+
+// Delete a feed: remove its registry entry via manageFeed (records on
+// disk are retained), then return to the feed list. Distinct from
+// `confirmCollectionDelete`, which archives + deletes a skill-backed
+// collection through the project-scope collection-delete route.
+async function confirmFeedDelete(): Promise<void> {
+  const current = collection.value;
+  if (!current) return;
+  const { slug, title } = current;
+  const ok = await openConfirm({
+    message: t("collectionsView.confirmDeleteFeed", { title }),
+    confirmText: t("common.remove"),
+    cancelText: t("common.cancel"),
+    variant: "danger",
+  });
+  if (!ok) return;
+  const result = await apiPost(API_ROUTES.feeds.manage.url, { action: "remove", slug });
+  if (!result.ok) {
+    loadError.value = result.error;
+    return;
+  }
+  router.push({ name: PAGE_ROUTES.feeds, params: {} }).catch(() => {});
 }
 
 // Load on slug change, immediate so the initial value (route param or

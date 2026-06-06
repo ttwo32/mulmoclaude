@@ -220,6 +220,8 @@
           <RolesView v-else-if="currentPage === 'roles'" />
           <SourcesView v-else-if="currentPage === 'sources'" />
           <NewsView v-else-if="currentPage === 'news'" />
+          <CollectionView v-else-if="currentPage === 'feeds' && route.params.slug" :key="`feed-${route.params.slug}`" />
+          <FeedsView v-else-if="currentPage === 'feeds'" />
           <!-- Schema-driven collections. The route is
                `/collections/:slug?`; with a slug we mount the
                CollectionView, without one we mount the index. Both
@@ -327,6 +329,7 @@ import SkillsView from "./plugins/manageSkills/View.vue";
 import RolesView from "./components/RolesView.vue";
 import SourcesView from "./components/SourcesView.vue";
 import NewsView from "./components/NewsView.vue";
+import FeedsView from "./components/FeedsView.vue";
 import CollectionsIndexView from "./components/CollectionsIndexView.vue";
 import CollectionView from "./components/CollectionView.vue";
 import PluginScopedRoot from "./components/PluginScopedRoot.vue";

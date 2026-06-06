@@ -31,6 +31,8 @@ import type { CollectionDetail, CollectionItem, CollectionSummary } from "../../
 import { badRequest, notFound, conflict, forbidden, serverError } from "../../utils/httpError.js";
 import { errorMessage } from "../../utils/errors.js";
 import { log } from "../../system/logger/index.js";
+import { workspacePath } from "../../workspace/workspace.js";
+import { refreshOne } from "../../workspace/feeds/index.js";
 
 const router = Router();
 
@@ -234,6 +236,36 @@ router.delete(API_ROUTES.collections.item, async (req: Request<{ slug: string; i
     res.json({ deleted: true, itemId: result.itemId });
   } catch (err) {
     log.warn("collections", "item delete failed", { slug: collection.slug, itemId: req.params.itemId, error: errorMessage(err) });
+    serverError(res, errorMessage(err));
+  }
+});
+
+interface RefreshResponse {
+  refreshed: true;
+  written: number;
+  errors: string[];
+}
+
+// Re-run a feed collection's retrieval now. Generic over kind — the
+// engine dispatches on `schema.ingest.kind`. 400 when the collection
+// carries no `ingest` block (it's an ordinary skill collection, not a
+// feed). Backs the CollectionView "Refresh feed" button.
+router.post(API_ROUTES.collections.refresh, async (req: Request<{ slug: string }>, res: Response<RefreshResponse>) => {
+  const collection = await loadCollection(req.params.slug);
+  if (!collection) {
+    notFound(res, `collection '${req.params.slug}' not found`);
+    return;
+  }
+  if (!collection.schema.ingest) {
+    badRequest(res, `collection '${collection.slug}' is not a feed (no ingest config)`);
+    return;
+  }
+  try {
+    const result = await refreshOne(workspacePath, collection);
+    log.info("collections", "feed refreshed via collection route", { slug: collection.slug, written: result.written });
+    res.json({ refreshed: true, written: result.written, errors: result.errors });
+  } catch (err) {
+    log.warn("collections", "feed refresh failed", { slug: collection.slug, error: errorMessage(err) });
     serverError(res, errorMessage(err));
   }
 });

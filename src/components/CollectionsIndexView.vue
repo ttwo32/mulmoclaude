@@ -98,7 +98,8 @@ interface CollectionSummary {
   slug: string;
   title: string;
   icon: string;
-  source: "user" | "project";
+  // "feed" = a data-source collection from the <workspace>/feeds/ registry.
+  source: "user" | "project" | "feed";
 }
 
 interface CollectionsListResponse {
@@ -122,7 +123,9 @@ async function loadCollections(): Promise<void> {
     loadError.value = result.error;
     return;
   }
-  collections.value = result.data.collections;
+  // Feeds (source "feed") have their own /feeds surface — keep the
+  // Collections index to skill-backed collections so they don't double-list.
+  collections.value = result.data.collections.filter((collection) => collection.source !== "feed");
 }
 
 function openCollection(slug: string): void {

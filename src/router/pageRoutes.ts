@@ -17,6 +17,7 @@ export const PAGE_ROUTES = {
   roles: "roles",
   sources: "sources",
   news: "news",
+  feeds: "feeds",
   debug: "debug",
   collections: "collections",
 } as const;

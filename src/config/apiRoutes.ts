@@ -235,6 +235,9 @@ const HOST_API_ROUTES = {
     item: "/api/collections/:slug/items/:itemId",
     /** POST → assemble a schema-declared action's seed prompt → { prompt, role } */
     itemAction: "/api/collections/:slug/items/:itemId/actions/:actionId",
+    /** POST → re-run a feed collection's retrieval now → { refreshed, written }.
+     *  400 when the collection has no `ingest` block (not a feed). */
+    refresh: "/api/collections/:slug/refresh",
   },
 
   // `scheduler` group migrated to META — see `src/plugins/scheduler/calendarMeta.ts`.

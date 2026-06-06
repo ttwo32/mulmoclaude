@@ -92,6 +92,7 @@ export const ROLES: Role[] = [
       TOOL_NAMES.presentDocument,
       TOOL_NAMES.presentForm,
       TOOL_NAMES.presentCollection,
+      TOOL_NAMES.manageFeed,
       // Preset runtime plugins (server/plugins/preset-list.ts).
       // Runtime plugins are gated by `availablePlugins` like the
       // static-GUI / static-MCP entries above; listed here so the

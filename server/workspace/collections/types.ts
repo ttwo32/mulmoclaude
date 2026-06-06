@@ -11,6 +11,8 @@
 // plans/done/feat-skill-driven-apps-worklog.md — historical names predate
 // the rename).
 
+import type { IngestSpec } from "../feeds/ingestTypes.js";
+
 export type CollectionFieldType =
   | "string"
   | "text"
@@ -37,7 +39,10 @@ export type CollectionFieldType =
   // source of truth (no separate stored boolean to keep in sync).
   | "toggle";
 
-export type CollectionSource = "user" | "project";
+// "feed" collections live in the non-skill `<workspace>/feeds/` registry
+// and carry an `ingest` block; they reuse the same storage + rendering
+// as skill-backed collections but are never loaded into the agent prompt.
+export type CollectionSource = "user" | "project" | "feed";
 
 /** Recurrence unit for a `spawn.every` advance. */
 export type CollectionRecurUnit = "day" | "week" | "month" | "year";
@@ -295,6 +300,12 @@ export interface CollectionSchema {
    *  notify for every open record (the prior behaviour). `notifyWhen.field`
    *  must name a real top-level field. */
   notifyWhen?: CollectionWhen;
+  /** Optional declarative retrieval config. When present, this collection
+   *  is a "Feed": the host periodically fetches `ingest.url`, maps the
+   *  response into records, and upserts them by `primaryKey`. Only feeds
+   *  discovered from the `<workspace>/feeds/` registry carry this; skill
+   *  collections omit it. See {@link IngestSpec}. */
+  ingest?: IngestSpec;
 }
 
 export interface CollectionSummary {

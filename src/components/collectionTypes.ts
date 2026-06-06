@@ -99,13 +99,18 @@ export interface CollectionSchema {
   /** Optional predicate gating the completion bell (server-side); reuses
    *  the `when` shape. */
   notifyWhen?: { field: string; in: string[] };
+  /** Present only on "feed" collections (the <workspace>/feeds/ registry):
+   *  declarative retrieval config the host uses to refill the records.
+   *  When set, the view shows a Refresh control. */
+  ingest?: { kind: string; url: string; schedule: string };
 }
 
 export interface CollectionDetail {
   slug: string;
   title: string;
   icon: string;
-  source: "user" | "project";
+  // "feed" = a data-source collection from the <workspace>/feeds/ registry.
+  source: "user" | "project" | "feed";
   schema: CollectionSchema;
 }
 
