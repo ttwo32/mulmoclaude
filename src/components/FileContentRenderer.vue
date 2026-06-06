@@ -28,6 +28,14 @@
             <CalendarView :selected-result="schedulerResult" />
           </PluginScopedRoot>
         </div>
+        <!-- Marp slides: detected via `marp: true` frontmatter; replaces
+             the default markdown render with the slide-stack canvas
+             component. Frontmatter envelope is fed to Marp verbatim
+             because marp-core consumes its own directives (theme,
+             paginate, size, …) from the YAML header. -->
+        <div v-else-if="isMarkdown && !mdRawMode && marpMode" class="h-full flex flex-col overflow-auto">
+          <MarpView :markdown="content.content" :pdf-filename="marpPdfFilename" :base-dir="marpBaseDir" />
+        </div>
         <!-- Markdown rendered: frontmatter panel + body -->
         <div v-else-if="isMarkdown && !mdRawMode" class="h-full flex flex-col overflow-auto">
           <div v-if="mdFrontmatter && mdFrontmatter.fields.length > 0" class="shrink-0 m-4 mb-0 rounded border border-gray-200 bg-gray-50 p-3 text-xs">
@@ -203,6 +211,9 @@ import { formatScalarField, type MarkdownDocView } from "../composables/useMarkd
 import { rewriteMarkdownImageRefs } from "../utils/image/rewriteMarkdownImageRefs";
 import { API_ROUTES } from "../config/apiRoutes";
 import { descriptorForPath, jsonEditableByPolicy } from "../config/systemFileDescriptors";
+import { isMarpDocument } from "../utils/markdown/marpDetect";
+import { buildPdfFilename } from "../utils/files/filename";
+import MarpView from "../plugins/markdown/MarpView.vue";
 // Lazy: CodeMirror (~390 KB raw) is only fetched when a user actually
 // opens the inline JSON editor, keeping it out of the initial bundle.
 const JsonEditor = defineAsyncComponent(() => import("./JsonEditor.vue"));
@@ -234,6 +245,24 @@ const emit = defineEmits<{
 }>();
 
 const systemDescriptor = computed(() => (props.selectedPath ? descriptorForPath(props.selectedPath) : null));
+
+const marpMode = computed(() => Boolean(props.mdFrontmatter && isMarpDocument(props.mdFrontmatter.meta)));
+
+const marpBaseDir = computed(() => {
+  const path = props.selectedPath;
+  if (!path) return undefined;
+  const idx = path.lastIndexOf("/");
+  return idx > 0 ? path.slice(0, idx) : undefined;
+});
+
+const marpPdfFilename = computed(() => {
+  const path = props.selectedPath ?? "";
+  const lastSlash = path.lastIndexOf("/");
+  const base = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+  const dot = base.lastIndexOf(".");
+  const stem = dot > 0 ? base.slice(0, dot) : base;
+  return buildPdfFilename({ name: stem, fallback: "slides" });
+});
 
 // Inline JSON editor (#833 Phase 1). Available only for policy-editable
 // JSON config files; the read-only pretty-print stays the default.
