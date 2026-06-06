@@ -109,6 +109,18 @@ div.marpit > svg[data-marpit-svg] {
   border-radius: 6px;
   background: white;
 }
+/* Constrain inline images to the slide bounds — Marp sections are
+   1280×720 with overflow:hidden, so a 1024×1024 image inserted as
+   plain markdown gets visually clipped at the bottom. Default to
+   "fit within the section" so plain-markdown image embedding does
+   the obvious thing. Marp background images and advanced
+   backgrounds use a different render path (figure / div with
+   data-marpit-advanced-background) so they're unaffected. */
+div.marpit > svg > foreignObject > section img:not([data-marp-twemoji]) {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
 </style></head><body>${html}</body></html>`;
 }
 
