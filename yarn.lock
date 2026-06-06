@@ -1482,10 +1482,10 @@
   resolved "https://registry.yarnpkg.com/@mozilla/readability/-/readability-0.6.0.tgz#134e3ce3ff1676716e550de0b8de957bcc59208b"
   integrity sha512-juG5VWh4qAivzTAeMzvY9xs9HY5rAcr2E4I7tiSSCokRFi7XIZCAu92ZkSTsIj1OPceCifL3cpfteP3pDT9/QQ==
 
-"@mulmocast/deck-web@^1.1.0":
-  version "1.1.0"
-  resolved "https://npm.flatt.tech/@mulmocast/deck-web/-/deck-web-1.1.0.tgz#d5c694377ef34486771d918594cc6385db7b2c68"
-  integrity sha512-Repp+ALLrG7yzAEaob2qcGFSrMJOm34Xtal9cCrsPuH170FZDaiL1v1ikrXcONA0z7tJueVVaedYBDa9d1pAkA==
+"@mulmocast/deck-web@^1.1.1":
+  version "1.1.1"
+  resolved "https://npm.flatt.tech/@mulmocast/deck-web/-/deck-web-1.1.1.tgz#40d835c9a3e745348106923aabb7f4597a865262"
+  integrity sha512-YLyIDTIdhxbnDAmXuLv+6r+jX5qdcyMNJ+9UF7CXfb4iN/YUnZrAPlNVe5mCwyRzAg8fhwv85efxzzJeGKx2UQ==
 
 "@mulmocast/deck@^0.7.0":
   version "0.7.1"
