@@ -61,6 +61,19 @@ const frameHeight = computed(() => {
   return Math.ceil(slideCount.value * slideHeight + Math.max(0, slideCount.value - 1) * SLIDE_GAP_PX + FRAME_PADDING_PX);
 });
 
+// Hard-locked CSP: defence-in-depth on top of `sandbox=""`. Even
+// if the iframe boundary ever leaks (e.g. someone removes the empty
+// sandbox attribute), the policy still blocks every network egress
+// the slide could attempt — `connect-src 'none'` denies fetch /
+// XHR / WebSocket / EventSource, and `frame-ancestors 'none'`
+// prevents the iframe from being reframed by hostile content.
+// `img-src 'self' data:` lets Marp's default-theme inline SVG and
+// inlined-as-data-URI assets render; `style-src 'unsafe-inline'
+// 'self'` is required because marp-core ships its theme CSS inline
+// via `<style>` blocks inside each rendered slide.
+const SRCDOC_CSP =
+  "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline' 'self'; font-src 'self' data:; connect-src 'none'; frame-ancestors 'none';";
+
 function buildSrcDoc(html: string, css: string): string {
   // Marp's default theme sets `svg[data-marpit-svg] { width:100vw;
   // height:100vh }` so each slide tries to fill the entire viewport —
@@ -68,7 +81,10 @@ function buildSrcDoc(html: string, css: string): string {
   // Override AFTER Marp's CSS so our rule wins, and rely on the SVG's
   // viewBox (1280×720) to keep the 16:9 aspect via `height: auto`.
   return `<!doctype html>
-<html><head><meta charset="utf-8"><style>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="${SRCDOC_CSP}">
+<meta name="referrer" content="no-referrer">
+<style>
 html,body { margin:0; padding:16px; background:transparent; }
 ${css}
 div.marpit > svg[data-marpit-svg] {

@@ -16,41 +16,46 @@ User picked **B 案** (extend `presentDocument`, vertical stack layout) with **P
 
 ## Files
 
+> **Note**: this section was rewritten after implementation to match
+> what actually shipped. The original draft proposed `marp-cli` as a
+> separate spawned binary with a new `/api/plugins/markdown/export-pdf`
+> route — both were dropped during implementation in favour of
+> reusing the existing puppeteer-backed `/api/pdf/markdown` route with
+> a `marp: true` flag, saving a dependency + a route + ~140 lines.
+
 | Path | Change | Lines (est.) |
 |---|---|---|
-| `package.json` | + `@marp-team/marp-core` (frontend dep) | +1 |
-| `package.json` | + `@marp-team/marp-cli` (runtime dep, spawned for export) | +1 |
+| `package.json` + `packages/mulmoclaude/package.json` | + `@marp-team/marp-core` (single new dep, used both client- and server-side) | +1 / +1 |
 | `src/plugins/markdown/View.vue` | branch on `frontmatter.marp === true` → render `<MarpView>` instead of markdown body | ~15 |
-| `src/plugins/markdown/MarpView.vue` | **new** — instantiate `Marp` from `marp-core`, render stacked HTML + inject `Marp.themeSet` CSS, header with Export PDF button | ~120 |
-| `src/plugins/markdown/marpDetect.ts` | **new** — pure helper `isMarpDocument(frontmatter: object): boolean`; covers `marp: true`, `marp: yes`, string `"true"` | ~15 |
-| `src/config/apiRoutes.ts` | + `EXPORT_MARP_PDF: "/api/plugins/markdown/export-pdf"` | +1 |
-| `server/api/routes/markdown.ts` | **new** — `POST /api/plugins/markdown/export-pdf` body `{ documentId, markdown }` → spawn `marp-cli` → write `artifacts/documents/<id>.pdf` → return URL | ~80 |
-| `server/api/index.ts` | mount markdown route | +2 |
-| `server/utils/marpRuntime.ts` | **new** — `detectMarpCli()` / `runMarpExport(md, outPath)`; caches Chromium availability check at boot | ~60 |
-| `src/utils/api.ts` | (re-uses existing `apiPost`, no change) | 0 |
-| `src/lang/{en,ja,zh,ko,es,pt-BR,fr,de}.ts` | + `marp.slides_mode`, `marp.export_pdf`, `marp.exporting`, `marp.export_failed`, `marp.export_unavailable` (8 locales lockstep) | +5 × 8 |
-| `test/plugins/markdown/test_marpDetect.ts` | **new** — unit tests for the detection helper | ~40 |
-| `test/server/api/test_markdown_export_pdf.ts` | **new** — handler test (mocks `marp-cli` spawn) | ~50 |
-| `docs/shared-utils.md` | + entry for `marpDetect` and `marpRuntime` if cross-cutting (review at the end) | +2 |
+| `src/plugins/markdown/MarpView.vue` | **new** — instantiate `Marp` from `marp-core`, render stacked HTML in a sandboxed iframe srcdoc with a CSP, header with Export PDF button | ~150 |
+| `src/plugins/markdown/Preview.vue` | Marp-aware chat-stream tile (slide-count badge instead of stripped-text dump) | ~25 |
+| `src/components/FileContentRenderer.vue` | Files-pane branch: `marp: true` → `<MarpView>` (lazy-loaded) | ~30 |
+| `src/utils/markdown/marpDetect.ts` | **new** — pure helper `isMarpDocument(meta: Record<string, unknown>): boolean`; covers `marp: true`, `marp: yes` / `"true"` / `1` etc. | ~15 |
+| `src/composables/usePdfDownload.ts` | + `marp?: boolean` + `baseDir?: string` options forwarded to the server PDF route | +5 |
+| `server/api/routes/pdf.ts` | + `marp?: boolean` body field on the existing `/api/pdf/markdown` route → `renderMarpPdf()` (marp-core HTML → `inlineImages()` → puppeteer 1280×720 / margin 0) | ~30 |
+| `src/lang/{en,ja,zh,ko,es,pt-BR,fr,de}.ts` | + `marpSlidesMode`, `marpExportPdf`, `marpRenderFailed` (8 locales lockstep) | +3 × 8 |
+| `test/utils/markdown/test_marpDetect.ts` | **new** — unit tests for the detection helper (9 cases) | ~50 |
 
 ## Tasks
 
-1. **Deps**: `yarn add @marp-team/marp-core @marp-team/marp-cli`
-2. **Detect helper** + tests: `marpDetect.ts` + `test_marpDetect.ts`
-3. **Client render**: `MarpView.vue` (stacked, marp-core instance memoized per markdown body, themes via `marp.themeSet.default`)
-4. **View.vue branching**: when `isMarpDocument(frontmatter)` → `<MarpView :markdown :documentId>` instead of existing markdown body
-5. **Server route**: `markdown.ts` + `marpRuntime.ts` + register in `apiRoutes.ts` + mount in `server/api/index.ts`
-6. **Export button**: `MarpView.vue` header with disabled-state when `availability !== "ready"`. Bootstrap availability via `GET /api/plugins/markdown/export-pdf/health` (or piggyback on first POST? Simpler: probe once at MarpView mount.)
-7. **i18n 8 locales** in lockstep
-8. **Local checks**: `yarn format && yarn lint && yarn typecheck && yarn build && yarn test`
-9. **Push + PR** with User Prompt section
+1. **Dep**: `yarn add @marp-team/marp-core -W` (single dep, used both sides; mirror to `packages/mulmoclaude/package.json` so the published launcher resolves it).
+2. **Detect helper** + tests: `marpDetect.ts` + `test_marpDetect.ts`.
+3. **Client render**: `MarpView.vue` — dynamic `import("@marp-team/marp-core")`, `inlineSVG: true`, srcdoc-iframe with CSP + override Marp's `100vh/100vw` SVG sizing to use the viewBox-driven aspect.
+4. **View.vue branching**: when `isMarpDocument(frontmatter)` → `<MarpView :markdown :pdf-filename :base-dir>` instead of `<MarkdownView>`. Surface `refreshFailed` banner above MarpView too.
+5. **Preview.vue / FileContentRenderer**: surface Marp recognition to the chat-stream tile and the Files pane.
+6. **Server**: extend `/api/pdf/markdown` with a `marp?: boolean` flag; new `renderMarpPdf()` reuses the existing `inlineImages()` helper + puppeteer at 1280×720, margin 0.
+7. **i18n 8 locales** in lockstep (`de.ts` uses ASCII-safe strings per the German-quote rule).
+8. **Local checks**: `yarn format && yarn lint && yarn typecheck && yarn build && yarn test`.
+9. **Push + PR** with User Prompt section.
 
 ## Trade-offs / known limits
 
-- **Chromium dep**: `marp-cli` PDF export requires Chromium. We don't bundle one — rely on `puppeteer`'s download or system Chrome. If missing, the Export button stays disabled and a tooltip says "Chromium not detected; install Chrome or set CHROME_PATH." NOT a launch blocker for the feature; the in-browser render still works.
-- **`marp-core` size**: ~120 KB minified gzipped. Loaded lazily in `MarpView.vue` via dynamic `import()` so the markdown view's bundle isn't bloated for non-Marp documents. (Acceptable exception to the "no dynamic import for always-needed packages" rule because Marp is conditional.)
+- **Puppeteer reuse over marp-cli**: the originally-planned `@marp-team/marp-cli` spawn was dropped because the markdown PDF route already runs puppeteer in-process. Sharing the engine cuts the dep, the new route, and the Chromium-detection / disable-button code paths.
+- **`marp-core` size**: ~120 KB min+gz — loaded lazily in `MarpView.vue` via `await import("@marp-team/marp-core")` inside `renderMarp()`. The `MarpView` shell itself stays a static import from both call sites (`markdown/View.vue` and `FileContentRenderer.vue`): the shell is ~150 lines / ~4 KB, and `defineAsyncComponent`-wrapping it would add a Suspense boundary + a flash of loading state every time a Marp document opens, for marginal payoff once the real weight is already on its own chunk via the inner dynamic import. (Acceptable exception to the "no dynamic import for always-needed packages" rule because Marp itself is conditional.)
+- **iframe CSP**: srcdoc carries `Content-Security-Policy: default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline' 'self'; font-src 'self' data:;` plus `referrer: no-referrer` so a malicious deck can't exfiltrate via subresource fetches even if the `sandbox=""` boundary leaks.
+- **Preview-side images**: srcdoc iframes have no base URL, so workspace-relative `<img src>` won't load in the in-browser preview. Server PDF inlines them via the existing helper so the exported deck is complete. A `<base href>` for the preview is deferred until requested.
 - **No slide nav**: deliberately deferred. If the stacked view feels too "wall of slides", add `◀/▶ + counter` in a follow-up.
-- **No PPTX export**: marp-cli supports it, but PDF covers 90% of the "send it" use case. Defer PPTX until asked.
+- **No PPTX export**: marp-cli supports it; we don't ship marp-cli, so PPTX is out. PDF covers 90% of the "send it" use case.
 - **Theme**: marp-core default. `<!-- theme: gaia -->` directives work because marp-core ships gaia/uncover/default.
 
 ## Acceptance
