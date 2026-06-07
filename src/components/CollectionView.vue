@@ -14,7 +14,7 @@
       </button>
 
       <div v-if="collection" class="h-9 w-9 flex items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
-        <span class="material-icons text-xl">{{ collection.icon }}</span>
+        <span class="material-symbols-outlined text-xl">{{ collection.icon }}</span>
       </div>
 
       <div class="flex-1 min-w-0">
