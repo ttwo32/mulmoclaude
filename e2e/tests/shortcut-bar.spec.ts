@@ -61,9 +61,10 @@ test.describe("launcher shortcut bar", () => {
     await page.getByTestId("pin-toggle-collection-reading-list").click();
     await expect(page).toHaveURL(/\/collections$/);
 
-    // Shortcut pill now renders in the launcher.
+    // Shortcut pill now renders in the launcher (icon-only; the title
+    // rides the tooltip / aria-label).
     await expect(pill).toBeVisible();
-    await expect(pill).toContainText("Reading List");
+    await expect(pill).toHaveAttribute("title", "Reading List");
 
     // Clicking the pill navigates to the collection's route.
     await pill.click();

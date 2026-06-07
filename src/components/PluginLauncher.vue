@@ -36,18 +36,19 @@
           v-for="shortcut in shortcuts"
           :key="`${shortcut.kind}:${shortcut.slug}`"
           :class="[
-            'h-8 px-2.5 flex items-center gap-1 flex-none border-r border-gray-200 last:border-r-0 transition-colors max-w-[10rem]',
+            'h-8 w-8 flex items-center justify-center flex-none border-r border-gray-200 last:border-r-0 transition-colors',
             isShortcutActive(shortcut) ? 'bg-blue-50 text-blue-600' : 'bg-white text-gray-600 hover:bg-gray-50',
           ]"
           :title="shortcut.title"
+          :aria-label="shortcut.title"
           :data-testid="`plugin-launcher-shortcut-${shortcut.kind}-${shortcut.slug}`"
           @click="emit('navigateShortcut', shortcut)"
         >
-          <!-- Collections / feeds use the material-symbols font for their
+          <!-- Icon-only — the cached title rides the tooltip / aria-label.
+               Collections / feeds use the material-symbols font for their
                glyphs (matches the index cards), distinct from the
                material-icons used by the fixed launcher buttons. -->
           <span class="material-symbols-outlined text-base">{{ shortcut.icon }}</span>
-          <span class="truncate">{{ shortcut.title }}</span>
         </button>
       </div>
     </template>
