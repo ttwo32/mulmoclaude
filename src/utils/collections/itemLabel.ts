@@ -30,7 +30,13 @@ export function itemIdOf(item: CollectionItem, schema: CollectionSchema): string
 export function itemLabelOf(item: CollectionItem, schema: CollectionSchema, labelField: string | null): string {
   if (labelField) {
     const value = item[labelField];
-    if (typeof value === "string" && value.length > 0) return value;
+    // Accept any primitive (string / number / boolean) so a numeric or boolean
+    // display field still labels the record; objects/arrays fall through to the
+    // id rather than rendering as "[object Object]".
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      const text = String(value);
+      if (text.length > 0) return text;
+    }
   }
   return itemIdOf(item, schema);
 }

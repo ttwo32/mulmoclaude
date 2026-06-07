@@ -51,8 +51,8 @@
         :aria-label="t('collectionsView.dayViewOpen', { date: cell.key })"
         :data-testid="`collection-calendar-day-${cell.key}`"
         @click="openDay = cell.ymd"
-        @keydown.enter.prevent="openDay = cell.ymd"
-        @keydown.space.prevent="openDay = cell.ymd"
+        @keydown.enter.self.prevent="openDay = cell.ymd"
+        @keydown.space.self.prevent="openDay = cell.ymd"
       >
         <div class="flex items-center justify-end">
           <span

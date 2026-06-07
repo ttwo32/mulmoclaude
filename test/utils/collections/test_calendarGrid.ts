@@ -102,6 +102,10 @@ describe("parseTimeRange", () => {
     assert.equal(parseTimeRange(""), null);
     assert.equal(parseTimeRange(undefined), null);
   });
+
+  it("returns null for a start-less range (no timeline anchor)", () => {
+    assert.equal(parseTimeRange("-09:00"), null);
+  });
 });
 
 describe("ymdKey / compareYmd", () => {

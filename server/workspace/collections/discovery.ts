@@ -46,6 +46,10 @@ const refMessage = {
 // field (the latter carries the clock for the day view).
 const isDateLike = (type: string | undefined): boolean => type === "date" || type === "datetime";
 
+// `calendarTimeField` parses a free-form time string, so it must name a
+// string-backed field — a number/enum/date column has no time-range text.
+const isTimeStringField = (type: string | undefined): boolean => type === "string" || type === "text";
+
 const embedRefine = (spec: { type: string; to?: string; id?: string }): boolean => {
   if (spec.type !== "embed") return true;
   if (typeof spec.to !== "string" || safeSlugName(spec.to) === null) return false;
@@ -100,7 +104,7 @@ const WhenSchema = z.object({
 // row context, defer until a real need surfaces).
 const SubFieldSpecSchema = z
   .object({
-    type: z.enum(["string", "text", "email", "number", "date", "boolean", "markdown", "ref", "money", "enum"]),
+    type: z.enum(["string", "text", "email", "number", "date", "datetime", "boolean", "markdown", "ref", "money", "enum"]),
     label: z.string().min(1),
     required: z.boolean().optional(),
     to: z.string().min(1).optional(),
@@ -497,6 +501,12 @@ export const CollectionSchemaZ = z
   // string the day view parses).
   .refine((schema) => schema.calendarTimeField === undefined || schema.fields[schema.calendarTimeField] !== undefined, {
     message: "schema `calendarTimeField` must name a top-level field declared in `fields`",
+    path: ["calendarTimeField"],
+  })
+  // …and that field must be string-backed — the day view parses its value as a
+  // time string, so a number/enum/date column can't drive it.
+  .refine((schema) => schema.calendarTimeField === undefined || isTimeStringField(schema.fields[schema.calendarTimeField]?.type), {
+    message: "schema `calendarTimeField` must name a top-level `string` or `text` field declared in `fields`",
     path: ["calendarTimeField"],
   })
   // `kanbanField` must name a real `enum` field — the board groups records

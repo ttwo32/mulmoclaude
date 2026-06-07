@@ -1529,13 +1529,17 @@ async function confirmFeedDelete(): Promise<void> {
 // separate slug watch. Works identically for route mode (reads
 // `route.params.slug`) and embedded mode (reads the `slug` prop).
 /** Open the create form with the clicked calendar day prefilled into the
- *  anchor date field. The calendar's empty-cell affordance; the create
- *  flow itself is the same one the Add button uses. */
+ *  anchor field. The calendar day view's + affordance; the create flow itself
+ *  is the same one the Add button uses. A `datetime` anchor renders as a
+ *  `datetime-local` input, which rejects a bare `YYYY-MM-DD` — seed midnight
+ *  so the chosen day actually survives the prefill. */
 function createOnDate(iso: string): void {
   if (!canCreate.value) return;
   openCreate();
   const anchor = calendarAnchorField.value;
-  if (editing.value && anchor) editing.value.text[anchor] = iso;
+  if (!editing.value || !anchor) return;
+  const anchorType = collection.value?.schema.fields[anchor]?.type;
+  editing.value.text[anchor] = anchorType === "datetime" ? `${iso}T00:00` : iso;
 }
 
 /** Calendar chip / kanban card click → open that record's detail below the

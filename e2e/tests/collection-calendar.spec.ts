@@ -79,6 +79,31 @@ const AGENDA = {
   ],
 };
 
+// A collection whose calendar anchor is a `datetime` field — the clock lives in
+// the field value, and day-view create must prefill a valid datetime-local.
+const DTEVENTS = {
+  collection: {
+    slug: "dtevents",
+    title: "Meetings",
+    icon: "event",
+    source: "user",
+    schema: {
+      title: "Meetings",
+      icon: "event",
+      dataPath: "data/dtevents/items",
+      primaryKey: "id",
+      fields: {
+        id: { type: "string", label: "ID", primary: true, required: true },
+        name: { type: "string", label: "Name", required: true },
+        at: { type: "datetime", label: "At" },
+      },
+      displayField: "name",
+      calendarField: "at",
+    },
+  },
+  items: [{ id: "kickoff", name: "Kickoff", at: `${MID}T14:30` }],
+};
+
 // A collection with NO date field — must never show the calendar toggle.
 const CONTACTS = {
   collection: {
@@ -112,6 +137,10 @@ async function mockCollections(page: Page): Promise<void> {
   await page.route(
     (url) => url.pathname === "/api/collections/agenda",
     (route) => route.fulfill({ json: AGENDA }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/collections/dtevents",
+    (route) => route.fulfill({ json: DTEVENTS }),
   );
   await page.route(
     (url) => url.pathname === "/api/collections/contacts",
@@ -178,9 +207,11 @@ test.describe("collection calendar view", () => {
     // A chip click selects the record directly (does not bubble to the cell).
     await page.getByTestId("collection-calendar-chip-launch").click();
     await expect(page.getByTestId("collections-detail-title")).toHaveText("launch");
-    // Clicking the cell body (top area, clear of the chips) opens the day view;
+    // Activating the day cell (a keyboard-operable button) opens the day view;
     // the clock-less record sits in the all-day strip (events has no time field).
-    await page.getByTestId(`collection-calendar-day-${MID}`).click({ position: { x: 4, y: 8 } });
+    const cell = page.getByTestId(`collection-calendar-day-${MID}`);
+    await cell.focus();
+    await cell.press("Enter");
     await expect(page.getByTestId("collection-day-view")).toBeVisible();
     await expect(page.getByTestId("collection-day-view-allday-launch")).toBeVisible();
   });
@@ -188,8 +219,10 @@ test.describe("collection calendar view", () => {
   test("day view renders blocks, single lines, and the all-day strip from a time field", async ({ page }) => {
     await page.goto("/collections/agenda");
     await page.getByTestId("collection-view-toggle-calendar").click();
-    // Click the cell's top area, clear of the record chips, to open the day view.
-    await page.getByTestId(`collection-calendar-day-${MID}`).click({ position: { x: 4, y: 8 } });
+    // Activate the day cell (keyboard) to open the day view, clear of the chips.
+    const cell = page.getByTestId(`collection-calendar-day-${MID}`);
+    await cell.focus();
+    await cell.press("Enter");
     await expect(page.getByTestId("collection-day-view")).toBeVisible();
     // "14:00-17:00" → a proportional block; "09:30" → a single line (both chips).
     await expect(page.getByTestId("collection-day-view-chip-block")).toBeVisible();
@@ -200,6 +233,32 @@ test.describe("collection calendar view", () => {
     await page.getByTestId("collection-day-view-chip-block").click();
     await expect(page.getByTestId("collection-day-view")).toHaveCount(0);
     await expect(page.getByTestId("collections-detail-title")).toHaveText("block");
+  });
+
+  test("day-view create on a datetime-anchored collection prefills a valid datetime", async ({ page }) => {
+    await page.goto("/collections/dtevents");
+    await page.getByTestId("collection-view-toggle-calendar").click();
+    // A datetime anchor still drives the day view (its clock renders the block)…
+    const cell = page.getByTestId(`collection-calendar-day-${MID}`);
+    await cell.focus();
+    await cell.press("Enter");
+    await expect(page.getByTestId("collection-day-view-chip-kickoff")).toBeVisible();
+    await page.getByTestId("collection-day-view-create").click();
+    // …and create seeds the datetime-local input with midnight (not a bare date).
+    await expect(page.getByTestId("collections-create")).toBeVisible();
+    await expect(page.getByTestId("collections-input-at")).toHaveValue(`${MID}T00:00`);
+  });
+
+  test("keyboard-activating a chip selects it without opening the day view", async ({ page }) => {
+    await page.goto("/collections/events");
+    await page.getByTestId("collection-view-toggle-calendar").click();
+    // Enter on a focused chip selects the record; the keydown must NOT bubble to
+    // the cell and open the day view (the `.self` guard on the cell handler).
+    const chip = page.getByTestId("collection-calendar-chip-launch");
+    await chip.focus();
+    await chip.press("Enter");
+    await expect(page.getByTestId("collections-detail-title")).toHaveText("launch");
+    await expect(page.getByTestId("collection-day-view")).toHaveCount(0);
   });
 
   test("shows the toggle and a working calendar for an empty date-bearing collection", async ({ page }) => {

@@ -140,7 +140,9 @@ export function parseTimeRange(value: unknown): { startMin: number | null; endMi
     if ((token.index ?? 0) < sepIndex) startMin = minutesOf(token);
     else endMin = minutesOf(token);
   }
-  if (startMin === null && endMin === null) return null;
+  // A start-less range ("-09:00") has no anchor on the timeline → treat as
+  // unparseable so the record falls back to the all-day strip.
+  if (startMin === null) return null;
   return { startMin, endMin };
 }
 

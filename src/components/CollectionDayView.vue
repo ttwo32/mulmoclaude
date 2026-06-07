@@ -8,7 +8,13 @@
     @click.self="emit('close')"
     @keydown.esc="emit('close')"
   >
-    <div class="flex max-h-[85vh] w-full max-w-md flex-col rounded-2xl bg-white shadow-xl" role="dialog" aria-modal="true">
+    <div
+      ref="dialogEl"
+      tabindex="-1"
+      class="flex max-h-[85vh] w-full max-w-md flex-col rounded-2xl bg-white shadow-xl focus:outline-none"
+      role="dialog"
+      aria-modal="true"
+    >
       <!-- Header -->
       <div class="flex items-center gap-2 border-b border-slate-200 px-4 py-3">
         <h3 class="flex-1 text-sm font-bold text-slate-800" data-testid="collection-day-view-title">{{ dayLabel }}</h3>
@@ -133,6 +139,7 @@ const LINE_PX = 20;
 const LANE_MIN_MINUTES = 30;
 
 const scrollEl = ref<HTMLElement | null>(null);
+const dialogEl = ref<HTMLElement | null>(null);
 
 const dayKey = computed<string>(() => ymdKey(props.day));
 
@@ -213,12 +220,15 @@ function onCreate(): void {
   emit("close");
 }
 
-// Auto-scroll the timeline to the earliest timed event (less one hour of
-// lead-in), so a day full of afternoon events doesn't open on empty morning.
+// On open: move focus into the dialog (so Escape/Tab act on the modal, not the
+// background day cell), then auto-scroll the timeline to the earliest timed
+// event (less one hour of lead-in) so an afternoon-heavy day doesn't open on
+// an empty morning.
 onMounted(async () => {
+  await nextTick();
+  dialogEl.value?.focus();
   const earliest = timedEntries.value.reduce((min, entry) => Math.min(min, entry.slice.startMin), MINUTES_PER_DAY);
   if (earliest >= MINUTES_PER_DAY) return;
-  await nextTick();
   if (scrollEl.value) scrollEl.value.scrollTop = Math.max(0, (earliest - 60) * PX_PER_MIN);
 });
 </script>
