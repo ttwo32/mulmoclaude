@@ -51,7 +51,7 @@
           @keydown.space.self.prevent="open(feed.slug)"
         >
           <div class="h-12 w-12 flex items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100/50">
-            <span class="material-icons text-2xl">{{ feed.icon || "dynamic_feed" }}</span>
+            <span class="material-symbols-outlined text-2xl">{{ feed.icon || "dynamic_feed" }}</span>
           </div>
 
           <div class="flex-1 min-w-0">
