@@ -191,6 +191,24 @@ test.describe("collection calendar view", () => {
     await expect(page.getByTestId("collections-detail-title")).toHaveText("block");
   });
 
+  test("navigating back to the collection without ?selected= tears down the day popup", async ({ page }) => {
+    await page.goto("/collections/agenda?selected=block");
+    await expect(page.getByTestId("collection-day-view")).toBeVisible();
+    // Reopening the collection without a selection must not leave a stale popup.
+    await page.goto("/collections/agenda");
+    await expect(page.getByTestId("collection-calendar")).toBeVisible();
+    await expect(page.getByTestId("collection-day-view")).toHaveCount(0);
+  });
+
+  test("closing the day popup detail via its X clears the selection and popup", async ({ page }) => {
+    await page.goto("/collections/agenda?selected=block");
+    await expect(page.getByTestId("collection-day-view-detail")).toBeVisible();
+    // The detail pane's close button tears down the whole popup and the URL.
+    await page.getByTestId("collections-detail-close").click();
+    await expect(page.getByTestId("collection-day-view")).toHaveCount(0);
+    await expect(page).not.toHaveURL(/selected=/);
+  });
+
   test("lists undated records in the No date tray", async ({ page }) => {
     await page.goto("/collections/events");
     await page.getByTestId("collection-view-toggle-calendar").click();

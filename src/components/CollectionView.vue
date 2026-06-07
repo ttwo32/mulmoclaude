@@ -1728,9 +1728,11 @@ watch([activeView, calendarAnchorField, kanbanGroupField, loading], () => {
 watch(activeSelected, () => {
   if (loading.value || !collection.value) return;
   syncViewToSelected();
-  // Keep the calendar popup in step with back/forward: re-anchor it on the
-  // selected record's day, or close it when the selection is cleared. Don't
-  // switch views here — that's the deep-link/load behavior in loadCollection.
-  if (calendarActive.value) openDay.value = viewing.value ? dayOfItem(viewing.value) : null;
+  // Keep the calendar-owned openDay in step with the selection — re-anchor it on
+  // the selected record's day, or clear it when the selection is gone. Do this
+  // even when the calendar isn't the active view: openDay is calendar state, so
+  // a selection cleared in the table must not survive into a later calendar
+  // visit. Never force a view switch here — that's loadCollection's deep-link job.
+  openDay.value = viewing.value ? dayOfItem(viewing.value) : null;
 });
 </script>
