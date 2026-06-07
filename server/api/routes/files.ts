@@ -200,6 +200,28 @@ export function classify(filename: string): ContentKind {
 // already-realpath'd root.
 const workspaceReal = realpathSync(workspacePath);
 
+// Windows-only: cached **async-realpath** form of the workspace. On
+// Windows, `realpathSync` (sync) and `realpath` (async) can return
+// the same path in two different forms — 8.3 short-name (`RUNNER~1`)
+// vs. long-name (`runneradmin`) — depending on which syscall path
+// was used to open the dir entry. Comparing across forms via
+// `path.relative` then produces a false "outside workspace" verdict
+// (`..\..\runneradmin\...`). This cache mirrors `workspaceReal` but
+// is guaranteed to share the form the async `realpath` returns, so
+// `resolveNewFilePath`'s containment check has matching ends. On
+// non-Windows hosts both syscalls return the same string, so the
+// cache equals `workspaceReal` and the extra lookup is harmless.
+let workspaceRealAsyncCache: string | null = null;
+async function getWorkspaceRealAsync(): Promise<string> {
+  if (workspaceRealAsyncCache !== null) return workspaceRealAsyncCache;
+  try {
+    workspaceRealAsyncCache = await realpath(workspaceReal);
+  } catch {
+    workspaceRealAsyncCache = workspaceReal;
+  }
+  return workspaceRealAsyncCache;
+}
+
 // Wraps the shared resolveWithinRoot helper with the additional
 // hidden-dir traversal check (e.g. `.git/config`). `buildTreeAsync`
 // / `listDirShallow` hide these from the listing, but the URL
@@ -859,13 +881,13 @@ async function resolveNewFilePath(relPathRaw: string): Promise<{ ok: true; absPa
   const candidate = path.resolve(workspaceReal, normalised);
   const relativeFromWorkspace = path.relative(workspaceReal, candidate);
   if (relativeFromWorkspace === ".." || relativeFromWorkspace.startsWith(`..${path.sep}`)) {
-    return { ok: false, status: 400, message: "Path outside workspace (syntactic)" };
+    return { ok: false, status: 400, message: "Path outside workspace" };
   }
   // Mirror `resolveSafe`: refuse `.git/` (or any HIDDEN_DIRS) segment.
   for (const seg of relativeFromWorkspace.split(path.sep)) {
-    if (HIDDEN_DIRS.has(seg)) return { ok: false, status: 400, message: `Path not allowed (hidden dir: ${seg})` };
+    if (HIDDEN_DIRS.has(seg)) return { ok: false, status: 400, message: "Path not allowed" };
   }
-  if (isSensitivePath(relativeFromWorkspace)) return { ok: false, status: 400, message: "Path not allowed (sensitive)" };
+  if (isSensitivePath(relativeFromWorkspace)) return { ok: false, status: 400, message: "Path not allowed" };
   if (classify(candidate) !== "text") return { ok: false, status: 400, message: "File type not editable" };
   // Walk up the candidate's ancestors until we find one that exists.
   // Realpath THAT ancestor — a symlinked in-workspace folder pointing
@@ -885,17 +907,19 @@ async function resolveNewFilePath(relPathRaw: string): Promise<{ ok: true; absPa
   let realProbe: string;
   try {
     realProbe = await realpath(probe);
-  } catch (err) {
-    return { ok: false, status: 400, message: `Path not allowed (realpath: ${errorMessage(err)})` };
+  } catch {
+    return { ok: false, status: 400, message: "Path not allowed" };
   }
   const finalAbs = trailing.length === 0 ? realProbe : path.join(realProbe, ...trailing);
-  const relFromReal = path.relative(workspaceReal, finalAbs);
+  // Compare against the **async-realpath** form of the workspace, not
+  // the sync form cached as `workspaceReal`. On Windows the two can
+  // differ (8.3 short-name vs. long-name), and `path.relative` across
+  // the two yields a spurious `..\..\..\<long-name>\...` that fails
+  // the containment check. See `getWorkspaceRealAsync` for the why.
+  const rootAsync = await getWorkspaceRealAsync();
+  const relFromReal = path.relative(rootAsync, finalAbs);
   if (relFromReal === ".." || relFromReal.startsWith(`..${path.sep}`) || path.isAbsolute(relFromReal)) {
-    return {
-      ok: false,
-      status: 400,
-      message: `Path outside workspace (real) — root="${workspaceReal}" real="${finalAbs}" rel="${relFromReal}"`,
-    };
+    return { ok: false, status: 400, message: "Path outside workspace" };
   }
   return { ok: true, absPath: finalAbs };
 }
