@@ -998,6 +998,7 @@ async function loadCollection(slug: string): Promise<void> {
   searchQuery.value = ""; // Reset search query on collection load
   render.resetLinkedCaches();
   viewing.value = null;
+  openDay.value = null; // never carry a previous collection's open day over
   const result = await apiGet<CollectionDetailResponse>(detailUrl(slug));
   loading.value = false;
   if (!result.ok) {
@@ -1627,10 +1628,9 @@ function onCalendarSelect(itemId: string | null): void {
   const item = findItemById(itemId);
   if (!item) return;
   if (editing.value) closeEditor();
-  if (calendarActive.value) {
-    const day = dayOfItem(item);
-    if (day) openDay.value = day;
-  }
+  // Anchor the popup on the record's day; null for an undated record, which
+  // closes the popup so its detail falls back to the panel below the grid.
+  if (calendarActive.value) openDay.value = dayOfItem(item);
   showDetail(item);
   writeSelectedToUrl(itemId);
 }
@@ -1726,6 +1726,11 @@ watch([activeView, calendarAnchorField, kanbanGroupField, loading], () => {
 // The initial / cross-collection case is handled by `loadCollection`;
 // here we only act once items are loaded.
 watch(activeSelected, () => {
-  if (!loading.value && collection.value) syncViewToSelected();
+  if (loading.value || !collection.value) return;
+  syncViewToSelected();
+  // Keep the calendar popup in step with back/forward: re-anchor it on the
+  // selected record's day, or close it when the selection is cleared. Don't
+  // switch views here — that's the deep-link/load behavior in loadCollection.
+  if (calendarActive.value) openDay.value = viewing.value ? dayOfItem(viewing.value) : null;
 });
 </script>
