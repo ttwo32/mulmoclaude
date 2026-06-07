@@ -253,7 +253,12 @@ async function renderPdf(fullHtml: string, format: "Letter" | "A4" = "Letter"): 
 // base64 data URIs (same path as the markdown route) because puppeteer
 // can't reach workspace-relative paths over the wire.
 async function renderMarpPdf(markdown: string, baseDir?: string): Promise<Buffer> {
-  const marp = new Marp({ html: false });
+  // Disable twemoji conversion so the PDF stays self-contained — the
+  // default would emit `<img src="https://twemoji.maxcdn.com/...">`
+  // and puppeteer would need network access during the print to
+  // resolve them. OS-font emoji renders inline without a fetch and
+  // matches the MarpView preview's behaviour after the same change.
+  const marp = new Marp({ html: false, emoji: { unicode: false, shortcode: false } });
   const { html, css } = marp.render(markdown);
   const inlinedHtml = inlineImages(html, { sourceDir: baseDir });
   const fullHtml = `<!doctype html>

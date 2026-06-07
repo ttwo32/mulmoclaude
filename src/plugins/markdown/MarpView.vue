@@ -140,7 +140,12 @@ async function renderMarp(markdown: string): Promise<void> {
   }
   try {
     const { Marp } = await import("@marp-team/marp-core");
-    const marp = new Marp({ inlineSVG: true, html: false });
+    // Disable twemoji conversion (default would rewrite Unicode emoji
+    // to `<img src="https://twemoji.maxcdn.com/...">`, which our
+    // sandboxed iframe's CSP blocks → broken-image icons in slides).
+    // Fall back to the OS's native font emoji, matching how every
+    // other surface in the app renders emoji.
+    const marp = new Marp({ inlineSVG: true, html: false, emoji: { unicode: false, shortcode: false } });
     // Normalise `![alt](path)` refs BEFORE marp parses them — same
     // pre-pass the regular markdown renderer uses (wiki/View.vue,
     // FilesView.vue, markdown/View.vue). Without it, refs like
