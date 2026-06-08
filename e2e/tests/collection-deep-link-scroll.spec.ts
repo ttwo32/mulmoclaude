@@ -1,17 +1,16 @@
 // E2E coverage for the `?selected=<id>` deep link (the path a
 // collection-item notification takes): opening a collection with a
-// selected id that loaded far down a long list must not only expand
-// that row's detail panel — it must SCROLL it into view. Before the
-// fix, `syncViewToSelected` opened the record but never called
-// `scrollOpenPanelIntoView`, so a notification for an off-screen item
-// left the user staring at the top of the table.
+// selected id that loaded far down a long list must open that record's
+// detail. It now opens in the shared, viewport-centred record modal, so
+// the record is on screen no matter where its row sits in the list — the
+// old inline-expansion era needed an explicit scroll-into-view; the modal
+// makes that moot.
 
 import { test, expect, type Page } from "@playwright/test";
 import { mockAllApis } from "../fixtures/api";
 
-// Enough rows that an id near the bottom renders well below the fold on
-// the default 720px-tall viewport — so "in viewport" is only true if we
-// actually scrolled to it.
+// Enough rows that the targeted id near the bottom renders well below the
+// fold on the default 720px-tall viewport.
 const ITEM_COUNT = 60;
 const TARGET_ID = "item-55";
 
@@ -42,18 +41,18 @@ async function mockCollection(page: Page): Promise<void> {
   );
 }
 
-test("a `?selected=` deep link scrolls the opened record into view", async ({ page }) => {
+test("a `?selected=` deep link opens the record in the centred modal", async ({ page }) => {
   await mockAllApis(page);
   await mockCollection(page);
 
   await page.goto(`/collections/long-list?selected=${TARGET_ID}`);
 
-  // The targeted record's detail panel expands inline under its row...
-  const panel = page.getByTestId(`collections-expansion-${TARGET_ID}`);
-  await expect(panel).toBeVisible({ timeout: 10_000 });
+  // The targeted record opens in the shared modal...
+  const modal = page.getByTestId("collections-record-modal");
+  await expect(modal).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("collections-detail-title")).toHaveText(TARGET_ID);
 
-  // ...and — the regression this guards — it is scrolled into view, not
-  // left below the fold. `toBeInViewport` auto-retries, so it waits out
-  // the smooth scroll.
-  await expect(panel).toBeInViewport();
+  // ...and the modal is on screen regardless of the row's position in the
+  // long list (it's viewport-centred, so this needs no scroll).
+  await expect(page.getByTestId("collections-detail")).toBeInViewport();
 });

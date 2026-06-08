@@ -218,14 +218,14 @@ test.describe("collection calendar view", () => {
     await expect(page.getByTestId("collection-calendar-chip-someday")).toHaveCount(0);
   });
 
-  test("selecting an undated record shows the bottom panel, not the day popup", async ({ page }) => {
+  test("selecting an undated record shows the shared record modal, not the day popup", async ({ page }) => {
     await page.goto("/collections/events");
     await page.getByTestId("collection-view-toggle-calendar").click();
     // An undated record has no day to place on a timeline → its detail opens in
-    // the panel below the grid and no day popup appears.
+    // the shared record modal and no day popup appears.
     await page.getByTestId("collection-calendar-undated-someday").click();
     await expect(page.getByTestId("collection-day-view")).toHaveCount(0);
-    await expect(page.getByTestId("collections-calendar-panel")).toBeVisible();
+    await expect(page.getByTestId("collections-record-modal")).toBeVisible();
     await expect(page.getByTestId("collections-detail-title")).toHaveText("someday");
   });
 
@@ -246,7 +246,7 @@ test.describe("collection calendar view", () => {
     await expect(page.getByTestId("collection-day-view")).toBeVisible();
     await expect(page.getByTestId("collection-day-view-detail")).toBeVisible();
     await expect(page.getByTestId("collections-create")).toBeVisible();
-    await expect(page.getByTestId("collections-calendar-panel")).toHaveCount(0);
+    await expect(page.getByTestId("collections-record-modal")).toHaveCount(0);
     await expect(page.getByTestId("collections-input-on")).toHaveValue(empty);
   });
 
