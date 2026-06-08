@@ -1214,6 +1214,9 @@ const koMessages = {
     kanbanFieldLabel: "칸반 그룹 필드",
     kanbanUncategorized: "미분류",
     kanbanOpenCard: "{label} 열기",
+    viewDashboard: "대시보드",
+    dashboardAlertHeading: "{label} — {count}건",
+    dashboardAllItems: "전체 항목",
     source: {
       user: "사용자",
       project: "프로젝트",

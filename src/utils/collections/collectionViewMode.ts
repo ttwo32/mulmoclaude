@@ -1,14 +1,14 @@
-// Per-collection view-mode preference (table | calendar | kanban) persisted
-// to localStorage, keyed by collection slug. Lets the standalone
+// Per-collection view-mode preference (table | calendar | kanban | dashboard)
+// persisted to localStorage, keyed by collection slug. Lets the standalone
 // `/collections/:slug` page reopen in the last-used view instead of always
 // defaulting to "table". Embedded chat-card mode persists its own `viewState`
 // in the tool result and does NOT use this.
 
-export type CollectionViewMode = "table" | "calendar" | "kanban";
+export type CollectionViewMode = "table" | "calendar" | "kanban" | "dashboard";
 
 const STORAGE_KEY = "collection_view_modes";
 
-const VIEW_MODES: readonly CollectionViewMode[] = ["table", "calendar", "kanban"];
+const VIEW_MODES: readonly CollectionViewMode[] = ["table", "calendar", "kanban", "dashboard"];
 
 type ViewModeMap = Record<string, CollectionViewMode>;
 

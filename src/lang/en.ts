@@ -1214,6 +1214,9 @@ const enMessages = {
     kanbanFieldLabel: "Kanban group field",
     kanbanUncategorized: "Uncategorized",
     kanbanOpenCard: "Open {label}",
+    viewDashboard: "Dashboard",
+    dashboardAlertHeading: "{label} — {count}",
+    dashboardAllItems: "All items",
     source: {
       user: "User",
       project: "Project",

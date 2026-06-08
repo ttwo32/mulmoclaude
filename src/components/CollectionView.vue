@@ -127,7 +127,7 @@
         <!-- View toggle: table ↔ calendar ↔ kanban. Calendar shows only when
              the schema has a `date` field, kanban only with an `enum` field;
              local UI state, never persisted. -->
-        <div v-if="hasCalendar || hasKanban" class="flex gap-0.5" role="group" :aria-label="t('collectionsView.viewToggle')">
+        <div v-if="hasCalendar || hasKanban || hasDashboard" class="flex gap-0.5" role="group" :aria-label="t('collectionsView.viewToggle')">
           <button
             type="button"
             class="h-8 px-2.5 flex items-center gap-1 rounded text-xs font-bold transition-colors"
@@ -163,6 +163,18 @@
             <span class="material-icons text-sm">view_kanban</span>
             <span>{{ t("collectionsView.viewKanban") }}</span>
           </button>
+          <button
+            v-if="hasDashboard"
+            type="button"
+            class="h-8 px-2.5 flex items-center gap-1 rounded text-xs font-bold transition-colors"
+            :class="activeView === 'dashboard' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'"
+            :aria-pressed="activeView === 'dashboard'"
+            data-testid="collection-view-toggle-dashboard"
+            @click="setView('dashboard')"
+          >
+            <span class="material-icons text-sm">dashboard</span>
+            <span>{{ t("collectionsView.viewDashboard") }}</span>
+          </button>
         </div>
         <!-- Which date field anchors the grid (only when >1 date field). -->
         <select
@@ -175,9 +187,10 @@
         >
           <option v-for="key in dateFields" :key="key" :value="key">{{ collection?.schema.fields[key]?.label ?? key }}</option>
         </select>
-        <!-- Which enum field groups the board (only when >1 enum field). -->
+        <!-- Which enum field groups the board / drives the dashboard (only
+             when >1 enum field). -->
         <select
-          v-if="kanbanActive && enumFields.length > 1"
+          v-if="(kanbanActive || dashboardActive) && enumFields.length > 1"
           :value="kanbanGroupField"
           class="h-8 px-2 rounded border border-slate-200 bg-white text-xs font-semibold text-slate-600 focus:outline-none focus:border-indigo-500 cursor-pointer"
           :aria-label="t('collectionsView.kanbanFieldLabel')"
@@ -337,6 +350,43 @@
           class="m-3 mt-0 rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden shrink-0"
           data-testid="collections-kanban-panel"
         >
+          <CollectionRecordPanel
+            v-model:editing="editing"
+            :collection="collection"
+            :viewing="viewing"
+            :saving="saving"
+            :save-error="saveError"
+            :action-error="actionError"
+            :action-pending="actionPending"
+            :visible-actions="visibleActions"
+            :live-record="liveRecord"
+            :live-derived="liveDerived"
+            :view-title="viewTitle"
+            :is-singleton="isSingleton"
+            :render="render"
+            :locale="locale"
+            @submit="saveEditor"
+            @cancel="cancelEditor"
+            @edit="editFromView"
+            @close="closeView"
+            @delete="viewing && confirmDelete(viewing)"
+            @run-action="runAction"
+          />
+        </div>
+      </div>
+
+      <!-- Dashboard body: a read-only snapshot for enum-bearing collections —
+           stat cards by status, a notifyWhen-driven alert box, and an openable
+           item list. Editing still happens via the table/detail panel. -->
+      <div v-else-if="dashboardActive" class="p-4 flex flex-col gap-4">
+        <CollectionDashboardView
+          :schema="collection.schema"
+          :items="filteredItems"
+          :group-field="kanbanGroupField"
+          :selected="viewing ? String(viewing[collection.schema.primaryKey] ?? '') : undefined"
+          @select="onCalendarSelect"
+        />
+        <div v-if="viewing || editing" class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden" data-testid="collections-dashboard-panel">
           <CollectionRecordPanel
             v-model:editing="editing"
             :collection="collection"
@@ -648,6 +698,7 @@ import ConfirmModal from "./ConfirmModal.vue";
 import PinToggle from "./PinToggle.vue";
 import CollectionRecordPanel from "./CollectionRecordPanel.vue";
 import CollectionCalendarView from "./CollectionCalendarView.vue";
+import CollectionDashboardView from "./CollectionDashboardView.vue";
 import CollectionDayView from "./CollectionDayView.vue";
 import CollectionKanbanView from "./CollectionKanbanView.vue";
 import { dateOf, type Ymd } from "../utils/collections/calendarGrid";
@@ -686,7 +737,7 @@ const props = defineProps<{
   /** Embedded mode only: initial view / anchor / group restored from the
    *  card's persisted `viewState` so a switch to calendar or kanban
    *  survives a remount. */
-  initialView?: "table" | "calendar" | "kanban";
+  initialView?: "table" | "calendar" | "kanban" | "dashboard";
   initialAnchorField?: string;
   initialGroupField?: string;
 }>();
@@ -699,7 +750,7 @@ const emit = defineEmits<{
   /** Embedded mode only: the view mode / calendar anchor / kanban group
    *  changed. The card persists these alongside `selected` so the calendar
    *  and kanban stick. */
-  viewStateChange: [state: { view: "table" | "calendar" | "kanban"; anchorField: string; groupField: string }];
+  viewStateChange: [state: { view: "table" | "calendar" | "kanban" | "dashboard"; anchorField: string; groupField: string }];
 }>();
 
 const { t, locale } = useI18n();
@@ -1126,7 +1177,7 @@ const isFeedRoute = computed<boolean>(() => !embedded.value && route.name === PA
 // localStorage so reopening `/collections/:slug` restores the prior view
 // instead of always starting on the table. Embedded mode ignores the store
 // and restores from the card's `initialView` prop instead.
-type CollectionViewMode = "table" | "calendar" | "kanban";
+type CollectionViewMode = "table" | "calendar" | "kanban" | "dashboard";
 
 /** The view to open with: the embedded card's restored `initialView` if
  *  present, else the standalone slug's stored mode, else "table". Embedded
@@ -1166,6 +1217,10 @@ const enumFields = computed<string[]>(() =>
 /** Whether the kanban toggle is offered (needs an `enum` field to group on). */
 const hasKanban = computed<boolean>(() => enumFields.value.length > 0);
 
+/** Whether the dashboard toggle is offered. Like the kanban, the dashboard
+ *  groups + colours records by an `enum` field, so it needs one to exist. */
+const hasDashboard = computed<boolean>(() => enumFields.value.length > 0);
+
 /** The effective view, collapsing any stale mode whose enabling field
  *  vanished (e.g. `view = "kanban"` after switching to an enum-less
  *  collection) back to "table". Single source of truth for the toggle and
@@ -1173,6 +1228,7 @@ const hasKanban = computed<boolean>(() => enumFields.value.length > 0);
 const activeView = computed<CollectionViewMode>(() => {
   if (view.value === "calendar" && hasCalendar.value) return "calendar";
   if (view.value === "kanban" && hasKanban.value) return "kanban";
+  if (view.value === "dashboard" && hasDashboard.value) return "dashboard";
   return "table";
 });
 
@@ -1181,6 +1237,9 @@ const calendarActive = computed<boolean>(() => activeView.value === "calendar");
 
 /** True when the kanban is the active body. */
 const kanbanActive = computed<boolean>(() => activeView.value === "kanban");
+
+/** True when the dashboard is the active body. */
+const dashboardActive = computed<boolean>(() => activeView.value === "dashboard");
 
 // In-view override for which enum field groups the board; null ⇒ the schema
 // hint, else the first enum field.

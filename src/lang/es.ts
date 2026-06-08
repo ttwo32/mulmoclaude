@@ -1227,6 +1227,9 @@ const esMessages = {
     kanbanFieldLabel: "Campo de agrupación Kanban",
     kanbanUncategorized: "Sin categoría",
     kanbanOpenCard: "Abrir {label}",
+    viewDashboard: "Panel",
+    dashboardAlertHeading: "{label} — {count}",
+    dashboardAllItems: "Todos los elementos",
     source: {
       user: "Usuario",
       project: "Proyecto",

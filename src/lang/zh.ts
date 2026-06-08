@@ -1203,6 +1203,9 @@ const zhMessages = {
     kanbanFieldLabel: "看板分组字段",
     kanbanUncategorized: "未分类",
     kanbanOpenCard: "打开 {label}",
+    viewDashboard: "仪表板",
+    dashboardAlertHeading: "{label} — {count} 项",
+    dashboardAllItems: "全部条目",
     source: {
       user: "用户",
       project: "项目",

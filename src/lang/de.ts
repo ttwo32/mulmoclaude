@@ -1230,6 +1230,9 @@ const deMessages = {
     kanbanFieldLabel: "Kanban-Gruppierungsfeld",
     kanbanUncategorized: "Nicht kategorisiert",
     kanbanOpenCard: "{label} öffnen",
+    viewDashboard: "Dashboard",
+    dashboardAlertHeading: "{label} — {count}",
+    dashboardAllItems: "Alle Einträge",
     source: {
       user: "Benutzer",
       project: "Projekt",

@@ -1216,6 +1216,9 @@ const ptBRMessages = {
     kanbanFieldLabel: "Campo de agrupamento do Kanban",
     kanbanUncategorized: "Sem categoria",
     kanbanOpenCard: "Abrir {label}",
+    viewDashboard: "Painel",
+    dashboardAlertHeading: "{label} — {count}",
+    dashboardAllItems: "Todos os itens",
     source: {
       user: "Usuário",
       project: "Projeto",
