@@ -37,9 +37,23 @@ const ASPECT_PRESETS: Record<string, [number, number]> = {
 // `0x0`, `10x10`) that would render unreadable slides.
 const NUMERIC_SIZE_RE = /^(\d{3,5})[xX](\d{3,5})$/;
 
+// Hard caps on the canvas dimensions we'll accept from the
+// frontmatter. Above these, a hostile / typo'd `size: 99999x99999`
+// would let marp-core emit a 99999×99999 SVG which then balloons
+// the preview iframe's pixel height (slideCount × ~100000) and
+// causes Chromium to OOM during PDF rendering. 3840 is "4K width",
+// which is well past anything an LLM-generated deck would
+// legitimately want.
+const MIN_CANVAS_PX = 200;
+const MAX_CANVAS_PX = 3840;
+
 interface CustomDimensions {
   width: number;
   height: number;
+}
+
+function inBounds(dim: number): boolean {
+  return Number.isFinite(dim) && dim >= MIN_CANVAS_PX && dim <= MAX_CANVAS_PX;
 }
 
 function parseCustomSize(value: string): CustomDimensions | null {
@@ -47,7 +61,14 @@ function parseCustomSize(value: string): CustomDimensions | null {
   if (preset) return { width: preset[0], height: preset[1] };
   const match = NUMERIC_SIZE_RE.exec(value);
   if (!match) return null;
-  return { width: Number(match[1]), height: Number(match[2]) };
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  // Reject hostile / typo'd values past the canvas cap. Returning
+  // null falls through to Marp's own parser (which silently ignores
+  // unknown sizes), so the deck still renders at the default 1280×720
+  // instead of crashing Puppeteer.
+  if (!inBounds(width) || !inBounds(height)) return null;
+  return { width, height };
 }
 
 function serializeMarkdown(meta: Record<string, unknown>, body: string): string {

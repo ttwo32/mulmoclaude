@@ -64,17 +64,28 @@ const frameHeight = computed(() => {
   return Math.ceil(slideCount.value * slideHeight + Math.max(0, slideCount.value - 1) * SLIDE_GAP_PX + FRAME_PADDING_PX);
 });
 
+// Sensible aspect-ratio range. Below 1:5 (super-wide) or above 5:1
+// (extreme portrait) the layout becomes unusable and a pathological
+// `size: 100x99999` could otherwise balloon iframe height to
+// `slideCount × 800 × 999 ≈ 2.4 million pixels` and stall the DOM.
+// Anything outside this window falls back to the 16:9 default.
+const MIN_SLIDE_ASPECT = 0.2;
+const MAX_SLIDE_ASPECT = 5;
+
 // Extract aspect ratio (= height / width) from the first SVG's
 // viewBox. Marp embeds the slide canvas dimensions there — 1280×720
 // for the default 16:9, 960×720 for `size: 4:3`, etc. Stays at the
-// 16:9 fallback if the regex doesn't match (e.g. malformed render).
+// 16:9 fallback if the regex doesn't match (e.g. malformed render)
+// or the parsed ratio sits outside the safe range.
 function extractSlideAspect(html: string): number {
   const match = html.match(/viewBox="0 0 (\d+) (\d+)"/);
   if (!match) return DEFAULT_SLIDE_ASPECT;
   const width = Number(match[1]);
   const height = Number(match[2]);
   if (!width || !height) return DEFAULT_SLIDE_ASPECT;
-  return height / width;
+  const aspect = height / width;
+  if (aspect < MIN_SLIDE_ASPECT || aspect > MAX_SLIDE_ASPECT) return DEFAULT_SLIDE_ASPECT;
+  return aspect;
 }
 
 // Hard-locked CSP: defence-in-depth on top of `sandbox=""`. Even

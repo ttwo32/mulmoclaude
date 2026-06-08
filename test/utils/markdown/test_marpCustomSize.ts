@@ -91,6 +91,27 @@ describe("applyCustomMarpSize — numeric WxH", () => {
     assert.equal(marp.themeSet.calls.length, 0);
   });
 
+  it("rejects implausibly large canvases (DoS guard)", () => {
+    const marp = makeFakeMarp();
+    // 3840 is the inclusive cap (4K width). Beyond that we refuse to
+    // register a custom theme so Marp falls back to default 1280×720.
+    for (const oversized of ["99999x99999", "9999x9999", "3841x720", "1280x3841", "5000x5000"]) {
+      const source = `---\nmarp: true\nsize: ${oversized}\n---\n# x`;
+      assert.equal(applyCustomMarpSize(marp, source), source, `should pass through size: ${oversized}`);
+    }
+    assert.equal(marp.themeSet.calls.length, 0);
+  });
+
+  it("accepts values at the cap boundary (3840 max, 200 min)", () => {
+    const marp = makeFakeMarp();
+    for (const ok of ["3840x2160", "2160x3840", "200x200", "1920x1080"]) {
+      const source = `---\nmarp: true\nsize: ${ok}\n---\n# x`;
+      const out = applyCustomMarpSize(marp, source);
+      assert.notEqual(out, source, `should rewrite size: ${ok}`);
+    }
+    assert.equal(marp.themeSet.calls.length, 4);
+  });
+
   it("is idempotent — re-applying with an already-generated theme name is a no-op", () => {
     const marp = makeFakeMarp();
     const source = "---\nmarp: true\ntheme: mc_size_default_1080x1920\nsize: 1080x1920\n---\n# x";

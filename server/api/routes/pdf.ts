@@ -259,15 +259,28 @@ async function renderPdf(fullHtml: string, format: "Letter" | "A4" = "Letter"): 
 // `size: 4:3` → 960×720), so honouring viewBox lets the exported PDF
 // match the deck's declared aspect instead of stretching every deck
 // into the puppeteer-hardcoded 1280×720.
+//
+// Dimensions are clamped to a safe range before being handed to
+// Puppeteer. Without this, a hostile / typo'd `size: 99999x99999`
+// would forward those numbers into `page.setViewport()` +
+// `page.pdf({ width, height })` and Chromium can either OOM during
+// raster or take pathologically long to render a single page.
 const DEFAULT_SLIDE_WIDTH = 1280;
 const DEFAULT_SLIDE_HEIGHT = 720;
+const MIN_SLIDE_DIM = 200;
+const MAX_SLIDE_DIM = 3840;
+
+function clampDim(value: number, fallback: number): number {
+  if (!Number.isFinite(value) || value < MIN_SLIDE_DIM) return fallback;
+  if (value > MAX_SLIDE_DIM) return MAX_SLIDE_DIM;
+  return value;
+}
 
 function extractSlideDimensions(html: string): { width: number; height: number } {
   const match = html.match(/viewBox="0 0 (\d+) (\d+)"/);
   if (!match) return { width: DEFAULT_SLIDE_WIDTH, height: DEFAULT_SLIDE_HEIGHT };
-  const width = Number(match[1]);
-  const height = Number(match[2]);
-  if (!width || !height) return { width: DEFAULT_SLIDE_WIDTH, height: DEFAULT_SLIDE_HEIGHT };
+  const width = clampDim(Number(match[1]), DEFAULT_SLIDE_WIDTH);
+  const height = clampDim(Number(match[2]), DEFAULT_SLIDE_HEIGHT);
   return { width, height };
 }
 
