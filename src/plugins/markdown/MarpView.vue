@@ -15,7 +15,7 @@
     <div v-if="renderError" class="load-error-banner" role="alert">
       {{ t("pluginMarkdown.marpRenderFailed", { error: renderError }) }}
     </div>
-    <div class="marp-frame-wrapper">
+    <div class="marp-frame-wrapper" :style="{ padding: wrapperPadding }">
       <div v-if="srcDoc" :style="{ height: frameHeight + 'px', overflow: 'hidden' }">
         <iframe
           :srcdoc="srcDoc"
@@ -57,6 +57,9 @@ const BODY_PADDING_PX = 16;
 const WRAPPER_PADDING_PX = 12;
 const FALLBACK_WIDTH_PX = 800;
 const MIN_SCALE = 0.05;
+const MAX_SCALE = 1;
+
+const wrapperPadding = `${WRAPPER_PADDING_PX}px`;
 
 const containerEl = ref<HTMLElement | null>(null);
 const containerWidth = ref(FALLBACK_WIDTH_PX);
@@ -70,52 +73,35 @@ const { pdfDownloading, pdfError, downloadPdf } = usePdfDownload();
 
 const nativeIframeWidth = computed(() => slideWidth.value + BODY_PADDING_PX * 2);
 
-const slideScale = computed(() => Math.max(MIN_SCALE, (containerWidth.value - WRAPPER_PADDING_PX * 2) / nativeIframeWidth.value));
+const slideScale = computed(() => {
+  const raw = (containerWidth.value - WRAPPER_PADDING_PX * 2) / nativeIframeWidth.value;
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, raw));
+});
 
 const nativeContentHeight = computed(() => {
   if (slideCount.value === 0) return BODY_PADDING_PX * 2;
-  return slideCount.value * slideHeight.value + Math.max(0, slideCount.value - 1) * SLIDE_GAP_PX + BODY_PADDING_PX * 2;
+  const slides = slideCount.value * slideHeight.value;
+  const gaps = Math.max(0, slideCount.value - 1) * SLIDE_GAP_PX;
+  return slides + gaps + BODY_PADDING_PX * 2;
 });
 
 const frameHeight = computed(() => Math.ceil(nativeContentHeight.value * slideScale.value));
 
-// Hard-locked CSP: defence-in-depth on top of `sandbox=""`. Even
-// if the iframe boundary ever leaks (e.g. someone removes the empty
-// sandbox attribute), the policy still blocks every network egress
-// the slide could attempt — `connect-src 'none'` denies fetch /
-// XHR / WebSocket / EventSource, and `frame-ancestors 'none'`
-// prevents the iframe from being reframed by hostile content.
-//
-// `img-src` is pinned at runtime to the **parent app's origin** (plus
-// `data:`). We can't use `'self'` here: `sandbox=""` srcdoc iframes
-// have an opaque origin, and `'self'` resolves against that opaque
-// origin (= matches nothing), which would block every workspace
-// image including the legitimate `/artifacts/images/...` paths the
-// rewriter produces. Pinning to `window.location.origin` lets the
-// rewritten same-host URLs load while still denying every other host
-// — a malicious deck can't craft `<img src="http://10.0.0.1/...">`
-// SSRF probes or fetch external trackers. Style allows inline
-// `<style>` blocks (Marp ships theme CSS inline). The `referrer`
-// meta below keeps even the same-origin image fetches from leaking
-// a referrer URL to the workspace file server.
 function buildCsp(): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const imgSrc = origin ? `${origin} data:` : "data:";
-  return `default-src 'none'; img-src ${imgSrc}; style-src 'unsafe-inline' 'self'; font-src 'self' data:; connect-src 'none'; frame-ancestors 'none';`;
+  return [
+    "default-src 'none'",
+    `img-src ${imgSrc}`,
+    "style-src 'unsafe-inline' 'self'",
+    "font-src 'self' data:",
+    "connect-src 'none'",
+    "frame-ancestors 'none'",
+  ].join("; ");
 }
 
-function buildSrcDoc(html: string, css: string): string {
-  // Rendered with inlineSVG:false so Marp emits plain <section>
-  // elements instead of SVG foreignObject wrappers. The theme CSS
-  // sets each section to its native dimensions. The parent scales
-  // the iframe down with transform:scale() — no SVG scaling means
-  // no Safari bug.
-  return `<!doctype html>
-<html><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="${buildCsp()}">
-<meta name="referrer" content="no-referrer">
-<style>
-html,body { margin:0; padding:${BODY_PADDING_PX}px; background:transparent; overflow:hidden; }
+function buildSlideCss(css: string): string {
+  return `html,body { margin:0; padding:${BODY_PADDING_PX}px; background:transparent; overflow:hidden; }
 ${css}
 div.marpit > section {
   display: block !important;
@@ -123,21 +109,21 @@ div.marpit > section {
   box-shadow: 0 2px 8px rgba(0,0,0,0.12);
   border-radius: 6px;
 }
-/* Constrain inline images so they leave room for surrounding text.
-   Sections have overflow:hidden and a plain markdown image is a
-   block-level element in the normal flow, so an image clamped at
-   max-height:100% would by itself fill the slide and push every
-   surrounding heading / paragraph / list off the bottom. Cap at
-   60cqh (60% of the section container-query height — Marp sets
-   container-type:size on the section). Authors can opt out per-image
-   via Marp directives. Twemoji glyphs have a data-marp-twemoji
-   attribute and must NOT be scaled to fill the slide. */
 div.marpit > section img:not([data-marp-twemoji]) {
   max-width: 100%;
   max-height: 60cqh;
   object-fit: contain;
+}`;
 }
-</style></head><body>${html}</body></html>`;
+
+function buildSrcDoc(html: string, css: string): string {
+  const csp = buildCsp();
+  const styles = buildSlideCss(css);
+  return `<!doctype html>
+<html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="${csp}">
+<meta name="referrer" content="no-referrer">
+<style>${styles}</style></head><body>${html}</body></html>`;
 }
 
 function countSlides(html: string): number {
@@ -153,32 +139,29 @@ function extractSlideDimensions(css: string): { width: number; height: number } 
   return { width: DEFAULT_SLIDE_WIDTH, height: DEFAULT_SLIDE_HEIGHT };
 }
 
+function resetRenderState(): void {
+  srcDoc.value = "";
+  slideCount.value = 0;
+  slideWidth.value = DEFAULT_SLIDE_WIDTH;
+  slideHeight.value = DEFAULT_SLIDE_HEIGHT;
+}
+
+async function prepareMarp(markdown: string): Promise<{ html: string; css: string }> {
+  const { Marp } = await import("@marp-team/marp-core");
+  const marp = new Marp({ inlineSVG: false, html: false, emoji: { unicode: false, shortcode: false } });
+  const rewritten = rewriteMarkdownImageRefs(markdown, props.baseDir ?? "");
+  const sized = applyCustomMarpSize(marp, rewritten);
+  return marp.render(sized);
+}
+
 async function renderMarp(markdown: string): Promise<void> {
   renderError.value = null;
   if (!markdown) {
-    srcDoc.value = "";
-    slideCount.value = 0;
-    slideWidth.value = DEFAULT_SLIDE_WIDTH;
-    slideHeight.value = DEFAULT_SLIDE_HEIGHT;
+    resetRenderState();
     return;
   }
   try {
-    const { Marp } = await import("@marp-team/marp-core");
-    // Disable twemoji conversion (default would rewrite Unicode emoji
-    // to `<img src="https://twemoji.maxcdn.com/...">`, which our
-    // sandboxed iframe's CSP blocks → broken-image icons in slides).
-    // Fall back to the OS's native font emoji, matching how every
-    // other surface in the app renders emoji.
-    const marp = new Marp({ inlineSVG: false, html: false, emoji: { unicode: false, shortcode: false } });
-    // Normalise `![alt](path)` refs BEFORE marp parses them — same
-    // pre-pass the regular markdown renderer uses (wiki/View.vue,
-    // FilesView.vue, markdown/View.vue). Without it, refs like
-    // `../images/foo.png` resolve against `about:srcdoc` and 404.
-    // Workspace-rooted refs route through `/artifacts/images` (static
-    // mount) or `/api/files/raw` (authenticated route).
-    const rewritten = rewriteMarkdownImageRefs(markdown, props.baseDir ?? "");
-    const sized = applyCustomMarpSize(marp, rewritten);
-    const { html, css } = marp.render(sized);
+    const { html, css } = await prepareMarp(markdown);
     slideCount.value = countSlides(html);
     const dims = extractSlideDimensions(css);
     slideWidth.value = dims.width;
@@ -186,19 +169,10 @@ async function renderMarp(markdown: string): Promise<void> {
     srcDoc.value = buildSrcDoc(html, css);
   } catch (err) {
     renderError.value = errorMessage(err);
-    srcDoc.value = "";
-    slideCount.value = 0;
-    slideWidth.value = DEFAULT_SLIDE_WIDTH;
-    slideHeight.value = DEFAULT_SLIDE_HEIGHT;
+    resetRenderState();
   }
 }
 
-// Re-render whenever either the markdown OR the baseDir changes —
-// `rewriteMarkdownImageRefs` resolves `../images/foo.png` against
-// `baseDir`, so switching between two decks with the same body
-// text but different file paths would otherwise reuse stale URLs
-// (codex review). Pass `markdown` through verbatim; `renderMarp`
-// already reads `props.baseDir` directly.
 watch(
   () => [props.markdown, props.baseDir],
   ([source]) => {
@@ -233,11 +207,6 @@ async function onExportPdf(): Promise<void> {
 <style scoped>
 .marp-container {
   width: 100%;
-  /* Content-height so the grey card ends with the last slide. Parent
-     wrapper in View.vue / FileContentRenderer.vue is the centering
-     context — it uses `m-auto` to put a short deck mid-canvas (white
-     above + below) instead of pinning it to the top with all the
-     empty space at the bottom. */
   display: flex;
   flex-direction: column;
   background: #f8fafc;
@@ -248,7 +217,6 @@ async function onExportPdf(): Promise<void> {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 12px;
 }
 
 .marp-frame {
