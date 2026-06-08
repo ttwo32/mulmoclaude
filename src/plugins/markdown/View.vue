@@ -13,8 +13,14 @@
       <div v-if="loadError" class="load-error-banner shrink-0" role="alert">
         {{ t("pluginMarkdown.refreshFailed", { error: loadError }) }}
       </div>
-      <div class="flex-1 min-h-0">
-        <MarpView :markdown="markdownContent" :pdf-filename="marpPdfFilename" :base-dir="marpBaseDir" />
+      <div class="flex-1 min-h-0 overflow-y-auto flex flex-col">
+        <!-- `m-auto` centres a short MarpView vertically in the canvas
+             (free space distributed top + bottom). When the deck is
+             tall enough to overflow, margin:auto stops contributing
+             and the outer wrapper scrolls naturally. -->
+        <div class="m-auto w-full">
+          <MarpView :markdown="markdownContent" :pdf-filename="marpPdfFilename" :base-dir="marpBaseDir" />
+        </div>
       </div>
     </template>
     <template v-else>

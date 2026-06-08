@@ -16,8 +16,12 @@
              component. Frontmatter envelope is fed to Marp verbatim
              because marp-core consumes its own directives (theme,
              paginate, size, …) from the YAML header. -->
-        <div v-if="isMarkdown && !mdRawMode && marpMode" class="h-full flex flex-col overflow-auto">
-          <MarpView :markdown="content.content" :pdf-filename="marpPdfFilename" :base-dir="marpBaseDir" />
+        <div v-if="isMarkdown && !mdRawMode && marpMode" class="h-full flex flex-col overflow-y-auto">
+          <!-- `m-auto` centres a short MarpView vertically in the file-
+               pane canvas (same pattern as View.vue's marp branch). -->
+          <div class="m-auto w-full">
+            <MarpView :markdown="content.content" :pdf-filename="marpPdfFilename" :base-dir="marpBaseDir" />
+          </div>
         </div>
         <!-- Markdown rendered: frontmatter panel + body -->
         <div v-else-if="isMarkdown && !mdRawMode" class="h-full flex flex-col overflow-auto">

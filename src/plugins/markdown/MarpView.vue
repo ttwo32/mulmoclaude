@@ -34,6 +34,8 @@ import { useI18n } from "vue-i18n";
 import { usePdfDownload } from "../../composables/usePdfDownload";
 import { errorMessage } from "../../utils/errors";
 import { rewriteMarkdownImageRefs } from "../../utils/image/rewriteMarkdownImageRefs";
+import { applyCustomMarpSize } from "../../utils/markdown/marpCustomSize";
+import { DEFAULT_SLIDE_ASPECT, extractSlideAspect } from "../../utils/markdown/marpAspect";
 
 const { t } = useI18n();
 
@@ -43,7 +45,6 @@ const props = defineProps<{
   baseDir?: string;
 }>();
 
-const SLIDE_ASPECT = 9 / 16;
 const SLIDE_GAP_PX = 16;
 const FRAME_PADDING_PX = 32;
 const FALLBACK_WIDTH_PX = 800;
@@ -52,13 +53,14 @@ const containerEl = ref<HTMLElement | null>(null);
 const containerWidth = ref(FALLBACK_WIDTH_PX);
 const srcDoc = ref<string>("");
 const slideCount = ref(0);
+const slideAspect = ref(DEFAULT_SLIDE_ASPECT);
 const renderError = ref<string | null>(null);
 
 const { pdfDownloading, pdfError, downloadPdf } = usePdfDownload();
 
 const frameHeight = computed(() => {
   if (slideCount.value === 0) return FRAME_PADDING_PX;
-  const slideHeight = containerWidth.value * SLIDE_ASPECT;
+  const slideHeight = containerWidth.value * slideAspect.value;
   return Math.ceil(slideCount.value * slideHeight + Math.max(0, slideCount.value - 1) * SLIDE_GAP_PX + FRAME_PADDING_PX);
 });
 
@@ -109,6 +111,24 @@ div.marpit > svg[data-marpit-svg] {
   border-radius: 6px;
   background: white;
 }
+/* Constrain inline images so they leave room for surrounding text.
+   Sections are 1280x720 with overflow:hidden and a plain markdown
+   image is a block-level element in the normal flow, so an image
+   clamped at max-height:100% would by itself fill the slide and
+   push every surrounding heading / paragraph / list off the bottom.
+   Cap at 60cqh (60% of the section container-query height — Marp
+   sets container-type:size on the section so cqh resolves to 60%
+   of 720px = 432px), leaving ~40% for text. Authors can opt out
+   per-image via Marp directives — w:N h:N for explicit size, the
+   fit keyword for fit-to-content, or the bg keyword for full-slide
+   backgrounds (which live in a different DOM and so are unaffected
+   by this rule). Twemoji glyphs have a data-marp-twemoji attribute
+   and must NOT be scaled to fill the slide. */
+div.marpit > svg > foreignObject > section img:not([data-marp-twemoji]) {
+  max-width: 100%;
+  max-height: 60cqh;
+  object-fit: contain;
+}
 </style></head><body>${html}</body></html>`;
 }
 
@@ -124,11 +144,17 @@ async function renderMarp(markdown: string): Promise<void> {
   if (!markdown) {
     srcDoc.value = "";
     slideCount.value = 0;
+    slideAspect.value = DEFAULT_SLIDE_ASPECT;
     return;
   }
   try {
     const { Marp } = await import("@marp-team/marp-core");
-    const marp = new Marp({ inlineSVG: true, html: false });
+    // Disable twemoji conversion (default would rewrite Unicode emoji
+    // to `<img src="https://twemoji.maxcdn.com/...">`, which our
+    // sandboxed iframe's CSP blocks → broken-image icons in slides).
+    // Fall back to the OS's native font emoji, matching how every
+    // other surface in the app renders emoji.
+    const marp = new Marp({ inlineSVG: true, html: false, emoji: { unicode: false, shortcode: false } });
     // Normalise `![alt](path)` refs BEFORE marp parses them — same
     // pre-pass the regular markdown renderer uses (wiki/View.vue,
     // FilesView.vue, markdown/View.vue). Without it, refs like
@@ -136,13 +162,16 @@ async function renderMarp(markdown: string): Promise<void> {
     // Workspace-rooted refs route through `/artifacts/images` (static
     // mount) or `/api/files/raw` (authenticated route).
     const rewritten = rewriteMarkdownImageRefs(markdown, props.baseDir ?? "");
-    const { html, css } = marp.render(rewritten);
+    const sized = applyCustomMarpSize(marp, rewritten);
+    const { html, css } = marp.render(sized);
     slideCount.value = countSlides(html);
+    slideAspect.value = extractSlideAspect(html);
     srcDoc.value = buildSrcDoc(html, css);
   } catch (err) {
     renderError.value = errorMessage(err);
     srcDoc.value = "";
     slideCount.value = 0;
+    slideAspect.value = DEFAULT_SLIDE_ASPECT;
   }
 }
 
@@ -186,10 +215,15 @@ async function onExportPdf(): Promise<void> {
 <style scoped>
 .marp-container {
   width: 100%;
-  height: 100%;
+  /* Content-height so the grey card ends with the last slide. Parent
+     wrapper in View.vue / FileContentRenderer.vue is the centering
+     context — it uses `m-auto` to put a short deck mid-canvas (white
+     above + below) instead of pinning it to the top with all the
+     empty space at the bottom. */
   display: flex;
   flex-direction: column;
   background: #f8fafc;
+  border-radius: 6px;
 }
 
 .marp-frame-wrapper {

@@ -10,6 +10,7 @@ import { WORKSPACE_DIRS } from "../../workspace/paths.js";
 import { resolveWithinRoot, readBinarySafeSync } from "../../utils/files/safe.js";
 import { resolveWorkspacePath } from "../../utils/files/workspace-io.js";
 import { parseFrontmatter } from "../../utils/markdown/frontmatter.js";
+import { applyCustomMarpSize } from "../../../src/utils/markdown/marpCustomSize.js";
 import { log } from "../../system/logger/index.js";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
 import { transformResolvableUrlsInHtml } from "../../../src/utils/image/htmlSrcAttrs.js";
@@ -252,23 +253,72 @@ async function renderPdf(fullHtml: string, format: "Letter" | "A4" = "Letter"): 
 // is the only style sheet the slides need. Images are inlined as
 // base64 data URIs (same path as the markdown route) because puppeteer
 // can't reach workspace-relative paths over the wire.
+// Parse the slide canvas dimensions out of Marp's first SVG viewBox.
+// Defaults to 16:9 / 1280×720 — same fallback as the MarpView preview.
+// Marp emits the actual dimensions per its `size:` directive (e.g.
+// `size: 4:3` → 960×720), so honouring viewBox lets the exported PDF
+// match the deck's declared aspect instead of stretching every deck
+// into the puppeteer-hardcoded 1280×720.
+//
+// Dimensions are clamped to a safe range before being handed to
+// Puppeteer. Without this, a hostile / typo'd `size: 99999x99999`
+// would forward those numbers into `page.setViewport()` +
+// `page.pdf({ width, height })` and Chromium can either OOM during
+// raster or take pathologically long to render a single page.
+const DEFAULT_SLIDE_WIDTH = 1280;
+const DEFAULT_SLIDE_HEIGHT = 720;
+const MIN_SLIDE_DIM = 200;
+const MAX_SLIDE_DIM = 3840;
+
+function clampDim(value: number, fallback: number): number {
+  if (!Number.isFinite(value) || value < MIN_SLIDE_DIM) return fallback;
+  if (value > MAX_SLIDE_DIM) return MAX_SLIDE_DIM;
+  return value;
+}
+
+export function extractSlideDimensions(html: string): { width: number; height: number } {
+  const match = html.match(/viewBox="0 0 (\d+) (\d+)"/);
+  if (!match) return { width: DEFAULT_SLIDE_WIDTH, height: DEFAULT_SLIDE_HEIGHT };
+  const width = clampDim(Number(match[1]), DEFAULT_SLIDE_WIDTH);
+  const height = clampDim(Number(match[2]), DEFAULT_SLIDE_HEIGHT);
+  return { width, height };
+}
+
 async function renderMarpPdf(markdown: string, baseDir?: string): Promise<Buffer> {
-  const marp = new Marp({ html: false });
-  const { html, css } = marp.render(markdown);
+  // Disable twemoji conversion so the PDF stays self-contained — the
+  // default would emit `<img src="https://twemoji.maxcdn.com/...">`
+  // and puppeteer would need network access during the print to
+  // resolve them. OS-font emoji renders inline without a fetch and
+  // matches the MarpView preview's behaviour after the same change.
+  const marp = new Marp({ html: false, emoji: { unicode: false, shortcode: false } });
+  const sized = applyCustomMarpSize(marp, markdown);
+  const { html, css } = marp.render(sized);
+  const { width: slideWidth, height: slideHeight } = extractSlideDimensions(html);
   const inlinedHtml = inlineImages(html, { sourceDir: baseDir });
   const fullHtml = `<!doctype html>
 <html><head><meta charset="utf-8"><style>
 html,body { margin:0; padding:0; background:white; }
 ${css}
+/* Match MarpView's preview rule. Cap inline images at 60cqh (60% of
+   the section's container-query height) so an image-plus-text slide
+   doesn't push the text past the section's overflow:hidden boundary.
+   Marp background-image render paths are unaffected (different DOM).
+   Authors who want different sizing should use Marp directives
+   (![w:N h:N], ![fit], ![bg]). */
+div.marpit > svg > foreignObject > section img:not([data-marp-twemoji]) {
+  max-width: 100%;
+  max-height: 60cqh;
+  object-fit: contain;
+}
 </style></head><body>${inlinedHtml}</body></html>`;
   const browser = await puppeteer.launch({ headless: true });
   try {
     const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 720 });
+    await page.setViewport({ width: slideWidth, height: slideHeight });
     await page.setContent(fullHtml, { waitUntil: "load" });
     const pdfBuffer = await page.pdf({
-      width: "1280px",
-      height: "720px",
+      width: `${slideWidth}px`,
+      height: `${slideHeight}px`,
       margin: { top: "0", bottom: "0", left: "0", right: "0" },
       printBackground: true,
     });
