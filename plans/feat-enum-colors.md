@@ -32,8 +32,11 @@ list cell.
   the remaining flagged values → amber, every non-flagged value → neutral grey.
   e.g. todos `priority: [urgent, high, medium, low]` with
   `notifyWhen.in: [urgent, high]` → urgent=red, high=amber, medium/low=grey.
-- **Palette order**: rose and amber are placed LAST (indices 6-7) so small
-  enums never draw a palette colour that reads like the notification red/amber.
+- **Palette excludes the warm warning band** (red / orange / amber) entirely —
+  those are reserved for the notification severity colours — so a normal enum
+  value can never draw a colour that reads like a notification. Eight
+  well-separated cool/green/magenta hues: indigo, sky, cyan, teal, emerald,
+  lime, violet, fuchsia.
 - **No schema/type/server/i18n changes** — colouring is purely derived from
   existing `values`. (A per-value override could be a future follow-up.)
 - **Primary enum**: the field a view groups by. Dashboard & kanban already use

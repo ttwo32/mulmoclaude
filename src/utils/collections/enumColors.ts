@@ -28,9 +28,11 @@ export interface EnumColorClasses {
   border: string;
 }
 
-// Order matters: rose and amber sit LAST (indices 6-7) so the common small
-// enums (≤6 values) never draw a colour that reads like the notification
-// red/amber, keeping the notification-enum scheme visually distinct.
+// The palette deliberately EXCLUDES the warm warning band (red / orange /
+// amber): those are reserved for the notification-enum severity colours
+// (`ENUM_ALERT` red, `ENUM_NUDGE` amber), so a normal enum value can never
+// draw a colour that reads like a notification. Eight well-separated cool /
+// green / magenta hues keep enough variety for wide enums.
 const PALETTE: readonly EnumColorClasses[] = [
   {
     card: "border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100",
@@ -38,32 +40,27 @@ const PALETTE: readonly EnumColorClasses[] = [
     badge: "bg-indigo-100 text-indigo-700",
     border: "border-indigo-200",
   },
+  { card: "border-sky-200 bg-sky-50 text-sky-600 hover:bg-sky-100", dot: "bg-sky-500", badge: "bg-sky-100 text-sky-700", border: "border-sky-200" },
+  { card: "border-cyan-200 bg-cyan-50 text-cyan-600 hover:bg-cyan-100", dot: "bg-cyan-500", badge: "bg-cyan-100 text-cyan-700", border: "border-cyan-200" },
+  { card: "border-teal-200 bg-teal-50 text-teal-600 hover:bg-teal-100", dot: "bg-teal-500", badge: "bg-teal-100 text-teal-700", border: "border-teal-200" },
   {
     card: "border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100",
     dot: "bg-emerald-500",
     badge: "bg-emerald-100 text-emerald-700",
     border: "border-emerald-200",
   },
-  { card: "border-sky-200 bg-sky-50 text-sky-600 hover:bg-sky-100", dot: "bg-sky-500", badge: "bg-sky-100 text-sky-700", border: "border-sky-200" },
+  { card: "border-lime-200 bg-lime-50 text-lime-600 hover:bg-lime-100", dot: "bg-lime-500", badge: "bg-lime-100 text-lime-700", border: "border-lime-200" },
   {
     card: "border-violet-200 bg-violet-50 text-violet-600 hover:bg-violet-100",
     dot: "bg-violet-500",
     badge: "bg-violet-100 text-violet-700",
     border: "border-violet-200",
   },
-  { card: "border-teal-200 bg-teal-50 text-teal-600 hover:bg-teal-100", dot: "bg-teal-500", badge: "bg-teal-100 text-teal-700", border: "border-teal-200" },
   {
-    card: "border-orange-200 bg-orange-50 text-orange-600 hover:bg-orange-100",
-    dot: "bg-orange-500",
-    badge: "bg-orange-100 text-orange-700",
-    border: "border-orange-200",
-  },
-  { card: "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100", dot: "bg-rose-500", badge: "bg-rose-100 text-rose-700", border: "border-rose-200" },
-  {
-    card: "border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100",
-    dot: "bg-amber-500",
-    badge: "bg-amber-100 text-amber-700",
-    border: "border-amber-200",
+    card: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-600 hover:bg-fuchsia-100",
+    dot: "bg-fuchsia-500",
+    badge: "bg-fuchsia-100 text-fuchsia-700",
+    border: "border-fuchsia-200",
   },
 ];
 
