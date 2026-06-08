@@ -1210,6 +1210,9 @@ const jaMessages = {
     kanbanFieldLabel: "カンバンのグループフィールド",
     kanbanUncategorized: "未分類",
     kanbanOpenCard: "{label} を開く",
+    viewDashboard: "ダッシュボード",
+    dashboardAlertHeading: "{label} — {count}件",
+    dashboardAllItems: "一覧",
     source: {
       user: "ユーザー",
       project: "プロジェクト",

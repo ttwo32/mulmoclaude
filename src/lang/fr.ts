@@ -1220,6 +1220,9 @@ const frMessages = {
     kanbanFieldLabel: "Champ de regroupement Kanban",
     kanbanUncategorized: "Non classé",
     kanbanOpenCard: "Ouvrir {label}",
+    viewDashboard: "Tableau de bord",
+    dashboardAlertHeading: "{label} — {count}",
+    dashboardAllItems: "Tous les éléments",
     source: {
       user: "Utilisateur",
       project: "Projet",
