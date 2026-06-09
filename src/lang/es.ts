@@ -44,6 +44,7 @@ const esMessages = {
     attachImageFailed: "No se pudo adjuntar la imagen: {error}",
     stopFailed: "No se pudo detener la ejecución: {error}",
     dropHint: "Suelta el archivo para adjuntar",
+    tooManyFiles: "Puedes adjuntar hasta {max} archivos a la vez.",
   },
   sessionHistoryPanel: {
     filters: {

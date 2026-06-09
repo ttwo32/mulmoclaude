@@ -39,6 +39,7 @@ const deMessages = {
     attachImageFailed: "Anhängen des Bildes fehlgeschlagen: {error}",
     stopFailed: "Stoppen der Ausführung fehlgeschlagen: {error}",
     dropHint: "Datei zum Anhängen ablegen",
+    tooManyFiles: "Sie können maximal {max} Dateien gleichzeitig anhängen.",
   },
   sessionHistoryPanel: {
     filters: {

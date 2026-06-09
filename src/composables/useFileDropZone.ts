@@ -32,10 +32,7 @@ export interface UseFileDropZoneResult extends FileDropHandlers {
 }
 
 export interface UseFileDropZoneOptions {
-  /** Called when the user releases a file over the zone. The
-   *  composable picks `files[0]` (first file) and ignores the rest;
-   *  multi-file uploads are not a current product requirement. */
-  onFile: (file: File) => void;
+  onFiles: (files: File[]) => void;
 }
 
 // Module-scope so the install-once contract holds across multiple
@@ -105,8 +102,8 @@ export function useFileDropZone(opts: UseFileDropZoneOptions): UseFileDropZoneRe
     if (!isFileDrag(event)) return;
     event.preventDefault();
     resetTerminal();
-    const file = event.dataTransfer?.files[0];
-    if (file) opts.onFile(file);
+    const files = event.dataTransfer?.files;
+    if (files && files.length > 0) opts.onFiles(Array.from(files));
   }
 
   function resetTerminal(): void {

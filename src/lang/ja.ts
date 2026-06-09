@@ -46,6 +46,7 @@ const jaMessages = {
     attachImageFailed: "画像の添付に失敗しました: {error}",
     stopFailed: "処理の停止に失敗しました: {error}",
     dropHint: "ファイルをドロップして添付",
+    tooManyFiles: "一度に添付できるのは {max} 件までです。",
   },
   sessionHistoryPanel: {
     filters: {

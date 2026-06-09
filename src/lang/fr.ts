@@ -39,6 +39,7 @@ const frMessages = {
     attachImageFailed: "Échec de l'attache de l'image : {error}",
     stopFailed: "Échec de l'arrêt du traitement : {error}",
     dropHint: "Déposez le fichier pour joindre",
+    tooManyFiles: "Vous pouvez joindre jusqu'à {max} fichiers à la fois.",
   },
   sessionHistoryPanel: {
     filters: {

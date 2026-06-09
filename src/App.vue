@@ -137,7 +137,7 @@
         <ChatInput
           ref="chatInputRef"
           v-model="userInput"
-          v-model:pasted-file="pastedFile"
+          v-model:pasted-files="pastedFiles"
           :is-running="activeSessionRunning"
           :queries="sessionRoleQueries"
           @send="sendMessage()"
@@ -260,7 +260,7 @@
           <ChatInput
             ref="chatInputRef"
             v-model="userInput"
-            v-model:pasted-file="pastedFile"
+            v-model:pasted-files="pastedFiles"
             :is-running="activeSessionRunning"
             :queries="sessionRoleQueries"
             @send="sendMessage()"
@@ -451,7 +451,7 @@ const { currentRoleId } = useCurrentRole(roles);
 const { shortcuts } = useShortcuts();
 
 const userInput = ref("");
-const pastedFile = ref<PastedFile | null>(null);
+const pastedFiles = ref<PastedFile[]>([]);
 const activePane = ref<"sidebar" | "main">("sidebar");
 
 const { sessions, historyError, fetchSessions, setBookmark, deleteSession: deleteSessionFromHistory } = useSessionHistory();
@@ -537,7 +537,7 @@ useGlobalImageErrorRepair();
 
 const sessionSidebarRef = ref<{ root: HTMLDivElement | null } | null>(null);
 const canvasRef = ref<HTMLDivElement | null>(null);
-const chatInputRef = ref<{ focus: () => void; collapseSuggestions: () => void; readFile: (file: File) => void } | null>(null);
+const chatInputRef = ref<{ focus: () => void; collapseSuggestions: () => void; addFiles: (files: File[]) => void } | null>(null);
 const { focusChatInput } = useChatScroll({
   sessionSidebarRef,
   toolResults,
@@ -559,8 +559,8 @@ const {
   onDragleave: onPanelDragleave,
   onDrop: onPanelDrop,
 } = useFileDropZone({
-  onFile: (file) => {
-    chatInputRef.value?.readFile(file);
+  onFiles: (files) => {
+    chatInputRef.value?.addFiles(files);
   },
 });
 
@@ -985,36 +985,26 @@ async function sendMessage(text?: string) {
   const message = typeof text === "string" ? text : userInput.value.trim();
   if (!message || activeSessionRunning.value) return;
   userInput.value = "";
-  const fileSnapshot = pastedFile.value;
-  pastedFile.value = null;
+  const filesSnapshot = [...pastedFiles.value];
+  pastedFiles.value = [];
 
-  // Pasted / dropped files are pre-uploaded to a workspace file so
-  // the server (and the LLM downstream) sees a relative path — never
-  // a data: URI. The path then rides on `attachments[]` as a path-only
-  // entry. On upload failure, restore both userInput and pastedFile so
-  // the user can retry without retyping.
-  let attachmentForRequest: string | undefined;
-  if (fileSnapshot) {
-    const resolved = await resolvePastedAttachment(fileSnapshot);
-    if (!resolved.ok) {
+  let attachmentPaths: string[] | undefined;
+  if (filesSnapshot.length > 0) {
+    const results = await Promise.all(filesSnapshot.map((file) => resolvePastedAttachment(file)));
+    const firstFailure = results.find((res) => !res.ok);
+    if (firstFailure && !firstFailure.ok) {
       userInput.value = message;
-      pastedFile.value = fileSnapshot;
+      pastedFiles.value = filesSnapshot;
       const recoverySession = sessionMap.get(currentSessionId.value);
-      if (recoverySession) pushErrorMessage(recoverySession, t("chatInput.attachImageFailed", { error: resolved.error }));
+      if (recoverySession) pushErrorMessage(recoverySession, t("chatInput.attachImageFailed", { error: firstFailure.error }));
       return;
     }
-    attachmentForRequest = resolved.value;
+    attachmentPaths = results.filter((res): res is { ok: true; value: string } => res.ok).map((res) => res.value);
+    if (attachmentPaths.length === 0) attachmentPaths = undefined;
   }
 
   const session = sessionMap.get(currentSessionId.value);
   if (!session) return;
-
-  // Only files the user explicitly attached this turn (paste / drop /
-  // file-picker) ride on the message. Do NOT auto-attach whatever
-  // image happens to be selected in the sidebar — selection moves to
-  // the latest generated image automatically, which would silently
-  // glue the previous picture onto every follow-up comment.
-  const attachmentPaths = attachmentForRequest ? [attachmentForRequest] : undefined;
 
   beginUserTurn(session, message, attachmentPaths);
 
