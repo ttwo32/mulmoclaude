@@ -61,6 +61,9 @@ const enMessages = {
     attachImageFailed: "Failed to attach image: {error}",
     stopFailed: "Failed to stop the run: {error}",
     dropHint: "Drop file to attach",
+    tooManyFiles: "You can attach up to {max} files at once.",
+    removeAttachment: "Remove {name}",
+    attachmentFallbackName: "attachment",
   },
   sessionHistoryPanel: {
     filters: {

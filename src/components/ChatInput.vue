@@ -23,14 +23,17 @@
       <div v-if="fileError" class="mb-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-1.5" data-testid="file-error">
         {{ fileError }}
       </div>
-      <ChatAttachmentPreview
-        v-if="pastedFile"
-        :data-url="pastedFile.dataUrl"
-        :filename="pastedFile.name"
-        :mime="pastedFile.mime"
-        @remove="emit('update:pastedFile', null)"
-      />
-      <div class="flex gap-2" :class="{ 'mt-2': pastedFile }">
+      <div v-if="pastedFiles.length > 0" class="flex flex-wrap gap-1.5 mb-1" data-testid="chat-attachment-list">
+        <ChatAttachmentPreview
+          v-for="(file, index) in pastedFiles"
+          :key="file.name + index"
+          :data-url="file.dataUrl"
+          :filename="file.name"
+          :mime="file.mime"
+          @remove="removeFileAt(index)"
+        />
+      </div>
+      <div class="flex gap-2" :class="{ 'mt-2': pastedFiles.length > 0 }">
         <textarea
           ref="textarea"
           :value="modelValue"
@@ -94,7 +97,7 @@
            filter matches ACCEPTED_MIME_PREFIXES/_EXACT below; the change
            handler routes through the same readAttachmentFile() used by
            drop + paste, so all three paths behave identically. -->
-      <input ref="fileInput" type="file" class="hidden" :accept="fileInputAccept" data-testid="file-input" @change="onFilePicked" />
+      <input ref="fileInput" type="file" multiple class="hidden" :accept="fileInputAccept" data-testid="file-input" @change="onFilePicked" />
     </div>
   </div>
 </template>
@@ -117,7 +120,7 @@ const { t } = useI18n();
 const props = withDefaults(
   defineProps<{
     modelValue: string;
-    pastedFile: PastedFile | null;
+    pastedFiles: PastedFile[];
     isRunning: boolean;
     queries?: string[];
   }>(),
@@ -126,7 +129,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
-  "update:pastedFile": [file: PastedFile | null];
+  "update:pastedFiles": [files: PastedFile[]];
   send: [];
   stop: [];
   "suggestion-send": [query: string];
@@ -139,6 +142,7 @@ const suggestionsExpanded = ref(false);
 const suggestionsBtnRef = ref<HTMLButtonElement | null>(null);
 
 const MAX_ATTACH_BYTES = 30 * 1024 * 1024;
+const MAX_ATTACHMENTS = 10;
 
 const ACCEPTED_MIME_PREFIXES = ["image/", "text/"];
 const ACCEPTED_MIME_EXACT = new Set([
@@ -163,44 +167,99 @@ function isAcceptedType(mime: string): boolean {
   return ACCEPTED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix)) || ACCEPTED_MIME_EXACT.has(mime);
 }
 
-function readAttachmentFile(file: File): void {
-  fileError.value = null;
-  if (!isAcceptedType(file.type)) {
-    // Previously returned silently. That left the user wondering whether
-    // the drop/paste registered at all — #499.
-    fileError.value = t("chatInput.unsupportedFileType");
-    return;
-  }
+function validateFile(file: File): string | null {
+  if (!isAcceptedType(file.type)) return t("chatInput.unsupportedFileType");
   if (file.size > MAX_ATTACH_BYTES) {
     const sizeMB = (file.size / 1024 / 1024).toFixed(1);
-    fileError.value = t("chatInput.fileTooLarge", { sizeMB });
+    return t("chatInput.fileTooLarge", { sizeMB });
+  }
+  return null;
+}
+
+function readFileAsDataUrl(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+function clampToSlots(files: File[]): File[] {
+  const remainingSlots = MAX_ATTACHMENTS - props.pastedFiles.length;
+  if (files.length > remainingSlots) {
+    fileError.value = t("chatInput.tooManyFiles", { max: MAX_ATTACHMENTS });
+  }
+  return remainingSlots <= 0 ? [] : files.slice(0, remainingSlots);
+}
+
+function findFirstValidationError(files: File[]): string | null {
+  return files.reduce<string | null>((err, file) => err ?? validateFile(file), null);
+}
+
+function emitClampedFiles(valid: PastedFile[]): void {
+  const slotsNow = MAX_ATTACHMENTS - props.pastedFiles.length;
+  const clamped = slotsNow < valid.length ? valid.slice(0, Math.max(0, slotsNow)) : valid;
+  if (clamped.length > 0) {
+    emit("update:pastedFiles", [...props.pastedFiles, ...clamped]);
+  }
+  if (clamped.length < valid.length) {
+    fileError.value = t("chatInput.tooManyFiles", { max: MAX_ATTACHMENTS });
+  }
+}
+
+let fileQueue = Promise.resolve();
+
+async function processFiles(files: File[]): Promise<void> {
+  fileError.value = null;
+  const accepted = clampToSlots(files);
+  if (accepted.length === 0) return;
+
+  const firstError = findFirstValidationError(accepted);
+  if (firstError) {
+    fileError.value = firstError;
     return;
   }
-  const reader = new FileReader();
-  reader.onload = () => {
-    if (typeof reader.result === "string") {
-      emit("update:pastedFile", {
-        dataUrl: reader.result,
-        name: file.name,
-        mime: file.type,
-      });
-    }
-  };
-  reader.readAsDataURL(file);
+
+  const pending = accepted.map(async (file) => {
+    const dataUrl = await readFileAsDataUrl(file);
+    if (!dataUrl) return null;
+    return { dataUrl, name: file.name, mime: file.type } satisfies PastedFile;
+  });
+
+  try {
+    const results = await Promise.all(pending);
+    const valid = results.filter((result): result is PastedFile => result !== null);
+    if (valid.length > 0) emitClampedFiles(valid);
+  } catch {
+    fileError.value = t("chatInput.unsupportedFileType");
+  }
+
+  await nextTick();
+}
+
+function addFiles(files: File[]): void {
+  fileQueue = fileQueue.then(() => processFiles(files));
+}
+
+function removeFileAt(index: number): void {
+  const updated = props.pastedFiles.filter((_, i) => i !== index);
+  emit("update:pastedFiles", updated);
 }
 
 function onPasteFile(event: ClipboardEvent): void {
   const items = event.clipboardData?.items;
   if (!items) return;
+  const files: File[] = [];
   for (const item of items) {
     if (isAcceptedType(item.type)) {
       const file = item.getAsFile();
-      if (file) {
-        event.preventDefault();
-        readAttachmentFile(file);
-        return;
-      }
+      if (file) files.push(file);
     }
+  }
+  if (files.length > 0) {
+    event.preventDefault();
+    addFiles(files);
   }
 }
 
@@ -210,11 +269,17 @@ function openFilePicker(): void {
 
 function onFilePicked(event: Event): void {
   const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (file) readAttachmentFile(file);
-  // Reset so selecting the same file twice in a row still fires @change.
+  const files = input.files ? Array.from(input.files) : [];
+  if (files.length > 0) addFiles(files);
   input.value = "";
 }
+
+watch(
+  () => props.pastedFiles.length,
+  (len) => {
+    if (len === 0) fileError.value = null;
+  },
+);
 
 const imeEnter = useImeAwareEnter(() => emit("send"));
 
@@ -280,5 +345,5 @@ function collapseSuggestions(): void {
   suggestionsExpanded.value = false;
 }
 
-defineExpose({ focus, collapseSuggestions, readFile: readAttachmentFile });
+defineExpose({ focus, collapseSuggestions, addFiles });
 </script>
