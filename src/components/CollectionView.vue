@@ -247,6 +247,7 @@
           :anchor-field="calendarAnchorField"
           :end-field="calendarEndField"
           :time-field="calendarTimeField"
+          :color-field="hasKanban ? kanbanGroupField : ''"
           :selected="viewing ? String(viewing[collection.schema.primaryKey] ?? '') : undefined"
           :can-create="canCreate"
           :show-detail="Boolean(viewing || editing)"

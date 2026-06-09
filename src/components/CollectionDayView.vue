@@ -64,11 +64,7 @@
                 :key="entry.id"
                 type="button"
                 class="absolute overflow-hidden rounded border px-1.5 py-0.5 text-left transition-colors"
-                :class="
-                  entry.id === selected
-                    ? 'bg-indigo-600 text-white border-indigo-600 z-10'
-                    : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
-                "
+                :class="timedChipClass(entry)"
                 :style="entry.style"
                 :data-testid="`collection-day-view-chip-${entry.id}`"
                 @click="onSelect(entry.id)"
@@ -97,7 +93,7 @@
             :key="entry.id"
             type="button"
             class="truncate rounded border px-1.5 py-0.5 text-[11px] font-semibold transition-colors"
-            :class="entry.id === selected ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'"
+            :class="allDayChipClass(entry)"
             :data-testid="`collection-day-view-allday-${entry.id}`"
             @click="onSelect(entry.id)"
           >
@@ -120,6 +116,7 @@
 import { computed, nextTick, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { bucketRecords, daySlice, assignLanes, ymdKey, MINUTES_PER_DAY, type Ymd, type DaySlice } from "../utils/collections/calendarGrid";
+import { resolveEnumColor, type EnumColorClasses } from "../utils/collections/enumColors";
 import { labelFieldFor, itemIdOf, itemLabelOf } from "../utils/collections/itemLabel";
 import type { CollectionItem, CollectionSchema } from "./collectionTypes";
 
@@ -130,6 +127,9 @@ const props = defineProps<{
   anchorField: string;
   endField?: string;
   timeField?: string;
+  /** Optional `enum` field tinting each chip by its value's palette colour
+   *  (matching the month view). Empty / unset → default indigo/slate styling. */
+  colorField?: string;
   selected?: string;
   canCreate: boolean;
   /** When true, expand the modal to two columns and render the `#detail`
@@ -203,7 +203,16 @@ interface DayEntry {
   id: string;
   label: string;
   secondary: string[];
+  /** Resolved chip colour from the record's `colorField` value, or null when
+   *  no colour field is set → default styling. */
+  color: EnumColorClasses | null;
   slice: DaySlice;
+}
+
+/** A record's chip colour from its `colorField` value (palette, or
+ *  notification red/amber/grey on a notification enum); null when unset. */
+function colorOf(item: CollectionItem): EnumColorClasses | null {
+  return props.colorField ? resolveEnumColor(props.schema, props.colorField, item[props.colorField]) : null;
 }
 
 // Every record whose span covers this day, projected onto it.
@@ -217,6 +226,7 @@ const dayEntries = computed<DayEntry[]>(() => {
       id: itemIdOf(span.item, props.schema),
       label: itemLabelOf(span.item, props.schema, labelField.value),
       secondary: secondaryFieldsOf(span.item),
+      color: colorOf(span.item),
       slice,
     });
   }
@@ -249,6 +259,26 @@ const timedEntries = computed<TimedEntry[]>(() => {
     };
   });
 });
+
+// Chip styling. The selected chip keeps the solid indigo highlight; otherwise
+// a record with a resolved colour tints the chip (palette badge + border), and
+// one with none (no colour field) falls back to the kind's default — indigo on
+// the timeline, slate in the all-day strip. Mirrors the month view's
+// `chipClass` so the two surfaces colour records identically.
+const TIMED_DEFAULT = "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100";
+const ALL_DAY_DEFAULT = "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100";
+
+function timedChipClass(entry: DayEntry): string {
+  if (entry.id === props.selected) return "bg-indigo-600 text-white border-indigo-600 z-10";
+  if (!entry.color) return TIMED_DEFAULT;
+  return `${entry.color.badge} ${entry.color.border} hover:brightness-95`;
+}
+
+function allDayChipClass(entry: DayEntry): string {
+  if (entry.id === props.selected) return "bg-indigo-600 text-white border-indigo-600";
+  if (!entry.color) return ALL_DAY_DEFAULT;
+  return `${entry.color.badge} ${entry.color.border} hover:brightness-95`;
+}
 
 // Select a record: report it to the host (which shows it in the right pane).
 // Unlike before, the modal stays open so the timeline and detail sit

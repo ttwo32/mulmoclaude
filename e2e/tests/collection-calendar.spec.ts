@@ -106,6 +106,35 @@ const DTEVENTS = {
   items: [{ id: "kickoff", name: "Kickoff", at: `${MID}T14:30` }],
 };
 
+// A date + enum collection: the enum is the colour field, so chips on every
+// calendar surface (month grid AND the day view, timed or all-day) tint by the
+// value's palette colour. No time field → every record sits in the day view's
+// all-day strip, which must carry the colour just like the timed chips.
+const COLORED = {
+  collection: {
+    slug: "colored-events",
+    title: "Colored",
+    icon: "event",
+    source: "user",
+    schema: {
+      title: "Colored",
+      icon: "event",
+      dataPath: "data/colored-events/items",
+      primaryKey: "id",
+      fields: {
+        id: { type: "string", label: "ID", primary: true, required: true },
+        name: { type: "string", label: "Name", required: true },
+        on: { type: "date", label: "Date" },
+        status: { type: "enum", label: "Status", values: ["todo", "doing", "done"] },
+      },
+      displayField: "name",
+      calendarField: "on",
+    },
+  },
+  // "doing" is enum index 1 → the sky palette entry (badge `bg-sky-100`).
+  items: [{ id: "review", name: "Review", on: MID, status: "doing" }],
+};
+
 // A collection with NO date field — must never show the calendar toggle.
 const CONTACTS = {
   collection: {
@@ -147,6 +176,10 @@ async function mockCollections(page: Page): Promise<void> {
   await page.route(
     (url) => url.pathname === "/api/collections/contacts",
     (route) => route.fulfill({ json: CONTACTS }),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/collections/colored-events",
+    (route) => route.fulfill({ json: COLORED }),
   );
 }
 
@@ -317,6 +350,24 @@ test.describe("collection calendar view", () => {
     await expect(page.getByTestId("collection-day-view")).toBeVisible();
     await expect(page.getByTestId("collection-day-view-detail")).toBeVisible();
     await expect(page.getByTestId("collections-detail-title")).toHaveText("block");
+  });
+
+  test("day view all-day chips carry the enum colour, not the slate default", async ({ page }) => {
+    await page.goto("/collections/colored-events");
+    await page.getByTestId("collection-view-toggle-calendar").click();
+    // Open the day via keyboard so the click doesn't land on (and select) the
+    // record's chip — an unselected chip shows its palette colour.
+    const cell = page.getByTestId(`collection-calendar-day-${MID}`);
+    await cell.focus();
+    await cell.press("Enter");
+    await expect(page.getByTestId("collection-day-view")).toBeVisible();
+    // The record has no time field → it lands in the all-day strip. Its enum
+    // value "doing" (palette index 1 → sky) must tint the chip; before the fix
+    // the all-day strip was hardcoded slate, dropping the colour.
+    const chip = page.getByTestId("collection-day-view-allday-review");
+    await expect(chip).toBeVisible();
+    await expect(chip).toHaveClass(/bg-sky-100/);
+    await expect(chip).not.toHaveClass(/bg-slate-50/);
   });
 
   test("day-view create on a datetime-anchored collection prefills a valid datetime", async ({ page }) => {
