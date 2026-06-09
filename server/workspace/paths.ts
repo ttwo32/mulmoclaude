@@ -162,6 +162,12 @@ const HOST_WORKSPACE_DIRS = {
   configs: "config",
   roles: "config/roles",
   helps: "config/helps",
+  // Custom Marp themes (#1649). One `.css` file per theme; the
+  // filename (sans extension) is the theme name referenced from a
+  // slide deck's frontmatter `theme: <name>`. Loaded into the
+  // shared Marp themeSet at preview-render and PDF-export time so
+  // the same look applies to both surfaces.
+  marpThemes: "config/marp-themes",
   // Project-scope Claude Code skills root — both user-authored and
   // launcher-managed presets live here. Path is hardcoded by Claude
   // Code's slash-command resolver (it scans `<cwd>/.claude/skills/`

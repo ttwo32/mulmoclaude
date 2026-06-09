@@ -3,6 +3,8 @@ import path from "path";
 import { Router, Request, Response } from "express";
 import { marked } from "marked";
 import { Marp } from "@marp-team/marp-core";
+import { listMarpThemes } from "../../workspace/marp-themes.js";
+import { MARP_HTML_ALLOWLIST } from "../../../src/utils/markdown/marpTheme.js";
 import puppeteer from "puppeteer";
 import { errorMessage } from "../../utils/errors.js";
 import { badRequest, serverError } from "../../utils/httpError.js";
@@ -290,7 +292,15 @@ async function renderMarpPdf(markdown: string, baseDir?: string): Promise<Buffer
   // and puppeteer would need network access during the print to
   // resolve them. OS-font emoji renders inline without a fetch and
   // matches the MarpView preview's behaviour after the same change.
-  const marp = new Marp({ html: false, emoji: { unicode: false, shortcode: false } });
+  // Same allowlist as the MarpView preview so preview / export stay
+  // identical when authors lean on raw HTML tags for layout.
+  const marp = new Marp({ html: MARP_HTML_ALLOWLIST, emoji: { unicode: false, shortcode: false } });
+  // Register every workspace-defined theme (#1649). Slides that
+  // reference one via `theme: <name>` then render with the same
+  // CSS the previewer applied; slides that don't are unaffected.
+  for (const theme of listMarpThemes()) {
+    marp.themeSet.add(theme.css);
+  }
   const sized = applyCustomMarpSize(marp, markdown);
   const { html, css } = marp.render(sized);
   const { width: slideWidth, height: slideHeight } = extractSlideDimensions(html);

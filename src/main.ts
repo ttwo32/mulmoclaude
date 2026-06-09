@@ -74,6 +74,7 @@ const pluginEndpointRegistry: EndpointRegistry = {
   files: API_ROUTES.files,
   imageStore: { update: API_ROUTES.image.update },
   mcpTools: { list: API_ROUTES.mcpTools.list },
+  marpThemes: API_ROUTES.marpThemes,
 };
 
 installHostContext({

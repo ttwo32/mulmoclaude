@@ -54,6 +54,7 @@ describe("WORKSPACE_DIRS expected keys", () => {
     "images",
     "locations",
     "markdowns",
+    "marpThemes",
     "memoryDir",
     "memoryStaging",
     "notifier",

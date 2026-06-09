@@ -226,6 +226,13 @@ const HOST_API_ROUTES = {
     manage: "/api/roles/manage",
   },
 
+  // Custom Marp themes (#1649). One CSS file per theme under
+  // `config/marp-themes/`; `GET /api/marp-themes` returns the list
+  // for the MarpView previewer to register via `marp.themeSet.add()`.
+  marpThemes: {
+    list: "/api/marp-themes",
+  },
+
   // Schema-driven collections (see plans/done/feat-skill-driven-apps.md
   // — historical name predates the rename). One "collection" is a
   // skill that ships a `schema.json` alongside its `SKILL.md`; the

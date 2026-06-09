@@ -30,6 +30,7 @@ Guides for using MulmoClaude. No programming knowledge required.
 | [Bedrock デプロイ](bedrock-deployment.md)                           | 日本語   | AWS Bedrock 経由の Anthropic Claude で動かす手順                                             |
 | [Spotify セットアップ手順](tips/spotify-setup.md)                   | 日本語   | Spotify Developer Dashboard で個人アプリを登録し Client ID を `.env` に設定する手順 (#1162)  |
 | [Spotify Setup](tips/spotify-setup.en.md)                           | English  | Register a personal Spotify Developer Dashboard app and wire the Client ID into `.env` (#1162) |
+| [Marp スライドのカスタムテーマ](marp-themes.md)                     | 日本語   | `config/marp-themes/<name>.css` で Marp スライドに自前 CSS テーマを適用 (#1649)              |
 
 ## Architecture & Design
 

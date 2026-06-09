@@ -23,6 +23,7 @@ import wikiRoutes from "./api/routes/wiki.js";
 import wikiHistoryRoutes from "./api/routes/wiki/history.js";
 import { provisionDispatcherHook } from "./workspace/hooks/provision.js";
 import pdfRoutes from "./api/routes/pdf.js";
+import marpThemesRoutes from "./api/routes/marp-themes.js";
 import filesRoutes from "./api/routes/files.js";
 import configRoutes from "./api/routes/config.js";
 import configRefreshRoutes from "./api/routes/config-refresh.js";
@@ -620,6 +621,7 @@ app.use(wikiRoutes);
 // API_ROUTES.wiki.* constants.
 app.use("/api/wiki", wikiHistoryRoutes);
 app.use(pdfRoutes);
+app.use(marpThemesRoutes);
 app.use(filesRoutes);
 app.use(configRoutes);
 app.use(configRefreshRoutes);
