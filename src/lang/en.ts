@@ -1157,7 +1157,9 @@ const enMessages = {
     connectorsEmpty: "No connectors found.",
     connectorConnected: "Connected",
     connectorDisconnected: "Not connected",
-    connectorsGuide: "Connectors like Slack and Gmail let Claude access your accounts. Add or remove connectors from Claude Desktop.",
+    connectorsGuide:
+      "Connectors like Slack and Gmail let Claude access your accounts. Add or remove connectors from Claude Desktop, or configure them {configLink}. (Opens claude.ai)",
+    connectorsConfigLinkText: "here",
   },
   collectionsView: {
     addCollectionLabel: "Collection",

@@ -1159,7 +1159,9 @@ const ptBRMessages = {
     connectorsEmpty: "Nenhum conector encontrado.",
     connectorConnected: "Conectado",
     connectorDisconnected: "Não conectado",
-    connectorsGuide: "Conectores como Slack e Gmail permitem que o Claude acesse suas contas. Adicione ou remova conectores pelo Claude Desktop.",
+    connectorsGuide:
+      "Conectores como Slack e Gmail permitem que o Claude acesse suas contas. Adicione ou remova conectores pelo Claude Desktop ou configure-os {configLink}. (Abre claude.ai)",
+    connectorsConfigLinkText: "aqui",
   },
   collectionsView: {
     addCollectionLabel: "Coleção",

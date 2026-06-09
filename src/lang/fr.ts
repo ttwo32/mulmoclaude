@@ -1163,7 +1163,8 @@ const frMessages = {
     connectorConnected: "Connecté",
     connectorDisconnected: "Non connecté",
     connectorsGuide:
-      "Les connecteurs comme Slack et Gmail permettent à Claude d'accéder à vos comptes. Ajoutez ou supprimez des connecteurs depuis Claude Desktop.",
+      "Les connecteurs comme Slack et Gmail permettent à Claude d'accéder à vos comptes. Ajoutez ou supprimez des connecteurs depuis Claude Desktop ou configurez-les {configLink}. (Ouvre claude.ai)",
+    connectorsConfigLinkText: "ici",
   },
   collectionsView: {
     addCollectionLabel: "Collection",

@@ -127,7 +127,13 @@
                   </li>
                 </ul>
                 <div v-else class="text-xs text-gray-400">{{ t("settingsToolsTab.connectorsEmpty") }}</div>
-                <p class="text-xs text-gray-500">{{ t("settingsToolsTab.connectorsGuide") }}</p>
+                <i18n-t keypath="settingsToolsTab.connectorsGuide" tag="p" class="text-xs text-gray-500">
+                  <template #configLink>
+                    <a href="https://claude.ai/customize/connectors" target="_blank" rel="noopener noreferrer" class="text-blue-500 underline">{{
+                      t("settingsToolsTab.connectorsConfigLinkText")
+                    }}</a>
+                  </template>
+                </i18n-t>
               </div>
             </div>
 

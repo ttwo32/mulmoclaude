@@ -1146,7 +1146,9 @@ const zhMessages = {
     connectorsEmpty: "未找到连接器。",
     connectorConnected: "已连接",
     connectorDisconnected: "未连接",
-    connectorsGuide: "Slack、Gmail 等连接器让 Claude 可以访问您的账户。请在 Claude Desktop 中添加或移除连接器。",
+    connectorsGuide:
+      "Slack、Gmail 等连接器让 Claude 可以访问您的账户。请在 Claude Desktop 中添加或移除连接器，也可以在{configLink}进行配置。（将打开 claude.ai）",
+    connectorsConfigLinkText: "此处",
   },
   collectionsView: {
     addCollectionLabel: "集合",

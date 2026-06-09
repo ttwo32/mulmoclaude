@@ -1153,7 +1153,9 @@ const jaMessages = {
     connectorsEmpty: "コネクタが見つかりません。",
     connectorConnected: "接続済み",
     connectorDisconnected: "未接続",
-    connectorsGuide: "Slack や Gmail 等のコネクタで Claude がアカウントにアクセスできるようになります。追加・削除は Claude Desktop から行えます。",
+    connectorsGuide:
+      "Slack や Gmail 等のコネクタで Claude がアカウントにアクセスできるようになります。追加・削除は Claude Desktop から、または、{configLink}からも設定できます。（Web 版 claude.ai に移動します）",
+    connectorsConfigLinkText: "こちら",
   },
   collectionsView: {
     addCollectionLabel: "コレクション",

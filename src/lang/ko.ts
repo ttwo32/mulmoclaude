@@ -1157,7 +1157,9 @@ const koMessages = {
     connectorsEmpty: "커넥터를 찾을 수 없습니다.",
     connectorConnected: "연결됨",
     connectorDisconnected: "연결 안 됨",
-    connectorsGuide: "Slack, Gmail 등의 커넥터로 Claude가 계정에 접근할 수 있습니다. 커넥터 추가 및 제거는 Claude Desktop에서 할 수 있습니다.",
+    connectorsGuide:
+      "Slack, Gmail 등의 커넥터로 Claude가 계정에 접근할 수 있습니다. 커넥터 추가 및 제거는 Claude Desktop 또는 {configLink}에서 할 수 있습니다. (claude.ai로 이동합니다)",
+    connectorsConfigLinkText: "여기",
   },
   collectionsView: {
     addCollectionLabel: "컬렉션",

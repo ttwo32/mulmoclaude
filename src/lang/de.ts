@@ -1174,7 +1174,8 @@ const deMessages = {
     connectorConnected: "Verbunden",
     connectorDisconnected: "Nicht verbunden",
     connectorsGuide:
-      "Konnektoren wie Slack und Gmail erlauben Claude den Zugriff auf Ihre Konten. Konnektoren werden in Claude Desktop hinzugefügt oder entfernt.",
+      "Konnektoren wie Slack und Gmail erlauben Claude den Zugriff auf Ihre Konten. Konnektoren können in Claude Desktop oder {configLink} hinzugefügt oder entfernt werden. (Öffnet claude.ai)",
+    connectorsConfigLinkText: "hier",
   },
   collectionsView: {
     addCollectionLabel: "Sammlung",

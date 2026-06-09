@@ -1170,7 +1170,9 @@ const esMessages = {
     connectorsEmpty: "No se encontraron conectores.",
     connectorConnected: "Conectado",
     connectorDisconnected: "No conectado",
-    connectorsGuide: "Los conectores como Slack y Gmail permiten a Claude acceder a tus cuentas. Agrega o elimina conectores desde Claude Desktop.",
+    connectorsGuide:
+      "Los conectores como Slack y Gmail permiten a Claude acceder a tus cuentas. Agrega o elimina conectores desde Claude Desktop o configúralos {configLink}. (Abre claude.ai)",
+    connectorsConfigLinkText: "aquí",
   },
   collectionsView: {
     addCollectionLabel: "Colección",
