@@ -632,6 +632,13 @@ watch(
     // <details> is already closed by `fetchMarkdownContent` via
     // editableMarkdown resync (Codex review on PR #1658).
     marpSplitMode.value = false;
+    // Drop any in-flight self-save expectation: `useFileChange`
+    // rebinds to the new path and resets `version` to 0, so any
+    // pubsub event we were waiting on for the *old* file will never
+    // reach our watcher. Leaving the counter positive would let it
+    // absorb the next genuine remote write on the new doc (Codex
+    // review on PR #1658).
+    pendingSelfSaves.value = 0;
     fetchMarkdownContent();
   },
 );
