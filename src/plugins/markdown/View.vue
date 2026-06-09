@@ -258,6 +258,16 @@ const watchedPath = computed(() => {
 });
 const { version: fileVersion } = useFileChange(watchedPath);
 
+// Counter of in-flight / very-recent self-saves. Bumped before our
+// own PUT lands, decremented when the resulting fileChange event
+// arrives. The watcher below uses it to distinguish "the user just
+// clicked Apply (same tab)" from "another tab / agent / browser
+// rewrote the file". Without this, `useFileChange` would feed our
+// own save back through the watcher and tear down split mode (and
+// the bottom <details> editor) every time the user presses Apply
+// (Codex review on PR #1658).
+const pendingSelfSaves = ref(0);
+
 // Declared early so the `fileVersion` watcher below can reach into the
 // `<details>` element to close the editor when a remote write lands.
 const sourceDetails = ref<HTMLDetailsElement>();
@@ -286,6 +296,12 @@ const editing = ref(false);
 // see plans/done/feat-file-change-pubsub.md.
 watch(fileVersion, (current, previous) => {
   if (current === 0 || current === previous) return;
+  // Self-save: our own Apply / task-checkbox write feeds back here
+  // through pubsub. Don't tear down the editor for our own writes.
+  if (pendingSelfSaves.value > 0) {
+    pendingSelfSaves.value -= 1;
+    return;
+  }
   if (sourceDetails.value?.open) {
     sourceDetails.value.open = false;
   }
@@ -445,12 +461,17 @@ async function applyMarkdown() {
   // (e.g. the YYYY/MM partitions added in #764).
   if (isFilePath(raw)) {
     saving.value = true;
+    pendingSelfSaves.value += 1;
     const result = await apiPut<unknown>(endpoints.update.url, {
       relativePath: raw,
       markdown: editableMarkdown.value,
     });
     saving.value = false;
     if (!result.ok) {
+      // Roll back the self-save expectation — no pubsub event will
+      // arrive for a failed PUT, so the counter would otherwise stay
+      // high and silently absorb the next *remote* write.
+      pendingSelfSaves.value = Math.max(0, pendingSelfSaves.value - 1);
       // Store the raw error; the template formats it via t() so locale
       // switches re-render without double-translating.
       saveError.value = result.error;
@@ -497,6 +518,7 @@ async function persistTaskMarkdown(relativePath: string, markdown: string): Prom
   // on screen, and persisting it would clobber unrelated state.
   if (props.selectedResult.data?.markdown !== relativePath) return;
 
+  pendingSelfSaves.value += 1;
   const result = await apiPut<unknown>(endpoints.update.url, {
     relativePath,
     markdown,
@@ -511,6 +533,10 @@ async function persistTaskMarkdown(relativePath: string, markdown: string): Prom
   if (props.selectedResult.data?.markdown !== relativePath) return;
 
   if (!result.ok) {
+    // Failed write — no pubsub event will land for it, so roll the
+    // self-save counter back to keep the next genuine remote write
+    // visible to the fileVersion watcher.
+    pendingSelfSaves.value = Math.max(0, pendingSelfSaves.value - 1);
     saveError.value = result.error;
     // Refetch synchronously inside the chain so subsequent queued
     // clicks observe the canonical (server-side) markdown before
