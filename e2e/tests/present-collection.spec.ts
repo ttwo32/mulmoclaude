@@ -85,20 +85,16 @@ test("presentCollection card renders the collection without crashing", async ({ 
   await page.goto(SESSION_PATH);
 
   await expect(page.getByTestId("present-collection")).toBeVisible({ timeout: 10_000 });
-  // itemId "avatar" was passed → the read-only detail panel opens inline on mount.
+  // itemId "avatar" was passed → the read-only detail opens in the shared
+  // record modal on mount.
+  await expect(page.getByTestId("collections-record-modal")).toBeVisible();
   await expect(page.getByTestId("collections-detail")).toBeVisible();
   await expect(page.getByTestId("collections-detail-title")).toHaveText("avatar");
-
-  // The panel must fit the View width, never the (possibly wider) table
-  // width — otherwise a wide collection clips the right of the panel.
-  const cardBox = await page.getByTestId("present-collection").boundingBox();
-  const detailBox = await page.getByTestId("collections-detail").boundingBox();
-  expect(cardBox && detailBox && detailBox.width <= cardBox.width + 1).toBeTruthy();
 
   expect(pageErrors, pageErrors.join("\n")).toHaveLength(0);
 });
 
-test("Edit on an open record swaps the inline panel to the edit form in place", async ({ page }) => {
+test("Edit on an open record swaps the modal to the edit form in place", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (err) => pageErrors.push(`${err.message}\n${err.stack ?? ""}`));
 
@@ -106,18 +102,18 @@ test("Edit on an open record swaps the inline panel to the edit form in place", 
   await page.goto(SESSION_PATH);
 
   await expect(page.getByTestId("collections-detail")).toBeVisible({ timeout: 10_000 });
-  // Edit flips the SAME inline expansion to the edit form (no modal).
+  // Edit flips the SAME modal to the edit form in place — the layout doesn't
+  // change, only the controls become editable.
   await page.getByTestId("collections-detail-edit").click();
+  await expect(page.getByTestId("collections-record-modal")).toBeVisible();
   await expect(page.getByTestId("collections-edit")).toBeVisible();
   await expect(page.getByTestId("collections-detail")).toBeHidden();
   await expect(page.getByTestId("collections-input-title")).toHaveValue("アバター");
-  // No fixed-overlay modal is used anymore.
-  await expect(page.locator(".fixed.inset-0.z-30")).toHaveCount(0);
 
   expect(pageErrors, pageErrors.join("\n")).toHaveLength(0);
 });
 
-test("Add opens the create form as a panel pinned at the top of the list", async ({ page }) => {
+test("Add opens the create form in the shared record modal", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (err) => pageErrors.push(`${err.message}\n${err.stack ?? ""}`));
 
@@ -125,13 +121,15 @@ test("Add opens the create form as a panel pinned at the top of the list", async
   await page.goto(SESSION_PATH);
   await expect(page.getByTestId("present-collection")).toBeVisible({ timeout: 10_000 });
 
+  // The card mounts with itemId "avatar" → the detail modal is open. Close it
+  // first so the (overlay-covered) Add button is clickable.
+  await expect(page.getByTestId("collections-record-modal")).toBeVisible();
+  await page.getByTestId("collections-detail-close").click();
+  await expect(page.getByTestId("collections-record-modal")).toHaveCount(0);
+
   await page.getByTestId("collections-add-item").click();
-  const createForm = page.getByTestId("collections-create");
-  await expect(createForm).toBeVisible();
-  // The create panel sits above the first data row (synthetic top row).
-  const createBox = await createForm.boundingBox();
-  const firstRow = await page.getByTestId("collections-row-avatar").boundingBox();
-  expect(createBox && firstRow && createBox.y < firstRow.y).toBeTruthy();
+  await expect(page.getByTestId("collections-record-modal")).toBeVisible();
+  await expect(page.getByTestId("collections-create")).toBeVisible();
 
   expect(pageErrors, pageErrors.join("\n")).toHaveLength(0);
 });

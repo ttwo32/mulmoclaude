@@ -280,37 +280,9 @@
           </template>
         </CollectionDayView>
 
-        <!-- Fallback panel for records with no resolvable day (the "no date"
-             tray): they can't appear on a timeline, so their detail still
-             opens below the grid. -->
-        <div
-          v-if="(viewing || editing) && !openDay"
-          class="mt-4 rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden"
-          data-testid="collections-calendar-panel"
-        >
-          <CollectionRecordPanel
-            v-model:editing="editing"
-            :collection="collection"
-            :viewing="viewing"
-            :saving="saving"
-            :save-error="saveError"
-            :action-error="actionError"
-            :action-pending="actionPending"
-            :visible-actions="visibleActions"
-            :live-record="liveRecord"
-            :live-derived="liveDerived"
-            :view-title="viewTitle"
-            :is-singleton="isSingleton"
-            :render="render"
-            :locale="locale"
-            @submit="saveEditor"
-            @cancel="cancelEditor"
-            @edit="editFromView"
-            @close="closeView"
-            @delete="viewing && confirmDelete(viewing)"
-            @run-action="runAction"
-          />
-        </div>
+        <!-- Undated records (the "no date" tray) have no timeline slot, so
+             they open in the shared record modal (rendered once at the View
+             root) instead of the day view. -->
       </div>
 
       <!-- Kanban body: an alternative to the table for enum-bearing
@@ -346,34 +318,6 @@
             @move="onKanbanMove"
           />
         </div>
-        <div
-          v-if="viewing || editing"
-          class="m-3 mt-0 rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden shrink-0"
-          data-testid="collections-kanban-panel"
-        >
-          <CollectionRecordPanel
-            v-model:editing="editing"
-            :collection="collection"
-            :viewing="viewing"
-            :saving="saving"
-            :save-error="saveError"
-            :action-error="actionError"
-            :action-pending="actionPending"
-            :visible-actions="visibleActions"
-            :live-record="liveRecord"
-            :live-derived="liveDerived"
-            :view-title="viewTitle"
-            :is-singleton="isSingleton"
-            :render="render"
-            :locale="locale"
-            @submit="saveEditor"
-            @cancel="cancelEditor"
-            @edit="editFromView"
-            @close="closeView"
-            @delete="viewing && confirmDelete(viewing)"
-            @run-action="runAction"
-          />
-        </div>
       </div>
 
       <!-- Dashboard body: a read-only snapshot for enum-bearing collections —
@@ -387,30 +331,6 @@
           :selected="viewing ? String(viewing[collection.schema.primaryKey] ?? '') : undefined"
           @select="onCalendarSelect"
         />
-        <div v-if="viewing || editing" class="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden" data-testid="collections-dashboard-panel">
-          <CollectionRecordPanel
-            v-model:editing="editing"
-            :collection="collection"
-            :viewing="viewing"
-            :saving="saving"
-            :save-error="saveError"
-            :action-error="actionError"
-            :action-pending="actionPending"
-            :visible-actions="visibleActions"
-            :live-record="liveRecord"
-            :live-derived="liveDerived"
-            :view-title="viewTitle"
-            :is-singleton="isSingleton"
-            :render="render"
-            :locale="locale"
-            @submit="saveEditor"
-            @cancel="cancelEditor"
-            @edit="editFromView"
-            @close="closeView"
-            @delete="viewing && confirmDelete(viewing)"
-            @run-action="runAction"
-          />
-        </div>
       </div>
 
       <div v-else-if="items.length === 0 && editing?.mode !== 'create'" class="flex flex-col items-center justify-center py-20 text-sm text-slate-400 gap-2">
@@ -458,9 +378,8 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 bg-white">
-            <template v-for="item in displayItems" :key="String(item[collection.schema.primaryKey] ?? '')">
+            <template v-for="item in filteredItems" :key="String(item[collection.schema.primaryKey] ?? '')">
               <tr
-                v-if="!isCreateRow(item)"
                 class="hover:bg-slate-50/70 cursor-pointer transition-colors focus:outline-none focus:bg-indigo-50/30"
                 :class="isRowOpen(item) || isEditingRow(item) ? 'bg-indigo-50/40' : ''"
                 role="button"
@@ -572,50 +491,40 @@
                   </template>
                 </td>
               </tr>
-
-              <!-- Inline detail / edit panel: expands directly under the open
-                 row (replaces the old fixed modal). One row open at a time.
-                 The create form rides the synthetic top row (isCreateRow). -->
-              <tr v-if="shouldExpand(item)" :data-testid="`collections-expansion-${item[collection.schema.primaryKey]}`">
-                <td :colspan="listColumnFields.length" class="p-0 border-l-2 border-indigo-300 bg-slate-50/60">
-                  <!-- Pin the panel to the View's visible width, not the
-                       (possibly much wider) table width: sticky to the left
-                       edge of the horizontal scroller and capped at the
-                       scroller's content width via container-query units, so
-                       a wide collection never pushes the panel off-screen.
-                       `min(100%, 100cqw)` keeps it at table width when the
-                       table is narrower than the View. -->
-                  <div class="sticky left-0 w-[min(100%,100cqw)]">
-                    <CollectionRecordPanel
-                      v-model:editing="editing"
-                      :collection="collection"
-                      :viewing="viewing"
-                      :saving="saving"
-                      :save-error="saveError"
-                      :action-error="actionError"
-                      :action-pending="actionPending"
-                      :visible-actions="visibleActions"
-                      :live-record="liveRecord"
-                      :live-derived="liveDerived"
-                      :view-title="viewTitle"
-                      :is-singleton="isSingleton"
-                      :render="render"
-                      :locale="locale"
-                      @submit="saveEditor"
-                      @cancel="cancelEditor"
-                      @edit="editFromView"
-                      @close="closeView"
-                      @delete="viewing && confirmDelete(viewing)"
-                      @run-action="runAction"
-                    />
-                  </div>
-                </td>
-              </tr>
             </template>
           </tbody>
         </table>
       </div>
     </div>
+
+    <!-- Shared record modal — the single open/edit surface for every view
+         mode (table / kanban / dashboard) and the calendar's undated tray.
+         Calendar's DATED records keep their day-view modal (which embeds the
+         same panel on its right), so this is suppressed while that's open. -->
+    <CollectionRecordModal v-if="collection && (viewing || editing) && !(calendarActive && openDay)" @close="closeRecordModal">
+      <CollectionRecordPanel
+        v-model:editing="editing"
+        :collection="collection"
+        :viewing="viewing"
+        :saving="saving"
+        :save-error="saveError"
+        :action-error="actionError"
+        :action-pending="actionPending"
+        :visible-actions="visibleActions"
+        :live-record="liveRecord"
+        :live-derived="liveDerived"
+        :view-title="viewTitle"
+        :is-singleton="isSingleton"
+        :render="render"
+        :locale="locale"
+        @submit="saveEditor"
+        @cancel="cancelEditor"
+        @edit="editFromView"
+        @close="closeView"
+        @delete="viewing && confirmDelete(viewing)"
+        @run-action="runAction"
+      />
+    </CollectionRecordModal>
 
     <!-- Chat modal — collect a message and start a new general-role chat
          seeded with the collection's skill command (`/<slug> <message>`). -->
@@ -699,6 +608,7 @@ import { BUILTIN_ROLE_IDS } from "../config/roles";
 import ConfirmModal from "./ConfirmModal.vue";
 import PinToggle from "./PinToggle.vue";
 import CollectionRecordPanel from "./CollectionRecordPanel.vue";
+import CollectionRecordModal from "./CollectionRecordModal.vue";
 import CollectionCalendarView from "./CollectionCalendarView.vue";
 import CollectionDashboardView from "./CollectionDashboardView.vue";
 import CollectionDayView from "./CollectionDayView.vue";
@@ -854,28 +764,17 @@ const filteredItems = computed<CollectionItem[]>(() => {
 });
 
 // ────────────────────────────────────────────────────────────────
-// Inline row expansion (#detail / #edit / #create panels)
+// Open / edit record panel (shared modal + calendar day view)
 // ────────────────────────────────────────────────────────────────
-// Detail + edit render as a panel directly under the open row; create
-// rides a synthetic row pinned at the top of the list. One panel open
-// at a time (`viewing` / `editing` are single refs). The synthetic
-// create row keeps the edit form in a SINGLE template location (no
-// duplication, no separate component, no prop-mutation) — its data row
-// is hidden (`v-if="!isCreateRow"`) so only its expansion (the form)
-// shows.
-
-/** Sentinel primary-key for the synthetic create row. Chosen to never
- *  collide with a real record id. */
-const CREATE_ROW_ID = "__mc_create__";
+// Detail, edit, and create all render `CollectionRecordPanel` inside the
+// shared `CollectionRecordModal` (or the calendar day view for dated
+// records). One panel open at a time (`viewing` / `editing` are single
+// refs). The list table only highlights the open/edited row.
 
 /** Stringified primary-key value for a row (the row's stable identity). */
 function rowId(item: CollectionItem): string {
   const primaryKey = collection.value?.schema.primaryKey;
   return primaryKey ? String(item[primaryKey] ?? "") : "";
-}
-
-function isCreateRow(item: CollectionItem): boolean {
-  return rowId(item) === CREATE_ROW_ID;
 }
 
 /** Stable key for one cell in the `enumOriginallyEmpty` snapshot. */
@@ -916,33 +815,17 @@ function enumControlClass(fieldKey: string, value: unknown): string {
   return `${cls.badge} ${cls.border}`;
 }
 
-/** Rows rendered by the table: the filtered records, plus a synthetic
- *  create row at the top while a create is in progress. */
-const displayItems = computed<CollectionItem[]>(() => {
-  if (editing.value?.mode === "create" && collection.value) {
-    const sentinel = { [collection.value.schema.primaryKey]: CREATE_ROW_ID } as CollectionItem;
-    return [sentinel, ...filteredItems.value];
-  }
-  return filteredItems.value;
-});
-
 /** This row is the one open in read-only detail. */
 function isRowOpen(item: CollectionItem): boolean {
   return viewing.value !== null && rowId(viewing.value) === rowId(item);
 }
 
-/** This row is the one being edited (a real row in edit mode, or the
- *  synthetic create row in create mode). */
+/** This row is the one being edited (highlights it in the list while the
+ *  edit modal is open). Create mode has no backing row, so nothing matches. */
 function isEditingRow(item: CollectionItem): boolean {
   const draft = editing.value;
-  if (!draft) return false;
-  if (draft.mode === "create") return isCreateRow(item);
+  if (!draft || draft.mode === "create") return false;
   return draft.originalId === rowId(item);
-}
-
-/** Whether to render this row's expansion panel (detail or edit). */
-function shouldExpand(item: CollectionItem): boolean {
-  return isRowOpen(item) || isEditingRow(item);
 }
 
 function detailUrl(slug: string): string {
@@ -1378,18 +1261,6 @@ function cancelEditor(): void {
   }
 }
 
-/** Scroll the open expansion panel into view after it opens (e.g. a newly
- *  created record that landed off-screen). Only one panel is open at a
- *  time, so a fixed prefix selector finds it — no record id is
- *  interpolated into the selector (avoids CSS injection / `SyntaxError`
- *  from ids containing selector-special chars). Best-effort. */
-function scrollOpenPanelIntoView(): void {
-  void nextTick(() => {
-    const row = document.querySelector('[data-testid^="collections-expansion-"]');
-    if (row) row.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  });
-}
-
 /** Open mode (read-only detail). Toggles: clicking the already-open row
  *  collapses it. Opening a row cancels any in-progress edit (one panel
  *  open at a time). In embedded mode, report the open id so the host
@@ -1433,6 +1304,18 @@ function closeView(): void {
   }
 }
 
+/** Backdrop click / Escape on the shared record modal. While editing this
+ *  cancels the draft (reopening the detail, matching the in-panel Cancel
+ *  button — so a stray click never silently discards edits); while viewing
+ *  it closes the detail. */
+function closeRecordModal(): void {
+  if (editing.value) {
+    cancelEditor();
+    return;
+  }
+  closeView();
+}
+
 /** Hand off from open mode to the editor for the same record. */
 function editFromView(): void {
   const item = viewing.value;
@@ -1462,10 +1345,9 @@ function syncViewToSelected(): void {
   }
   const match = findItemById(selected) ?? null;
   viewing.value = match;
-  // A deep link / notification can target a row that loaded off-screen
-  // (long collection). Bring the now-open record into view — the save
-  // path already does this; the `?selected=` path must too.
-  if (match) scrollOpenPanelIntoView();
+  // A deep link / notification opens the record in the shared modal, which
+  // is centred regardless of where the row sits in a long list — no scroll
+  // needed (the inline-expansion era required one).
 }
 
 /** Title for the open-mode header: the record's primary-key value
@@ -1534,12 +1416,9 @@ async function saveEditor(): Promise<void> {
   closeEditor();
   await loadCollection(slug);
   // Return to the saved record's read-only detail (for create, this is the
-  // newly added row), scrolling it into view if it's off-screen.
+  // newly added row) in the shared modal.
   const saved = findItemById(savedId);
-  if (saved) {
-    showDetail(saved);
-    scrollOpenPanelIntoView();
-  }
+  if (saved) showDetail(saved);
 }
 
 /** Write a single cell's value directly onto the live `items` entry.
@@ -1733,9 +1612,14 @@ function onOpenDay(day: Ymd): void {
   openDay.value = day;
 }
 
-/** Close the day popup: drop the open day and the selection together. */
+/** Close the day popup: drop the open day, the selection, AND any in-progress
+ *  draft together. Clearing `editing` matters because the shared record modal
+ *  shows whenever `editing` is set and no day is open — so without this, an
+ *  edit/create started inside the day popup would re-appear in the centred
+ *  modal the instant the popup closed (Codex P2 on #1656). */
 function onDayClose(): void {
   openDay.value = null;
+  if (editing.value) closeEditor();
   closeView();
 }
 
