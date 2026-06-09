@@ -61,6 +61,13 @@ describe("parseConnectors", () => {
     assert.deepEqual(result, [{ name: "Slack", connected: true }]);
   });
 
+  it("skips malformed claude.ai line without colon separator", () => {
+    const stdout = ["claude.ai MalformedEntry", "claude.ai Gmail: https://gmail.example.com - ✓ Connected"].join("\n");
+    const result = parseConnectors(stdout);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].name, "Gmail");
+  });
+
   it("handles trailing newlines", () => {
     const stdout = "claude.ai Gmail: https://gmail.example.com - ✓ Connected\n\n";
     const result = parseConnectors(stdout);

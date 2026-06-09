@@ -365,9 +365,14 @@ async function loadConfig(): Promise<void> {
   if (token === loadToken) loading.value = false;
 }
 
+let connectorLoadToken = 0;
+
 async function loadConnectors(): Promise<void> {
+  const token = ++connectorLoadToken;
   connectorsLoading.value = true;
   const response = await apiGet<{ connectors: { name: string; connected: boolean }[] }>(API_ROUTES.config.connectors);
+  // eslint-disable-next-line security/detect-possible-timing-attacks -- in-memory race-token guard, not an auth compare
+  if (token !== connectorLoadToken) return;
   if (response.ok) {
     connectors.value = response.data.connectors;
   }

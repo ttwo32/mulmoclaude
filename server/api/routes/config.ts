@@ -316,7 +316,7 @@ const CONNECTED_PATTERN = /[✓✔] Connected/;
 export function parseConnectors(stdout: string): ConnectorEntry[] {
   return stdout
     .split("\n")
-    .filter((line) => line.startsWith(CLAUDE_AI_PREFIX))
+    .filter((line) => line.startsWith(CLAUDE_AI_PREFIX) && line.includes(":"))
     .map((line) => ({
       name: line.slice(CLAUDE_AI_PREFIX.length, line.indexOf(":")),
       connected: CONNECTED_PATTERN.test(line),
