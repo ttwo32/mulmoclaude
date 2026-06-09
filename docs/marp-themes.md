@@ -139,6 +139,39 @@ code {
 }
 ```
 
+## inline HTML タグの使用
+
+スライド本文に `<div>` / `<span>` / `<img>` などの inline HTML を直接書けます。`<script>` / `<iframe>` / フォーム系などは引き続き escape されます (XSS 防止)。
+
+許可されているタグと属性:
+
+| タグ | 許可される属性 |
+|---|---|
+| `div`, `span`, `sub`, `sup`, `small` | `id`, `class`, `style` |
+| `img` | `src`, `alt`, `width`, `height`, `id`, `class`, `style` |
+| `br` | (なし) |
+
+例:
+
+```markdown
+---
+marp: true
+theme: corporate
+---
+
+# タイトル
+
+<div class="callout">
+  <img src="../images/logo.png" width="40" />
+  重要なポイント<sup>1</sup>
+</div>
+```
+
+- `<img>` の `src` は通常の markdown 画像と同じく相対パス / `data:` URI が使えます (`http(s)://...` は preview の CSP で block される — 普通の画像 ref と同じ挙動)
+- `style` 属性も書けますが、外部 URL を含む宣言は preview / PDF の挙動が一致しないので避けたほうが無難
+
+`<script>` を書くと escape されて画面に `&lt;script&gt;` と表示されます (= 動作はしないが見えてしまう)。
+
 ## 関連
 
 - Marp 公式のテーマ仕様: <https://marpit.marp.app/theme-css>

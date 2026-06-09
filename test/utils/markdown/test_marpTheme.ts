@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { ensureThemeDirective, marpThemeNameFromFilename, sanitizeMarpThemeCss } from "../../../src/utils/markdown/marpTheme.ts";
+import { ensureThemeDirective, MARP_HTML_ALLOWLIST, marpThemeNameFromFilename, sanitizeMarpThemeCss } from "../../../src/utils/markdown/marpTheme.ts";
 
 describe("marpThemeNameFromFilename", () => {
   it("strips the .css extension", () => {
@@ -72,5 +72,36 @@ describe("sanitizeMarpThemeCss", () => {
   it("rejects url(http://...) inside font-face src", () => {
     const css = `@font-face { font-family: 'X'; src: url(http://attacker.example/leak.woff2); }`;
     assert.equal(sanitizeMarpThemeCss(css).ok, false);
+  });
+});
+
+describe("MARP_HTML_ALLOWLIST", () => {
+  it("includes the layout tags users actually want", () => {
+    const keys = Object.keys(MARP_HTML_ALLOWLIST);
+    for (const tag of ["div", "span", "img", "br", "sub", "sup", "small"]) {
+      assert.ok(keys.includes(tag), `missing tag: ${tag}`);
+    }
+  });
+
+  it("explicitly excludes script / iframe / form / link / style / object", () => {
+    const keys = Object.keys(MARP_HTML_ALLOWLIST);
+    for (const tag of ["script", "iframe", "form", "input", "button", "link", "style", "meta", "object", "embed", "applet"]) {
+      assert.ok(!keys.includes(tag), `forbidden tag must NOT be in allowlist: ${tag}`);
+    }
+  });
+
+  it("does not list event-handler attributes on any tag", () => {
+    for (const [tag, attrs] of Object.entries(MARP_HTML_ALLOWLIST)) {
+      for (const attr of attrs) {
+        assert.ok(!attr.startsWith("on"), `tag ${tag} must not allow event handler ${attr}`);
+      }
+    }
+  });
+
+  it("img allows src/alt/width/height plus the layout attrs", () => {
+    const attrs = MARP_HTML_ALLOWLIST.img ?? [];
+    for (const expected of ["src", "alt", "width", "height", "class", "style"]) {
+      assert.ok(attrs.includes(expected), `img missing attr: ${expected}`);
+    }
   });
 });

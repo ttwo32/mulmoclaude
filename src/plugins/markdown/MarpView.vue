@@ -38,6 +38,7 @@ import { applyCustomMarpSize } from "../../utils/markdown/marpCustomSize";
 import { DEFAULT_SLIDE_ASPECT, extractSlideAspect } from "../../utils/markdown/marpAspect";
 import { apiGet } from "../../utils/api";
 import { pluginEndpoints } from "../api";
+import { MARP_HTML_ALLOWLIST } from "../../utils/markdown/marpTheme";
 
 const { t } = useI18n();
 
@@ -178,7 +179,12 @@ async function renderMarp(markdown: string): Promise<void> {
     // sandboxed iframe's CSP blocks → broken-image icons in slides).
     // Fall back to the OS's native font emoji, matching how every
     // other surface in the app renders emoji.
-    const marp = new Marp({ inlineSVG: true, html: false, emoji: { unicode: false, shortcode: false } });
+    // `html: MARP_HTML_ALLOWLIST` lets authors use a small layout-tag
+    // subset (`<div class>`, `<span>`, `<img>`, …); the default
+    // `html: false` would escape them all. The same allowlist is
+    // applied server-side in `renderMarpPdf` so preview and export
+    // match. Scripts, iframes, and form elements stay escaped.
+    const marp = new Marp({ inlineSVG: true, html: MARP_HTML_ALLOWLIST, emoji: { unicode: false, shortcode: false } });
     // Register every workspace-defined theme (#1649). A slide deck
     // opts in by setting `theme: <name>` in its frontmatter; decks
     // that don't keep Marp's default look.

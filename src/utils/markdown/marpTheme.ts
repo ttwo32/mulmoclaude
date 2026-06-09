@@ -1,6 +1,14 @@
 // Marp custom-theme helpers (#1649). Shared by the frontend (MarpView)
 // and the server (PDF route + workspace I/O).
 //
+// Also exposes `MARP_HTML_ALLOWLIST` — the inline-HTML tag/attribute
+// whitelist passed to `new Marp({ html: ... })` in both surfaces, so
+// preview and PDF agree on which raw-HTML tags survive Marp's
+// markdown-it pass. Default Marp config (`html: false`) escapes
+// every `<div>` / `<span>` / `<img>` etc.; we open the door to a
+// small, attribute-scoped subset that covers slide-layout needs
+// without admitting `<script>` / `<iframe>` / form elements.
+//
 // Marp identifies themes by a `/* @theme <name> */` comment at the
 // top of the CSS source. The workspace convention is **filename =
 // theme name**: `config/marp-themes/corporate.css` registers a theme
@@ -18,6 +26,27 @@
 // vector in the server-side PDF path which runs in a headless
 // browser without the iframe's CSP. Block at load time; surface a
 // diagnostic on the bell so authors notice.
+
+const LAYOUT_ATTRS = ["id", "class", "style"];
+
+/** Inline-HTML allowlist for `new Marp({ html: ... })`. Each entry
+ *  permits a tag with the listed attributes; everything else stays
+ *  escaped. Kept conservative on purpose — adding event-handler
+ *  attrs (`onclick`, `onerror`, …) or interactive tags (`script`,
+ *  `iframe`, `form`, `input`, …) would defeat the point of having
+ *  an allowlist at all.
+ *
+ *  Plain (non-readonly) arrays because Marp's HTMLAllowList type
+ *  is mutable `string[]` — we can't hand it `readonly string[]`. */
+export const MARP_HTML_ALLOWLIST: Record<string, string[]> = {
+  div: [...LAYOUT_ATTRS],
+  span: [...LAYOUT_ATTRS],
+  img: ["src", "alt", "width", "height", ...LAYOUT_ATTRS],
+  br: [],
+  sub: [...LAYOUT_ATTRS],
+  sup: [...LAYOUT_ATTRS],
+  small: [...LAYOUT_ATTRS],
+};
 
 const THEME_DIRECTIVE_RE = /\/\*\s*@theme\s+([A-Za-z0-9_-]+)\s*\*\//;
 
