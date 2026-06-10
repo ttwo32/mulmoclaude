@@ -1200,6 +1200,7 @@ const koMessages = {
     searchSummary: "{total}개 중 {shown}개 표시",
     noMatchingItems: "일치하는 항목이 없습니다",
     clearSearch: "검색 지우기",
+    sortBy: "{field} 기준 정렬",
     openCollection: "{title} 열기",
     createTitle: "새로 추가",
     derivedLabel: "파생",

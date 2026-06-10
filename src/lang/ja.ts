@@ -1196,6 +1196,7 @@ const jaMessages = {
     searchSummary: "{total} 件中 {shown} 件を表示",
     noMatchingItems: "一致する項目がありません",
     clearSearch: "検索をクリア",
+    sortBy: "{field}で並べ替え",
     openCollection: "{title} を開く",
     createTitle: "新規追加",
     derivedLabel: "計算値",

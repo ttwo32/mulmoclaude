@@ -1206,6 +1206,7 @@ const frMessages = {
     searchSummary: "Affichage de {shown} sur {total}",
     noMatchingItems: "Aucun élément correspondant",
     clearSearch: "Effacer la recherche",
+    sortBy: "Trier par {field}",
     openCollection: "Ouvrir {title}",
     createTitle: "Ajouter",
     derivedLabel: "Calculé",

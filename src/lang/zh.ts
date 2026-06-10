@@ -1189,6 +1189,7 @@ const zhMessages = {
     searchSummary: "显示 {total} 条中的 {shown} 条",
     noMatchingItems: "没有匹配的项目",
     clearSearch: "清除搜索",
+    sortBy: "按{field}排序",
     openCollection: "打开 {title}",
     createTitle: "新增",
     derivedLabel: "派生",

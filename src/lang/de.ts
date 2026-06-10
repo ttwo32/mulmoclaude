@@ -1216,6 +1216,7 @@ const deMessages = {
     searchSummary: "{shown} von {total} werden angezeigt",
     noMatchingItems: "Keine passenden Einträge",
     clearSearch: "Suche zurücksetzen",
+    sortBy: "Nach {field} sortieren",
     openCollection: "{title} öffnen",
     createTitle: "Neu hinzufügen",
     derivedLabel: "Abgeleitet",

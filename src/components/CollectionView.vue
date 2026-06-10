@@ -389,12 +389,27 @@
           <thead>
             <tr class="bg-slate-50 border-b border-slate-200">
               <th v-for="[key, field] in listColumnFields" :key="key" class="px-5 py-3 font-bold text-slate-500 text-left uppercase tracking-wider">
-                {{ field.label }}
+                <div class="flex items-center gap-1">
+                  <span>{{ field.label }}</span>
+                  <button
+                    v-if="isSortableField(field)"
+                    type="button"
+                    class="inline-flex items-center justify-center rounded p-0.5 -my-1 leading-none transition-colors"
+                    :class="sortButtonClass(key)"
+                    :data-testid="`collections-sort-${key}`"
+                    :aria-label="t('collectionsView.sortBy', { field: field.label })"
+                    @click.stop="cycleSort(key)"
+                    @pointerenter="hoveredSortKey = key"
+                    @pointerleave="hoveredSortKey = null"
+                  >
+                    <span class="material-icons text-base align-middle">{{ sortIconName(key) }}</span>
+                  </button>
+                </div>
               </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 bg-white">
-            <template v-for="item in filteredItems" :key="String(item[collection.schema.primaryKey] ?? '')">
+            <template v-for="item in sortedItems" :key="String(item[collection.schema.primaryKey] ?? '')">
               <tr
                 class="hover:bg-slate-50/70 cursor-pointer transition-colors focus:outline-none focus:bg-indigo-50/30"
                 :class="isRowOpen(item) || isEditingRow(item) ? 'bg-indigo-50/40' : ''"
@@ -660,6 +675,18 @@ import { useShortcuts } from "../composables/useShortcuts";
 import { actionVisible, fieldVisible } from "../utils/collections/actionVisible";
 import { resolveEnumColor } from "../utils/collections/enumColors";
 import { readCollectionViewMode, writeCollectionViewMode } from "../utils/collections/collectionViewMode";
+import {
+  isSortableField,
+  nextSortDirection,
+  sortItems,
+  numericSortValue,
+  stringSortValue,
+  dateSortValue,
+  enumSortValue,
+  boolSortValue,
+  type SortState,
+  type SortValue,
+} from "../utils/collections/sortItems";
 import { useCollectionRendering } from "../composables/collections/useCollectionRendering";
 import { buildUpdatedRecord, coerceInlineValue, draftToRecord, firstMissingRequiredField, rowFromItem } from "../utils/collections/draft";
 import type {
@@ -813,6 +840,84 @@ const filteredItems = computed<CollectionItem[]>(() => {
   const query = searchQuery.value.trim().toLowerCase();
   if (!query) return items.value;
   return items.value.filter((item) => itemMatchesQuery(item, query));
+});
+
+// ── List-table sort (single active column, header toggle) ─────────
+// Calendar / kanban keep their own ordering; only the table consumes
+// `sortedItems`. State resets to null whenever a new collection loads.
+const sortState = ref<SortState | null>(null);
+// The column whose sort button is currently hovered (at most one). Hover
+// previews the NEXT click's state, so descending visibly fades back to the
+// light-grey "off" look — signalling the next click clears the sort.
+const hoveredSortKey = ref<string | null>(null);
+
+function sortDirectionFor(key: string): "asc" | "desc" | null {
+  return sortState.value?.field === key ? sortState.value.direction : null;
+}
+
+/** The direction whose visuals to render: on hover, preview the next
+ *  click's state; otherwise show the column's actual state. */
+function effectiveSortDir(key: string): "asc" | "desc" | null {
+  const current = sortDirectionFor(key);
+  return hoveredSortKey.value === key ? nextSortDirection(current) : current;
+}
+
+/** Cycle a column none → asc → desc → none; activating one clears the rest. */
+function cycleSort(key: string): void {
+  const next = nextSortDirection(sortDirectionFor(key));
+  sortState.value = next ? { field: key, direction: next } : null;
+}
+
+function sortIconName(key: string): string {
+  return effectiveSortDir(key) === "desc" ? "arrow_downward" : "arrow_upward";
+}
+
+// Dark grey while a direction is active; light grey for the "off" state —
+// so hovering a descending column previews the cleared look.
+function sortButtonClass(key: string): string {
+  return effectiveSortDir(key) ? "text-slate-600" : "text-slate-300";
+}
+
+/** Comparable value for one row under the active field, mapped by type. */
+function sortValueOf(field: FieldSpec, key: string, item: CollectionItem): SortValue {
+  const raw = item[key];
+  switch (field.type) {
+    case "number":
+    case "money":
+      return numericSortValue(raw);
+    case "date":
+    case "datetime":
+      return dateSortValue(raw);
+    case "enum":
+      return enumSortValue(field.values, raw);
+    case "boolean":
+      return boolSortValue(raw === true);
+    case "toggle":
+      return boolSortValue(toggleChecked(item, field));
+    case "ref":
+      return field.to && typeof raw === "string" && raw ? stringSortValue(refDisplay(field.to, raw)) : stringSortValue(raw);
+    case "derived":
+      return derivedSortValue(field, key, item);
+    default:
+      return stringSortValue(raw);
+  }
+}
+
+/** Derived rows sort by their display type: money/number → numeric,
+ *  anything else → the enriched value as a string. */
+function derivedSortValue(field: FieldSpec, key: string, item: CollectionItem): SortValue {
+  if (field.display === undefined || field.display === "number" || field.display === "money") {
+    return numericSortValue(evaluateDerivedAgainstItem(field, key, item));
+  }
+  const enriched = collection.value ? render.deriveAll(collection.value.schema, item, render.refRecordCache.value) : item;
+  return stringSortValue(enriched[key]);
+}
+
+const sortedItems = computed<CollectionItem[]>(() => {
+  const state = sortState.value;
+  const field = state ? collection.value?.schema.fields[state.field] : undefined;
+  if (!state || !field) return filteredItems.value;
+  return sortItems(filteredItems.value, state.direction, (item) => sortValueOf(field, state.field, item));
 });
 
 // ────────────────────────────────────────────────────────────────
@@ -1041,6 +1146,7 @@ async function loadCollection(slug: string): Promise<void> {
   collection.value = null;
   items.value = [];
   searchQuery.value = ""; // Reset search query on collection load
+  sortState.value = null; // Drop any active column sort from the prior collection
   render.resetLinkedCaches();
   viewing.value = null;
   openDay.value = null; // never carry a previous collection's open day over

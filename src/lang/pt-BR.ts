@@ -1202,6 +1202,7 @@ const ptBRMessages = {
     searchSummary: "Mostrando {shown} de {total}",
     noMatchingItems: "Nenhum item correspondente",
     clearSearch: "Limpar busca",
+    sortBy: "Ordenar por {field}",
     openCollection: "Abrir {title}",
     createTitle: "Adicionar novo",
     derivedLabel: "Derivado",

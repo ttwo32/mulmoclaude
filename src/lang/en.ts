@@ -1200,6 +1200,7 @@ const enMessages = {
     searchSummary: "Showing {shown} of {total}",
     noMatchingItems: "No matching items",
     clearSearch: "Clear search",
+    sortBy: "Sort by {field}",
     openCollection: "Open {title}",
     createTitle: "Add new",
     derivedLabel: "Derived",

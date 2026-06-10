@@ -1213,6 +1213,7 @@ const esMessages = {
     searchSummary: "Mostrando {shown} de {total}",
     noMatchingItems: "No hay elementos coincidentes",
     clearSearch: "Borrar búsqueda",
+    sortBy: "Ordenar por {field}",
     openCollection: "Abrir {title}",
     createTitle: "Añadir nuevo",
     derivedLabel: "Derivado",
