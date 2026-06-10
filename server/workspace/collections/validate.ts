@@ -30,23 +30,26 @@ const COMPUTED_TYPES = new Set(["derived", "embed", "toggle"]);
 /** Read every `<id>.json` under the collection's dataDir and report the
  *  ones that won't load or violate the schema. An empty list means every
  *  record is fine. */
-export async function validateCollectionRecords(collection: LoadedCollection, opts: { workspaceRoot?: string } = {}): Promise<RecordIssue[]> {
-  // Re-check realpath containment (like `listItems`): defends against a symlinked
-  // data dir swapped in between discovery and use, which would otherwise let us
-  // scan + echo files from outside the workspace.
-  const workspaceRoot = opts.workspaceRoot ?? workspacePath;
-  if (!isContainedInRoot(collection.dataDir, workspaceRoot)) {
-    log.warn("collections", "validate refused: dataDir escapes workspace via symlink", { dataDir: collection.dataDir });
+/** List entries under the data dir, guarding realpath containment (against a
+ *  symlinked dir swapped in after discovery, like `listItems`) and treating a
+ *  missing dir as empty while surfacing real I/O faults. */
+async function listRecordFilenames(dataDir: string, workspaceRoot: string): Promise<string[]> {
+  if (!isContainedInRoot(dataDir, workspaceRoot)) {
+    log.warn("collections", "validate refused: dataDir escapes workspace via symlink", { dataDir });
     return [];
   }
-  let entries: string[];
   try {
-    entries = await readdir(collection.dataDir);
+    return await readdir(dataDir);
   } catch (err) {
     const error = err as { code?: string };
     if (error.code === "ENOENT") return []; // no dir yet = no records
     throw err; // surface permission / I/O faults instead of silently passing
   }
+}
+
+export async function validateCollectionRecords(collection: LoadedCollection, opts: { workspaceRoot?: string } = {}): Promise<RecordIssue[]> {
+  const workspaceRoot = opts.workspaceRoot ?? workspacePath;
+  const entries = await listRecordFilenames(collection.dataDir, workspaceRoot);
   const issues: RecordIssue[] = [];
   for (const name of entries.sort()) {
     if (!name.endsWith(".json") || name.startsWith(".")) continue;

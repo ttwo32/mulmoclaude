@@ -102,8 +102,9 @@ describe("validateCollectionRecords", () => {
 
   it("refuses a dataDir that escapes the workspace root", async () => {
     const outside = mkdtempSync(path.join(tmpdir(), "outside-"));
-    writeFileSync(path.join(outside, "secret.json"), JSON.stringify({ id: "secret", title: "T", status: "planned" }));
-    // dataDir is outside `root` → containment guard returns [] without reading it.
+    // Malformed on purpose: if the guard ever READ this dir it would report a
+    // "not a JSON object" issue, so [] proves it short-circuited before reading.
+    writeFileSync(path.join(outside, "secret.json"), "42");
     assert.deepEqual(await validate(outside), []);
     rmSync(outside, { recursive: true, force: true });
   });

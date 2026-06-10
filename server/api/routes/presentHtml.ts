@@ -1,6 +1,9 @@
 import { Router, Request, Response } from "express";
+import { realpathSync } from "node:fs";
 import { WORKSPACE_DIRS } from "../../workspace/paths.js";
-import { writeWorkspaceText, existsInWorkspace } from "../../utils/files/workspace-io.js";
+import { workspacePath } from "../../workspace/workspace.js";
+import { writeWorkspaceText } from "../../utils/files/workspace-io.js";
+import { resolveWithinRoot } from "../../utils/files/index.js";
 import { buildArtifactPath } from "../../utils/files/naming.js";
 import { overwriteHtml, isHtmlPath } from "../../utils/files/html-store.js";
 import { errorMessage } from "../../utils/errors.js";
@@ -12,6 +15,10 @@ import { previewSnippet } from "../../utils/logPreview.js";
 import { publishFileChange } from "../../events/file-change.js";
 
 const router = Router();
+
+// Realpath'd workspace root, resolved once — `resolveWithinRoot` needs an
+// already-realpath'd root (same pattern as the files route).
+const workspaceReal = realpathSync(workspacePath);
 
 const PRESENT_ACK = "Acknowledge that the HTML page has been presented to the user.";
 
@@ -45,7 +52,9 @@ async function saveAndPresent(html: string, title: string | undefined, res: Resp
 
 // Existing HTML: present a file already on disk without re-saving a copy.
 function presentExisting(relativePath: string, title: string | undefined, res: Response<PresentHtmlResponse>): void {
-  if (!isHtmlPath(relativePath) || !existsInWorkspace(relativePath)) {
+  // `isHtmlPath` rejects non-artifact / traversal paths; `resolveWithinRoot` is the
+  // realpath-based containment check (and returns null when the file is missing).
+  if (!isHtmlPath(relativePath) || resolveWithinRoot(workspaceReal, relativePath) === null) {
     log.warn("html", "present: bad path", { pathPreview: previewSnippet(relativePath) });
     badRequest(res, "path must be an existing .html file under artifacts/html/");
     return;
