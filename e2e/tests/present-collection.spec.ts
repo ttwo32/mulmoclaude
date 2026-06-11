@@ -213,6 +213,109 @@ test("embedded card honours the shared localStorage view-mode store", async ({ p
   expect(pageErrors, pageErrors.join("\n")).toHaveLength(0);
 });
 
+test("embedded card honours the shared localStorage table sort", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (err) => pageErrors.push(`${err.message}\n${err.stack ?? ""}`));
+
+  // The table sort is a single shared per-collection preference; seed it in the
+  // store (as the standalone page would) BEFORE the app boots, then assert a
+  // freshly-rendered card opens in that sort — proving the two surfaces share it.
+  await page.addInitScript(() => {
+    localStorage.setItem("collection_sorts", JSON.stringify({ watchlist: { field: "platform", direction: "desc" } }));
+  });
+
+  await mockAllApis(page, {
+    sessions: [{ id: "watchlist-session", title: "Watchlist", roleId: "general", startedAt: "2026-05-29T10:00:00Z", updatedAt: "2026-05-29T10:05:00Z" }],
+  });
+  await page.route(
+    (url) => url.pathname === "/api/collections/watchlist",
+    (route) => route.fulfill({ json: WATCHLIST_DETAIL }),
+  );
+  await page.route(
+    (url) => url.pathname.startsWith("/api/sessions/") && url.pathname !== "/api/sessions",
+    (route) =>
+      route.fulfill({
+        json: [
+          { type: "session_meta", roleId: "general", sessionId: "watchlist-session" },
+          { type: "text", source: "user", message: "show me the watchlist" },
+          {
+            type: "tool_result",
+            source: "tool",
+            // No itemId → the table renders (not the detail modal).
+            result: {
+              uuid: "pc-result-3",
+              toolName: "presentCollection",
+              title: "Watchlist",
+              message: "Presented collection watchlist",
+              data: { collectionSlug: "watchlist" },
+            },
+          },
+        ],
+      }),
+  );
+
+  await page.goto(SESSION_PATH);
+  await expect(page.getByTestId("present-collection")).toBeVisible({ timeout: 10_000 });
+  // Fixture order is [avatar (Disney+), jack-ryan (Prime)]; the shared
+  // desc-by-platform sort flips it to [jack-ryan, avatar] on mount.
+  const rows = page.locator('[data-testid^="collections-row-"]');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toHaveAttribute("data-testid", "collections-row-jack-ryan");
+  await expect(rows.nth(1)).toHaveAttribute("data-testid", "collections-row-avatar");
+  // The header reflects the shared descending sort on the Platform column.
+  const sortedHeader = page.locator('th[aria-sort="descending"]');
+  await expect(sortedHeader).toHaveCount(1);
+  await expect(sortedHeader).toContainText("Platform");
+
+  expect(pageErrors, pageErrors.join("\n")).toHaveLength(0);
+});
+
+test("sorting in an embedded card writes the shared store (so the standalone view shares it)", async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (err) => pageErrors.push(`${err.message}\n${err.stack ?? ""}`));
+
+  await mockAllApis(page, {
+    sessions: [{ id: "watchlist-session", title: "Watchlist", roleId: "general", startedAt: "2026-05-29T10:00:00Z", updatedAt: "2026-05-29T10:05:00Z" }],
+  });
+  await page.route(
+    (url) => url.pathname === "/api/collections/watchlist",
+    (route) => route.fulfill({ json: WATCHLIST_DETAIL }),
+  );
+  await page.route(
+    (url) => url.pathname.startsWith("/api/sessions/") && url.pathname !== "/api/sessions",
+    (route) =>
+      route.fulfill({
+        json: [
+          { type: "session_meta", roleId: "general", sessionId: "watchlist-session" },
+          { type: "text", source: "user", message: "show me the watchlist" },
+          {
+            type: "tool_result",
+            source: "tool",
+            result: {
+              uuid: "pc-result-4",
+              toolName: "presentCollection",
+              title: "Watchlist",
+              message: "Presented collection watchlist",
+              data: { collectionSlug: "watchlist" },
+            },
+          },
+        ],
+      }),
+  );
+
+  await page.goto(SESSION_PATH);
+  await expect(page.getByTestId("present-collection")).toBeVisible({ timeout: 10_000 });
+  // Sort the Platform column inside the card → one click = ascending.
+  await page.getByTestId("collections-sort-platform").click();
+  await expect(page.locator('th[aria-sort="ascending"]')).toContainText("Platform");
+
+  // The card wrote the SHARED store — the standalone view would read the same.
+  const stored = await page.evaluate(() => localStorage.getItem("collection_sorts"));
+  expect(stored && JSON.parse(stored)).toEqual({ watchlist: { field: "platform", direction: "asc" } });
+
+  expect(pageErrors, pageErrors.join("\n")).toHaveLength(0);
+});
+
 test("saving an edit returns to the record's detail (does not close) in the embedded card", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (err) => pageErrors.push(`${err.message}\n${err.stack ?? ""}`));

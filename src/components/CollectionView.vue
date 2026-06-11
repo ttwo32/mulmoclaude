@@ -702,7 +702,7 @@ import { useAppApi } from "../composables/useAppApi";
 import { useShortcuts } from "../composables/useShortcuts";
 import { actionVisible, fieldVisible } from "../utils/collections/actionVisible";
 import { resolveEnumColor } from "../utils/collections/enumColors";
-import { readCollectionViewMode, writeCollectionViewMode } from "../utils/collections/collectionViewMode";
+import { readCollectionViewMode, writeCollectionViewMode, readCollectionSort, writeCollectionSort } from "../utils/collections/collectionViewMode";
 import {
   isSortableField,
   nextSortDirection,
@@ -748,7 +748,8 @@ const props = defineProps<{
   sendTextMessage?: (text?: string) => void;
   /** Embedded mode only: initial view / anchor / group restored from the
    *  card's persisted `viewState` so a switch to calendar or kanban
-   *  survives a remount. */
+   *  survives a remount. (The table sort is NOT a card prop — it's a shared
+   *  per-collection localStorage preference, read by both modes.) */
   initialView?: "table" | "calendar" | "kanban" | "dashboard";
   initialAnchorField?: string;
   initialGroupField?: string;
@@ -761,7 +762,7 @@ const emit = defineEmits<{
   select: [id: string | null];
   /** Embedded mode only: the view mode / calendar anchor / kanban group
    *  changed. The card persists these alongside `selected` so the calendar
-   *  and kanban stick. */
+   *  and kanban stick. (The table sort is shared via localStorage instead.) */
   viewStateChange: [state: { view: "table" | "calendar" | "kanban" | "dashboard"; anchorField: string; groupField: string }];
 }>();
 
@@ -888,8 +889,15 @@ const filteredItems = computed<CollectionItem[]>(() => {
 
 // ── List-table sort (single active column, header toggle) ─────────
 // Calendar / kanban keep their own ordering; only the table consumes
-// `sortedItems`. State resets to null whenever a new collection loads.
-const sortState = ref<SortState | null>(null);
+// `sortedItems`. The active sort is a single SHARED per-collection
+// preference in localStorage — both the standalone page and embedded chat
+// cards read AND write it, so a sort set anywhere is consistent the next
+// time the collection is viewed. Resets only when a DIFFERENT collection
+// loads (the slug watch), so the sort survives a refresh / edit / remount.
+function storedSortFor(slug: string | undefined): SortState | null {
+  return (slug && readCollectionSort(slug)) || null;
+}
+const sortState = ref<SortState | null>(storedSortFor(activeSlug.value));
 // The column whose sort button is currently hovered (at most one). Hover
 // previews the NEXT click's state, so descending visibly fades back to the
 // light-grey "off" look — signalling the next click clears the sort.
@@ -1223,7 +1231,9 @@ async function loadCollection(slug: string): Promise<void> {
   items.value = [];
   dataIssues.value = []; // never carry a previous collection's issues over
   searchQuery.value = ""; // Reset search query on collection load
-  sortState.value = null; // Drop any active column sort from the prior collection
+  // NOTE: the active column sort is NOT reset here — it's part of the view
+  // state, so it must survive a refresh / edit reload and an embedded card
+  // remount. The collection-SWITCH reset lives in the `activeSlug` watch.
   render.resetLinkedCaches();
   viewing.value = null;
   openDay.value = null; // never carry a previous collection's open day over
@@ -1944,6 +1954,9 @@ watch(
       view.value = (slug && readCollectionViewMode(slug)) || "table";
       anchorOverride.value = null;
       kanbanOverride.value = null;
+      // A sort belongs to a collection's own schema, so don't carry it across —
+      // restore the new collection's stored (shared) sort instead.
+      sortState.value = storedSortFor(slug);
     }
     if (slug) {
       loadCollection(slug);
@@ -1966,18 +1979,24 @@ watch(
 // loading: that's the point where a stored mode unsupported by this schema
 // (its date/enum field gone) has collapsed to "table" and must be normalized
 // back into storage — otherwise no other dependency changes and it lingers.
-watch([activeView, calendarAnchorField, kanbanGroupField, loading], () => {
+watch([activeView, calendarAnchorField, kanbanGroupField, sortState, loading], () => {
   // Persist the EFFECTIVE view (activeView), not the raw `view` ref — a
   // stale "calendar"/"kanban" that has fallen back to "table" (its enabling
   // field gone) must not be saved as an impossible mode.
   if (embedded.value) {
     emit("viewStateChange", { view: activeView.value, anchorField: calendarAnchorField.value, groupField: kanbanGroupField.value });
-    return;
   }
   // Don't write during the load window: until the collection resolves,
   // `hasCalendar`/`hasKanban` are false so `activeView` reads "table",
   // which would clobber a stored "calendar"/"kanban" before it can apply.
-  if (activeSlug.value && !loading.value && collection.value) writeCollectionViewMode(activeSlug.value, activeView.value);
+  if (activeSlug.value && !loading.value && collection.value) {
+    // View mode stays standalone-authored — embedded reads but never writes it,
+    // so a stale card can't clobber the shared mode. The table SORT, by
+    // contrast, IS shared both ways: a card always re-reads it on mount, so
+    // there's no per-card value to go stale and clobber the store.
+    if (!embedded.value) writeCollectionViewMode(activeSlug.value, activeView.value);
+    writeCollectionSort(activeSlug.value, sortState.value);
+  }
 });
 
 // React to the active selection changing while already on this
