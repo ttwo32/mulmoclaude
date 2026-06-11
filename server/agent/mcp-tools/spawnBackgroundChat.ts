@@ -33,7 +33,7 @@ import { readSessionMeta } from "../../utils/files/session-io.js";
 // builds its `mcpTools` array. `startChat` is loaded lazily via dynamic
 // import in the production singleton instead.
 import type { StartChatParams, StartChatResult } from "../../api/routes/agent.js";
-import { canSpawnBackgroundSession, reserveBackgroundSession, MAX_BACKGROUND_SESSIONS } from "../backgroundSessions.js";
+import { tryReserveBackgroundSession, releaseBackgroundSession, MAX_BACKGROUND_SESSIONS } from "../backgroundSessions.js";
 import type { McpToolContext } from "./index.js";
 
 export type StartChatFn = (params: StartChatParams) => Promise<StartChatResult>;
@@ -100,20 +100,24 @@ export function makeSpawnBackgroundChatTool(deps: SpawnBackgroundChatDeps) {
         }
       }
 
-      // Runaway guard: cap concurrent hidden workers.
-      if (hidden && !canSpawnBackgroundSession()) {
+      const origin: SessionOrigin = hidden ? SESSION_ORIGINS.system : SESSION_ORIGINS.skill;
+      const chatId = randomUUID();
+
+      // Runaway guard: cap concurrent hidden workers. Reserve the slot
+      // ATOMICALLY and BEFORE launching — a check-then-reserve split
+      // around the `await startChat` below would let concurrent calls
+      // all pass the check and over-spawn. Released in
+      // `runAgentInBackground`'s finally, or rolled back here if the
+      // launch fails.
+      if (hidden && !tryReserveBackgroundSession(chatId)) {
         return `spawnBackgroundChat: refused — too many background sessions already in flight (max ${MAX_BACKGROUND_SESSIONS}). Do the work inline instead.`;
       }
 
-      const origin: SessionOrigin = hidden ? SESSION_ORIGINS.system : SESSION_ORIGINS.skill;
-      const chatId = randomUUID();
       const result = await deps.startChat({ message, roleId: role, chatSessionId: chatId, origin });
       if (result.kind === "error") {
+        if (hidden) releaseBackgroundSession(chatId); // roll back the reservation
         return `spawnBackgroundChat: failed to start chat: ${result.error}`;
       }
-      // Reserve only after a successful launch so a failed start can't
-      // leak a slot. Released in `runAgentInBackground`'s finally.
-      if (hidden) reserveBackgroundSession(chatId);
       return JSON.stringify({ chatId, hidden });
     },
   };

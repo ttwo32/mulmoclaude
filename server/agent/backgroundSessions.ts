@@ -14,14 +14,23 @@ const MAX_BACKGROUND_SESSIONS = 4;
 
 const inFlight = new Set<string>();
 
-/** True when there's room to launch another hidden worker session. */
-export function canSpawnBackgroundSession(): boolean {
-  return inFlight.size < MAX_BACKGROUND_SESSIONS;
+/** Atomically reserve a slot for a hidden worker session: returns
+ *  `false` (without reserving) when the cap is already reached,
+ *  otherwise reserves and returns `true`. The check and the insert
+ *  happen together with no `await` in between, so concurrent handler
+ *  calls can't all pass a separate "is there room?" check and then
+ *  each launch — which would briefly exceed the cap. The caller MUST
+ *  pair a `true` result with `releaseBackgroundSession` (on the
+ *  worker's completion, and as rollback if the launch itself fails). */
+export function tryReserveBackgroundSession(chatSessionId: string): boolean {
+  if (inFlight.size >= MAX_BACKGROUND_SESSIONS) return false;
+  inFlight.add(chatSessionId);
+  return true;
 }
 
-/** Mark a hidden worker session as in-flight. Call only once the
- *  underlying `startChat` has actually launched (so a failed launch
- *  doesn't leak a slot). */
+/** Unconditionally mark a session as in-flight (bypasses the cap).
+ *  Production code uses `tryReserveBackgroundSession`; this exists for
+ *  tests that need to fill the cap deterministically. */
 export function reserveBackgroundSession(chatSessionId: string): void {
   inFlight.add(chatSessionId);
 }

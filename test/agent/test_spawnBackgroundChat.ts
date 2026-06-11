@@ -69,14 +69,18 @@ describe("spawnBackgroundChat — origin mapping", () => {
   it("hidden:true → origin `system`, and returns the chatId", async () => {
     const { startChat, calls } = makeMockStartChat();
     const tool = makeSpawnBackgroundChatTool({ startChat, readSessionOrigin: originNone });
-    const result = await tool.handler({ message: "author lesson 2", role: "tutor", hidden: true });
-    const chatId = chatIdFrom(result);
-    assert.equal(calls.length, 1);
-    assert.equal(calls[0].origin, SESSION_ORIGINS.system);
-    assert.equal(calls[0].roleId, "tutor");
-    assert.equal(calls[0].chatSessionId, chatId);
-    assert.equal(calls[0].message, "author lesson 2");
-    releaseBackgroundSession(chatId);
+    let chatId: string | undefined;
+    try {
+      const result = await tool.handler({ message: "author lesson 2", role: "tutor", hidden: true });
+      chatId = chatIdFrom(result);
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].origin, SESSION_ORIGINS.system);
+      assert.equal(calls[0].roleId, "tutor");
+      assert.equal(calls[0].chatSessionId, chatId);
+      assert.equal(calls[0].message, "author lesson 2");
+    } finally {
+      if (chatId) releaseBackgroundSession(chatId);
+    }
   });
 
   it("hidden:false → origin `skill` (visible)", async () => {
@@ -91,10 +95,15 @@ describe("spawnBackgroundChat — origin mapping", () => {
   it("trims message and role before passing them to startChat", async () => {
     const { startChat, calls } = makeMockStartChat();
     const tool = makeSpawnBackgroundChatTool({ startChat, readSessionOrigin: originNone });
-    const result = await tool.handler({ message: "  go  ", role: "  tutor  ", hidden: true });
-    releaseBackgroundSession(chatIdFrom(result));
-    assert.equal(calls[0].message, "go");
-    assert.equal(calls[0].roleId, "tutor");
+    let chatId: string | undefined;
+    try {
+      const result = await tool.handler({ message: "  go  ", role: "  tutor  ", hidden: true });
+      chatId = chatIdFrom(result);
+      assert.equal(calls[0].message, "go");
+      assert.equal(calls[0].roleId, "tutor");
+    } finally {
+      if (chatId) releaseBackgroundSession(chatId);
+    }
   });
 });
 
@@ -110,9 +119,14 @@ describe("spawnBackgroundChat — no nesting", () => {
   it("allows spawning when the calling session is a normal conversation", async () => {
     const { startChat, calls } = makeMockStartChat();
     const tool = makeSpawnBackgroundChatTool({ startChat, readSessionOrigin: async () => SESSION_ORIGINS.human });
-    const result = await tool.handler({ message: "go", role: "tutor", hidden: true }, { sessionId: "human-1" });
-    releaseBackgroundSession(chatIdFrom(result));
-    assert.equal(calls.length, 1);
+    let chatId: string | undefined;
+    try {
+      const result = await tool.handler({ message: "go", role: "tutor", hidden: true }, { sessionId: "human-1" });
+      chatId = chatIdFrom(result);
+      assert.equal(calls.length, 1);
+    } finally {
+      if (chatId) releaseBackgroundSession(chatId);
+    }
   });
 });
 
@@ -128,6 +142,34 @@ describe("spawnBackgroundChat — runaway guard", () => {
       assert.equal(calls.length, 0, "must not call startChat when over the cap");
     } finally {
       fillIds.forEach(releaseBackgroundSession);
+    }
+  });
+
+  it("reserves atomically before launch — concurrent calls cannot exceed the cap", async () => {
+    // Leave exactly one free slot, then fire two hidden spawns concurrently.
+    // With `ctx` omitted there is no `await` before the reserve, so the first
+    // handler() synchronously claims the last slot before yielding at
+    // `await startChat`; the second must be refused. A check-then-reserve split
+    // around the await (the previous bug) would let BOTH launch.
+    const { startChat, calls } = makeMockStartChat();
+    const tool = makeSpawnBackgroundChatTool({ startChat, readSessionOrigin: originNone });
+    const fillIds = Array.from({ length: MAX_BACKGROUND_SESSIONS - 1 }, (_unused, i) => `race-fill-${i}`);
+    fillIds.forEach(reserveBackgroundSession);
+    const launched: string[] = [];
+    try {
+      const results = await Promise.all([
+        tool.handler({ message: "a", role: "tutor", hidden: true }),
+        tool.handler({ message: "b", role: "tutor", hidden: true }),
+      ]);
+      const isRefusal = (res: string): boolean => /too many background sessions/i.test(res);
+      const refused = results.filter(isRefusal);
+      assert.equal(refused.length, 1, "exactly one call must be refused");
+      assert.equal(results.length - refused.length, 1, "exactly one call must launch");
+      assert.equal(calls.length, 1, "startChat called only for the one that reserved a slot");
+      results.filter((res) => !isRefusal(res)).forEach((res) => launched.push(chatIdFrom(res)));
+    } finally {
+      fillIds.forEach(releaseBackgroundSession);
+      launched.forEach(releaseBackgroundSession);
     }
   });
 
@@ -147,7 +189,7 @@ describe("spawnBackgroundChat — runaway guard", () => {
 });
 
 describe("spawnBackgroundChat — startChat failure", () => {
-  it("surfaces a startChat error and does not reserve a slot", async () => {
+  it("surfaces a startChat error and rolls back the reserved slot", async () => {
     const { startChat, calls } = makeMockStartChat({ kind: "error", error: "boom" });
     const tool = makeSpawnBackgroundChatTool({ startChat, readSessionOrigin: originNone });
     // Fill to one below the cap so a leaked reservation would tip it over.
