@@ -34,10 +34,7 @@
               role="button"
               :aria-label="t('collectionsView.kanbanOpenCard', { label: itemLabel(element) })"
               class="bg-white border border-slate-200 rounded shadow-sm p-2 cursor-grab hover:shadow active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
-              :class="[
-                itemId(element) === selected ? 'ring-2 ring-indigo-500 border-indigo-300' : '',
-                isNotified(element) ? 'border-l-4 border-l-amber-400' : '',
-              ]"
+              :class="[itemId(element) === selected ? 'ring-2 ring-indigo-500 border-indigo-300' : '', notifyAccentClass(element)]"
               @click="emit('select', itemId(element))"
               @keydown.enter.prevent.self="(e) => !e.repeat && emit('select', itemId(element))"
               @keydown.space.prevent.self="(e) => !e.repeat && emit('select', itemId(element))"
@@ -72,6 +69,7 @@ import { useI18n } from "vue-i18n";
 import draggable from "vuedraggable";
 import { fieldVisible } from "../utils/collections/actionVisible";
 import { resolveEnumColor } from "../utils/collections/enumColors";
+import type { NotifierSeverity } from "../utils/collections/notifiedItems";
 import type { CollectionItem, CollectionSchema } from "./collectionTypes";
 
 // vuedraggable @change shape — same three keys as the todo board. We act
@@ -91,9 +89,9 @@ const props = defineProps<{
   items: CollectionItem[];
   /** Primary-key of the currently-open record (highlighted card). */
   selected?: string;
-  /** Primary-keys of records with an active bell notification — flagged
-   *  with an amber left accent so they stand out on the board. */
-  notifiedIds?: Set<string>;
+  /** Primary-key → active-notification severity. Cards with a notification get
+   *  a left accent in the matching bell colour (urgent red / nudge amber). */
+  notified?: Map<string, NotifierSeverity>;
 }>();
 
 const emit = defineEmits<{
@@ -135,9 +133,18 @@ function itemId(item: CollectionItem): string {
   return String(item[props.schema.primaryKey] ?? "");
 }
 
-/** True when this card's record has an active bell notification. */
-function isNotified(item: CollectionItem): boolean {
-  return props.notifiedIds?.has(itemId(item)) ?? false;
+// Left-accent class per notification severity — the same red/amber the bell
+// uses (see NotificationBell's severity colours), so a flagged card matches
+// the badge. Empty string when the record has no active notification.
+const NOTIFY_ACCENT: Record<NotifierSeverity, string> = {
+  urgent: "border-l-4 border-l-red-500",
+  nudge: "border-l-4 border-l-amber-500",
+  info: "border-l-4 border-l-slate-400",
+};
+
+function notifyAccentClass(item: CollectionItem): string {
+  const severity = props.notified?.get(itemId(item));
+  return severity ? NOTIFY_ACCENT[severity] : "";
 }
 
 /** Card label: the schema's `displayField` value, else the primary key. */

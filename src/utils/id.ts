@@ -19,10 +19,11 @@ export function makeUuid(): string {
 
 /**
  * 8-char hex id — short, slug-safe (matches `SAFE_SLUG_PATTERN`), and
- * editable. Mirrors the server's `generateItemId()`
- * (`randomBytes(4).toString("hex")`) so a UI-created collection record
- * gets the same id shape the server would have generated for a form
- * submitted with a blank primary key.
+ * editable. Produces the same id *shape* as the server's `generateItemId()`
+ * (8 hex chars) so a UI-created collection record looks like one the server
+ * would have generated for a form submitted with a blank primary key. The
+ * source of randomness differs (UUID-derived here vs `randomBytes` on the
+ * server); only the shape is intentionally shared, not the algorithm.
  */
 export function shortHexId(): string {
   return crypto.randomUUID().replace(/-/g, "").slice(0, 8);

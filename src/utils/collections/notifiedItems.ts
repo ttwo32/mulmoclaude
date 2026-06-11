@@ -10,11 +10,23 @@
 
 import { NOTIFICATION_VIEWS } from "../../types/notification";
 
+/** Bell severities, worst-last. Mirrors `NotifierEntry["severity"]`. The
+ *  Kanban accent colours by this so it matches the bell badge / icon
+ *  (urgent → red, nudge → amber). */
+export type NotifierSeverity = "info" | "nudge" | "urgent";
+
+const SEVERITY_RANK: Record<NotifierSeverity, number> = { info: 0, nudge: 1, urgent: 2 };
+
+function asSeverity(value: unknown): NotifierSeverity {
+  return value === "urgent" || value === "nudge" ? value : "info";
+}
+
 /** The minimum entry shape this module reads — a structural subset of
  *  `NotifierEntry` so callers can pass entries straight from
  *  `useNotifications()` without a cast. */
 export interface NotifiedEntryLike {
   pluginData?: unknown;
+  severity?: string;
 }
 
 interface CollectionTarget {
@@ -35,14 +47,19 @@ function collectionTargetOf(pluginData: unknown): CollectionTarget | null {
   return { slug, itemId: typeof itemId === "string" ? itemId : undefined };
 }
 
-/** Item ids in `slug` that currently have an active bell notification.
+/** Map of itemId → worst active-notification severity for records in `slug`.
  *  Only entries carrying a concrete `itemId` are included (a bare
- *  collection-level target can't highlight a specific card). */
-export function collectionNotifiedItemIds(entries: readonly NotifiedEntryLike[], slug: string): Set<string> {
-  const ids = new Set<string>();
+ *  collection-level target can't highlight a specific card); when an item has
+ *  several notifications the highest severity wins, so the accent matches the
+ *  most urgent one. */
+export function collectionNotifiedSeverities(entries: readonly NotifiedEntryLike[], slug: string): Map<string, NotifierSeverity> {
+  const out = new Map<string, NotifierSeverity>();
   for (const entry of entries) {
     const target = collectionTargetOf(entry.pluginData);
-    if (target && target.slug === slug && target.itemId) ids.add(target.itemId);
+    if (!target || target.slug !== slug || !target.itemId) continue;
+    const severity = asSeverity(entry.severity);
+    const existing = out.get(target.itemId);
+    if (!existing || SEVERITY_RANK[severity] > SEVERITY_RANK[existing]) out.set(target.itemId, severity);
   }
-  return ids;
+  return out;
 }

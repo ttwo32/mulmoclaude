@@ -352,7 +352,7 @@
             :items="filteredItems"
             :group-field="kanbanGroupField"
             :selected="viewing ? String(viewing[collection.schema.primaryKey] ?? '') : undefined"
-            :notified-ids="notifiedItemIds"
+            :notified="notifiedSeverities"
             @select="onCalendarSelect"
             @move="onKanbanMove"
           />
@@ -729,8 +729,9 @@ import type {
   TableRowDraft,
 } from "./collectionTypes";
 import { shortHexId } from "../utils/id";
+import { defangForPrompt } from "../utils/promptSafety";
 import { useNotifications } from "../composables/useNotifications";
-import { collectionNotifiedItemIds } from "../utils/collections/notifiedItems";
+import { collectionNotifiedSeverities, type NotifierSeverity } from "../utils/collections/notifiedItems";
 
 /** `slug` / `selected` are supplied only in EMBEDDED mode (the
  *  `presentCollection` chat card mounts this component and drives both
@@ -804,11 +805,12 @@ const loadError = ref<string | null>(null);
 // button reports them back to the LLM. See `repairCollection`.
 const dataIssues = ref<CollectionRecordIssue[]>([]);
 
-// Primary-keys of this collection's records that currently have an active
-// bell notification — passed to the Kanban board to flag their cards.
-const notifiedItemIds = computed<Set<string>>(() => {
+// Primary-key → notification severity for this collection's records that
+// currently have an active bell notification — passed to the Kanban board so
+// it can flag those cards in the matching bell colour (urgent red / nudge amber).
+const notifiedSeverities = computed<Map<string, NotifierSeverity>>(() => {
   const slug = collection.value?.slug;
-  return slug ? collectionNotifiedItemIds(notifierEntries.value, slug) : new Set<string>();
+  return slug ? collectionNotifiedSeverities(notifierEntries.value, slug) : new Map<string, NotifierSeverity>();
 });
 /** True while a feed collection's manual refresh is in flight. */
 const refreshing = ref(false);
@@ -1125,11 +1127,11 @@ async function runCollectionAction(action: CollectionAction): Promise<void> {
 function repairCollection(): void {
   const current = collection.value;
   if (!current || dataIssues.value.length === 0) return;
-  // Issue text carries record-controlled values (ids, enum values), so
-  // defang structural injection vectors before it rides into the LLM
-  // prompt — mirrors `defangForPrompt` on the server's presentCollection path.
-  const defang = (value: string): string => value.replace(/[<>]/g, "").replace(/`/g, "'").replace(/\$\{/g, "$ {").slice(0, 200);
-  const lines = dataIssues.value.map((issue) => `- ${defang(issue.file)}: ${defang(issue.problem)}`).join("\n");
+  // Issue text carries record-controlled values (ids, enum values), so defang
+  // structural injection vectors before it rides into the LLM prompt. Shared
+  // with the server's presentCollection path via `defangForPrompt` so the two
+  // can't drift (it also collapses whitespace, closing a newline-injection gap).
+  const lines = dataIssues.value.map((issue) => `- ${defangForPrompt(issue.file)}: ${defangForPrompt(issue.problem)}`).join("\n");
   const prompt = t("collectionsView.repairPrompt", { title: current.title, count: dataIssues.value.length, issues: lines });
   if (props.sendTextMessage) {
     props.sendTextMessage(prompt);

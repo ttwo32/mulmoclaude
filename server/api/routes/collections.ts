@@ -111,7 +111,9 @@ router.get(API_ROUTES.collections.detail, async (req: Request<{ slug: string }>,
     } catch (err) {
       log.warn("collections", "detail validation skipped", { slug: collection.slug, error: errorMessage(err) });
     }
-    res.json({ collection: toDetail(collection), items, issues });
+    // Omit `issues` entirely when everything is fine, matching the
+    // "absent when clean" contract on CollectionDetailResponse.
+    res.json({ collection: toDetail(collection), items, ...(issues.length > 0 ? { issues } : {}) });
   } catch (err) {
     log.warn("collections", "detail failed", { slug: collection.slug, error: errorMessage(err) });
     serverError(res, errorMessage(err));
