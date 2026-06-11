@@ -1235,6 +1235,10 @@ const enMessages = {
     viewDashboard: "Dashboard",
     dashboardAlertHeading: "{label} — {count}",
     dashboardAllItems: "All items",
+    repair: "Repair",
+    dataIssuesDetected: "{count} record file(s) have data problems and may be missing from this view.",
+    repairPrompt:
+      'The "{title}" collection has {count} record file(s) with data problems that keep them from appearing. Fix each one — Read the file, correct it, then Write it back:\n{issues}\n\nWhen you\'re done, call presentCollection to confirm the records load.',
     source: {
       user: "User",
       project: "Project",

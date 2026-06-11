@@ -22,8 +22,11 @@ import type { PresentCollectionData } from "./types";
 
 /** Card-local UI state persisted in the tool result's `viewState` so it
  *  survives a re-render — same pattern as presentForm. `selected` is the
- *  open record (`null` once explicitly closed); `view` / `anchorField`
- *  keep the table↔calendar choice and calendar anchor sticky. */
+ *  open record (`null` once explicitly closed); `view` / `anchorField` /
+ *  `groupField` keep the table↔calendar↔kanban choice and its axes sticky.
+ *  NOTE: the table sort is deliberately NOT here — it's a single shared
+ *  per-collection preference in localStorage (read+written by both the
+ *  standalone page and chat cards), so it stays consistent everywhere. */
 interface PresentCollectionViewState {
   selected?: string | null;
   view?: "table" | "calendar" | "kanban" | "dashboard";

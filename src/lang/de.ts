@@ -1251,6 +1251,10 @@ const deMessages = {
     viewDashboard: "Dashboard",
     dashboardAlertHeading: "{label} — {count}",
     dashboardAllItems: "Alle Einträge",
+    repair: "Reparieren",
+    dataIssuesDetected: "{count} Datensatzdatei(en) haben Datenprobleme und fehlen möglicherweise in dieser Ansicht.",
+    repairPrompt:
+      "Die Sammlung {title} hat {count} Datensatzdatei(en) mit Datenproblemen, die ihr Erscheinen verhindern. Korrigiere jede — die Datei mit Read lesen, korrigieren und mit Write zurückschreiben:\n{issues}\n\nRufe anschließend presentCollection auf, um zu bestätigen, dass die Datensätze geladen werden.",
     source: {
       user: "Benutzer",
       project: "Projekt",

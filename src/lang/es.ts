@@ -1248,6 +1248,10 @@ const esMessages = {
     viewDashboard: "Panel",
     dashboardAlertHeading: "{label} — {count}",
     dashboardAllItems: "Todos los elementos",
+    repair: "Reparar",
+    dataIssuesDetected: "{count} archivo(s) de registro tienen problemas de datos y podrían no aparecer en esta vista.",
+    repairPrompt:
+      "La colección {title} tiene {count} archivo(s) de registro con problemas de datos que impiden que aparezcan. Corrige cada uno: lee el archivo con Read, corrígelo y vuelve a escribirlo con Write:\n{issues}\n\nCuando termines, llama a presentCollection para confirmar que los registros se cargan.",
     source: {
       user: "Usuario",
       project: "Proyecto",

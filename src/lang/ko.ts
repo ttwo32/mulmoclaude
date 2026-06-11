@@ -1235,6 +1235,10 @@ const koMessages = {
     viewDashboard: "대시보드",
     dashboardAlertHeading: "{label} — {count}건",
     dashboardAllItems: "전체 항목",
+    repair: "복구",
+    dataIssuesDetected: "{count}개의 레코드 파일에 데이터 문제가 있어 이 보기에 표시되지 않을 수 있습니다.",
+    repairPrompt:
+      "{title} 컬렉션에 표시되지 않는 원인이 되는 데이터 문제가 있는 레코드 파일이 {count}개 있습니다. 각 파일을 수정하세요 — Read로 파일을 읽고 수정한 뒤 Write로 다시 저장하세요:\n{issues}\n\n완료되면 presentCollection을 호출하여 레코드가 로드되는지 확인하세요.",
     source: {
       user: "사용자",
       project: "프로젝트",

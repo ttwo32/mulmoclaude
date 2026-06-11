@@ -127,9 +127,22 @@ export interface CollectionDetail {
 
 export type CollectionItem = Record<string, unknown>;
 
+/** A record file the server couldn't load or that violates the schema —
+ *  silently skipped at read time. Mirror of `RecordIssue` in
+ *  `server/workspace/collections/validate.ts`. */
+export interface CollectionRecordIssue {
+  /** Record filename, e.g. `lesson-003.json`. */
+  file: string;
+  /** Human-readable problem, written to be actionable by the LLM. */
+  problem: string;
+}
+
 export interface CollectionDetailResponse {
   collection: CollectionDetail;
   items: CollectionItem[];
+  /** Record files that failed validation; drives the in-view Repair
+   *  prompt. Absent or empty when every record is fine. */
+  issues?: CollectionRecordIssue[];
 }
 
 export interface ItemMutationResponse {

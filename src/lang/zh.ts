@@ -1224,6 +1224,10 @@ const zhMessages = {
     viewDashboard: "仪表板",
     dashboardAlertHeading: "{label} — {count} 项",
     dashboardAllItems: "全部条目",
+    repair: "修复",
+    dataIssuesDetected: "有 {count} 个记录文件存在数据问题，可能未显示在此视图中。",
+    repairPrompt:
+      "集合 {title} 有 {count} 个记录文件存在导致无法显示的数据问题。请逐一修复——用 Read 读取该文件，更正后再用 Write 写回：\n{issues}\n\n完成后，调用 presentCollection 确认记录可以正常加载。",
     source: {
       user: "用户",
       project: "项目",

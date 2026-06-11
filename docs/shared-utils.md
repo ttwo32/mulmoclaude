@@ -57,6 +57,7 @@ This catalog only covers **cross-cutting** helpers — formatters, error helpers
 | `server/utils/slug.ts` | slug helpers | URL-safe slugs from arbitrary text. |
 | `src/lib/wiki-page/slug.ts` | wiki page slug helpers | Wiki-specific slug shape (separate from the server one because the rules differ). |
 | `server/utils/id.ts` | id generation | Stable IDs (attachment, session). |
+| `src/utils/promptSafety.ts` | `defangForPrompt(value)` | Neutralize record-controlled text before interpolating it into an LLM-facing prompt: strips `<>`, defangs backticks / `${`, collapses whitespace (blocks newline-injected pseudo-instructions), clips to 200 chars. Used by BOTH the server (`presentCollection` validation → instructions) and the client (collection Repair button) so the two can't drift. |
 
 ## Regex
 

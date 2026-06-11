@@ -9,42 +9,50 @@
      Composable + state interface stays identical so the two can be
      unified the day the host/plugin runtime split is reconciled. -->
 <template>
-  <Transition name="confirm-modal">
-    <div
-      v-if="confirmState.isOpen"
-      class="confirm-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirm-title"
-      aria-describedby="confirm-message"
-      data-testid="host-confirm-modal"
-      @click="onOverlayClick"
-    >
-      <div class="confirm-card" @click.stop>
-        <div class="confirm-header">
-          <div class="confirm-icon-wrapper" :class="confirmState.variant">
-            <span class="material-icons icon" aria-hidden="true">{{ iconName }}</span>
+  <!-- Teleport to <body> so the overlay isn't trapped in the stacking
+       context of whatever mounts this dialog (e.g. CollectionView). The
+       record modal is itself teleported with z-40; keeping the confirm
+       dialog inside CollectionView's subtree left its z-9999 meaningless
+       against that body-level layer, so a delete confirm rendered behind
+       the open item view. -->
+  <Teleport to="body">
+    <Transition name="confirm-modal">
+      <div
+        v-if="confirmState.isOpen"
+        class="confirm-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-title"
+        aria-describedby="confirm-message"
+        data-testid="host-confirm-modal"
+        @click="onOverlayClick"
+      >
+        <div class="confirm-card" @click.stop>
+          <div class="confirm-header">
+            <div class="confirm-icon-wrapper" :class="confirmState.variant">
+              <span class="material-icons icon" aria-hidden="true">{{ iconName }}</span>
+            </div>
+            <h3 id="confirm-title" class="confirm-title">
+              {{ confirmState.title || defaultTitle }}
+            </h3>
           </div>
-          <h3 id="confirm-title" class="confirm-title">
-            {{ confirmState.title || defaultTitle }}
-          </h3>
-        </div>
 
-        <div id="confirm-message" class="confirm-body">
-          {{ confirmState.message }}
-        </div>
+          <div id="confirm-message" class="confirm-body">
+            {{ confirmState.message }}
+          </div>
 
-        <div class="confirm-footer">
-          <button ref="cancelBtn" type="button" class="btn-cancel" data-testid="host-confirm-cancel" @click="handleConfirm(false)">
-            {{ confirmState.cancelText || defaultCancelText }}
-          </button>
-          <button ref="confirmBtn" type="button" class="btn-confirm" :class="confirmState.variant" data-testid="host-confirm-ok" @click="handleConfirm(true)">
-            {{ confirmState.confirmText || defaultConfirmText }}
-          </button>
+          <div class="confirm-footer">
+            <button ref="cancelBtn" type="button" class="btn-cancel" data-testid="host-confirm-cancel" @click="handleConfirm(false)">
+              {{ confirmState.cancelText || defaultCancelText }}
+            </button>
+            <button ref="confirmBtn" type="button" class="btn-confirm" :class="confirmState.variant" data-testid="host-confirm-ok" @click="handleConfirm(true)">
+              {{ confirmState.confirmText || defaultConfirmText }}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  </Transition>
+    </Transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">

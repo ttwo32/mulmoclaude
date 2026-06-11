@@ -220,6 +220,28 @@
       </div>
     </div>
 
+    <!-- Repair banner: the server flagged record files that won't load /
+         violate the schema and are silently skipped. The button reports
+         them back to the LLM (same path presentCollection uses) so it
+         fixes the files. View-independent, so it sits above the body. -->
+    <div
+      v-if="collection && dataIssues.length > 0"
+      class="mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-900 shadow-sm flex items-center gap-3"
+      data-testid="collections-data-issues"
+    >
+      <span class="material-icons text-amber-600">warning</span>
+      <span class="flex-1">{{ t("collectionsView.dataIssuesDetected", { count: dataIssues.length }) }}</span>
+      <button
+        type="button"
+        class="h-8 px-2.5 flex items-center gap-1 rounded border border-amber-300 bg-white hover:bg-amber-100 text-amber-700 font-bold text-xs transition-colors"
+        data-testid="collections-repair"
+        @click="repairCollection"
+      >
+        <span class="material-icons text-sm">build</span>
+        <span>{{ t("collectionsView.repair") }}</span>
+      </button>
+    </div>
+
     <div class="flex-1 overflow-auto">
       <div v-if="loading" class="flex flex-col items-center justify-center py-20 text-sm text-slate-500 gap-3">
         <div class="h-8 w-8 border-2 border-indigo-600/20 border-t-indigo-600 rounded-full animate-spin"></div>
@@ -330,6 +352,7 @@
             :items="filteredItems"
             :group-field="kanbanGroupField"
             :selected="viewing ? String(viewing[collection.schema.primaryKey] ?? '') : undefined"
+            :notified="notifiedSeverities"
             @select="onCalendarSelect"
             @move="onKanbanMove"
           />
@@ -392,10 +415,10 @@
                 v-for="[key, field] in listColumnFields"
                 :key="key"
                 :aria-sort="isSortableField(field) ? sortAriaValue(key) : undefined"
-                class="px-5 py-3 font-bold text-slate-500 text-left uppercase tracking-wider"
+                class="px-5 py-3 font-bold text-slate-500 text-left uppercase tracking-wider whitespace-nowrap"
               >
                 <div class="flex items-center gap-1">
-                  <span>{{ field.label }}</span>
+                  <span class="truncate max-w-[14rem]" :title="field.label">{{ field.label }}</span>
                   <button
                     v-if="isSortableField(field)"
                     type="button"
@@ -679,7 +702,7 @@ import { useAppApi } from "../composables/useAppApi";
 import { useShortcuts } from "../composables/useShortcuts";
 import { actionVisible, fieldVisible } from "../utils/collections/actionVisible";
 import { resolveEnumColor } from "../utils/collections/enumColors";
-import { readCollectionViewMode, writeCollectionViewMode } from "../utils/collections/collectionViewMode";
+import { readCollectionViewMode, writeCollectionViewMode, readCollectionSort, writeCollectionSort } from "../utils/collections/collectionViewMode";
 import {
   isSortableField,
   nextSortDirection,
@@ -699,11 +722,16 @@ import type {
   CollectionDetail,
   CollectionDetailResponse,
   CollectionItem,
+  CollectionRecordIssue,
   EditState,
   FieldSpec,
   ItemMutationResponse,
   TableRowDraft,
 } from "./collectionTypes";
+import { shortHexId } from "../utils/id";
+import { defangForPrompt } from "../utils/promptSafety";
+import { useNotifications } from "../composables/useNotifications";
+import { collectionNotifiedSeverities, type NotifierSeverity } from "../utils/collections/notifiedItems";
 
 /** `slug` / `selected` are supplied only in EMBEDDED mode (the
  *  `presentCollection` chat card mounts this component and drives both
@@ -721,7 +749,8 @@ const props = defineProps<{
   sendTextMessage?: (text?: string) => void;
   /** Embedded mode only: initial view / anchor / group restored from the
    *  card's persisted `viewState` so a switch to calendar or kanban
-   *  survives a remount. */
+   *  survives a remount. (The table sort is NOT a card prop — it's a shared
+   *  per-collection localStorage preference, read by both modes.) */
   initialView?: "table" | "calendar" | "kanban" | "dashboard";
   initialAnchorField?: string;
   initialGroupField?: string;
@@ -734,7 +763,7 @@ const emit = defineEmits<{
   select: [id: string | null];
   /** Embedded mode only: the view mode / calendar anchor / kanban group
    *  changed. The card persists these alongside `selected` so the calendar
-   *  and kanban stick. */
+   *  and kanban stick. (The table sort is shared via localStorage instead.) */
   viewStateChange: [state: { view: "table" | "calendar" | "kanban" | "dashboard"; anchorField: string; groupField: string }];
 }>();
 
@@ -744,6 +773,7 @@ const router = useRouter();
 const { openConfirm } = useConfirm();
 const appApi = useAppApi();
 const { unpin } = useShortcuts();
+const { entries: notifierEntries } = useNotifications();
 
 /** Embedded when a `slug` prop is supplied; standalone (route-driven)
  *  otherwise. Switches the slug/selected source and the open/close
@@ -770,6 +800,18 @@ const collection = ref<CollectionDetail | null>(null);
 const items = ref<CollectionItem[]>([]);
 const loading = ref(true);
 const loadError = ref<string | null>(null);
+// Record files the server flagged as malformed/invalid (silently skipped
+// at read time). When non-empty the view shows a Repair banner whose
+// button reports them back to the LLM. See `repairCollection`.
+const dataIssues = ref<CollectionRecordIssue[]>([]);
+
+// Primary-key → notification severity for this collection's records that
+// currently have an active bell notification — passed to the Kanban board so
+// it can flag those cards in the matching bell colour (urgent red / nudge amber).
+const notifiedSeverities = computed<Map<string, NotifierSeverity>>(() => {
+  const slug = collection.value?.slug;
+  return slug ? collectionNotifiedSeverities(notifierEntries.value, slug) : new Map<string, NotifierSeverity>();
+});
 /** True while a feed collection's manual refresh is in flight. */
 const refreshing = ref(false);
 /** Slug already auto-refreshed on first open — prevents a reload loop
@@ -849,8 +891,15 @@ const filteredItems = computed<CollectionItem[]>(() => {
 
 // ── List-table sort (single active column, header toggle) ─────────
 // Calendar / kanban keep their own ordering; only the table consumes
-// `sortedItems`. State resets to null whenever a new collection loads.
-const sortState = ref<SortState | null>(null);
+// `sortedItems`. The active sort is a single SHARED per-collection
+// preference in localStorage — both the standalone page and embedded chat
+// cards read AND write it, so a sort set anywhere is consistent the next
+// time the collection is viewed. Resets only when a DIFFERENT collection
+// loads (the slug watch), so the sort survives a refresh / edit / remount.
+function storedSortFor(slug: string | undefined): SortState | null {
+  return (slug && readCollectionSort(slug)) || null;
+}
+const sortState = ref<SortState | null>(storedSortFor(activeSlug.value));
 // The column whose sort button is currently hovered (at most one). Hover
 // previews the NEXT click's state, so descending visibly fades back to the
 // light-grey "off" look — signalling the next click clears the sort.
@@ -1070,6 +1119,27 @@ async function runCollectionAction(action: CollectionAction): Promise<void> {
   appApi.startNewChat(result.data.prompt, result.data.role);
 }
 
+/** Report the server-detected record data problems back to the LLM so it
+ *  fixes the offending files. Mirrors the `presentCollection` validation
+ *  path (`dispatchPresentCollection`), but user-initiated via the Repair
+ *  button instead of fired automatically after a write. Dispatches into
+ *  the current chat when embedded, else seeds a new General chat. */
+function repairCollection(): void {
+  const current = collection.value;
+  if (!current || dataIssues.value.length === 0) return;
+  // Issue text carries record-controlled values (ids, enum values), so defang
+  // structural injection vectors before it rides into the LLM prompt. Shared
+  // with the server's presentCollection path via `defangForPrompt` so the two
+  // can't drift (it also collapses whitespace, closing a newline-injection gap).
+  const lines = dataIssues.value.map((issue) => `- ${defangForPrompt(issue.file)}: ${defangForPrompt(issue.problem)}`).join("\n");
+  const prompt = t("collectionsView.repairPrompt", { title: current.title, count: dataIssues.value.length, issues: lines });
+  if (props.sendTextMessage) {
+    props.sendTextMessage(prompt);
+    return;
+  }
+  appApi.startNewChat(prompt, BUILTIN_ROLE_IDS.general);
+}
+
 /** Actions whose optional `when` predicate matches the open record.
  *  Status-driven buttons (e.g. invoice "Record payment") stay hidden
  *  until the record reaches the matching state. */
@@ -1161,8 +1231,11 @@ async function loadCollection(slug: string): Promise<void> {
   loadError.value = null;
   collection.value = null;
   items.value = [];
+  dataIssues.value = []; // never carry a previous collection's issues over
   searchQuery.value = ""; // Reset search query on collection load
-  sortState.value = null; // Drop any active column sort from the prior collection
+  // NOTE: the active column sort is NOT reset here — it's part of the view
+  // state, so it must survive a refresh / edit reload and an embedded card
+  // remount. The collection-SWITCH reset lives in the `activeSlug` watch.
   render.resetLinkedCaches();
   viewing.value = null;
   openDay.value = null; // never carry a previous collection's open day over
@@ -1182,6 +1255,7 @@ async function loadCollection(slug: string): Promise<void> {
   }
   collection.value = result.data.collection;
   items.value = result.data.items;
+  dataIssues.value = result.data.issues ?? [];
   enumOriginallyEmpty.value = snapshotEmptyEnums(result.data.collection.schema, result.data.items);
   // Fan out to fetch each unique target collection so the table can
   // render ref values as display names (not slugs) and the form
@@ -1273,18 +1347,19 @@ const isFeedRoute = computed<boolean>(() => !embedded.value && route.name === PA
 //
 // Standalone route mode persists the last-used mode per collection in
 // localStorage so reopening `/collections/:slug` restores the prior view
-// instead of always starting on the table. Embedded mode ignores the store
-// and restores from the card's `initialView` prop instead.
+// instead of always starting on the table. Embedded chat cards restore from
+// the card's own `initialView` first; lacking that (a freshly-rendered
+// presentCollection card), they fall back to the same per-collection store
+// the standalone page uses, so a card also opens in the last-used view.
 type CollectionViewMode = "table" | "calendar" | "kanban" | "dashboard";
 
 /** The view to open with: the embedded card's restored `initialView` if
- *  present, else the standalone slug's stored mode, else "table". Embedded
- *  mode never reads the localStorage store — its state lives in the card's
- *  `viewState`, so a standalone preference must not leak into (and then be
- *  re-persisted by) an embedded card. */
+ *  present (its own persisted state wins), else the slug's stored
+ *  preference, else "table". Embedded cards READ the store but never WRITE
+ *  it (the persist watch only emits `viewStateChange` for them), so a stale
+ *  card re-rendering can't clobber the shared preference. */
 function initialViewMode(): CollectionViewMode {
   if (props.initialView) return props.initialView;
-  if (embedded.value) return "table";
   const slug = activeSlug.value;
   return (slug && readCollectionViewMode(slug)) || "table";
 }
@@ -1379,6 +1454,19 @@ function setView(next: CollectionViewMode): void {
   view.value = next;
 }
 
+/** A short, slug-safe id not already used by a loaded record. Collisions
+ *  are astronomically unlikely (32 bits), but we still re-roll a few
+ *  times against the in-memory set before giving up and using the last
+ *  candidate (the server's overwrite guard is the final backstop). */
+function generateUniqueItemId(primaryKey: string): string {
+  const existing = new Set(items.value.map((item) => String(item[primaryKey] ?? "")));
+  let candidate = shortHexId();
+  for (let attempt = 0; attempt < 8 && existing.has(candidate); attempt++) {
+    candidate = shortHexId();
+  }
+  return candidate;
+}
+
 function openCreate(): void {
   if (!collection.value) return;
   const text: Record<string, string> = {};
@@ -1402,8 +1490,16 @@ function openCreate(): void {
   }
   // Singleton collections fix the primary key to the schema-declared
   // value (e.g. "me") so the first Add can't pick an arbitrary id.
+  // Otherwise pre-fill a unique, editable id so the user doesn't have to
+  // invent one — the primary-key input stays enabled in create mode, so
+  // they can still override it before saving. Matches the id shape the
+  // server would generate for a blank-id POST (`generateItemId`).
   const { singleton, primaryKey } = collection.value.schema;
-  if (singleton) text[primaryKey] = singleton;
+  if (singleton) {
+    text[primaryKey] = singleton;
+  } else if (primaryKey in text) {
+    text[primaryKey] = generateUniqueItemId(primaryKey);
+  }
   viewing.value = null; // one panel open at a time
   editing.value = { mode: "create", text, bool, boolOriginallyPresent, boolTouched, table, originalId: null };
   saveError.value = null;
@@ -1853,13 +1949,16 @@ watch(
   (slug, prevSlug) => {
     // Reset view state when switching BETWEEN collections — but not on the
     // initial run (prevSlug undefined), so an embedded card's restored
-    // `initialView` / `initialAnchorField` survive the first load. Standalone
-    // mode restores the new collection's stored mode (else "table"); the axis
+    // `initialView` / `initialAnchorField` survive the first load. Both modes
+    // restore the new collection's stored mode (else "table"); the axis
     // fields always reset to their schema defaults.
     if (prevSlug !== undefined && slug !== prevSlug) {
-      view.value = (slug && !embedded.value && readCollectionViewMode(slug)) || "table";
+      view.value = (slug && readCollectionViewMode(slug)) || "table";
       anchorOverride.value = null;
       kanbanOverride.value = null;
+      // A sort belongs to a collection's own schema, so don't carry it across —
+      // restore the new collection's stored (shared) sort instead.
+      sortState.value = storedSortFor(slug);
     }
     if (slug) {
       loadCollection(slug);
@@ -1882,18 +1981,24 @@ watch(
 // loading: that's the point where a stored mode unsupported by this schema
 // (its date/enum field gone) has collapsed to "table" and must be normalized
 // back into storage — otherwise no other dependency changes and it lingers.
-watch([activeView, calendarAnchorField, kanbanGroupField, loading], () => {
+watch([activeView, calendarAnchorField, kanbanGroupField, sortState, loading], () => {
   // Persist the EFFECTIVE view (activeView), not the raw `view` ref — a
   // stale "calendar"/"kanban" that has fallen back to "table" (its enabling
   // field gone) must not be saved as an impossible mode.
   if (embedded.value) {
     emit("viewStateChange", { view: activeView.value, anchorField: calendarAnchorField.value, groupField: kanbanGroupField.value });
-    return;
   }
   // Don't write during the load window: until the collection resolves,
   // `hasCalendar`/`hasKanban` are false so `activeView` reads "table",
   // which would clobber a stored "calendar"/"kanban" before it can apply.
-  if (activeSlug.value && !loading.value && collection.value) writeCollectionViewMode(activeSlug.value, activeView.value);
+  if (activeSlug.value && !loading.value && collection.value) {
+    // View mode stays standalone-authored — embedded reads but never writes it,
+    // so a stale card can't clobber the shared mode. The table SORT, by
+    // contrast, IS shared both ways: a card always re-reads it on mount, so
+    // there's no per-card value to go stale and clobber the store.
+    if (!embedded.value) writeCollectionViewMode(activeSlug.value, activeView.value);
+    writeCollectionSort(activeSlug.value, sortState.value);
+  }
 });
 
 // React to the active selection changing while already on this

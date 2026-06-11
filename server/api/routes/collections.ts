@@ -26,9 +26,17 @@ import {
   resolveCreateItemId,
   toDetail,
   toSummary,
+  validateCollectionRecords,
   writeItem,
 } from "../../workspace/collections/index.js";
-import type { CollectionAction, CollectionDetail, CollectionItem, CollectionSummary, LoadedCollection } from "../../workspace/collections/index.js";
+import type {
+  CollectionAction,
+  CollectionDetail,
+  CollectionItem,
+  CollectionSummary,
+  LoadedCollection,
+  RecordIssue,
+} from "../../workspace/collections/index.js";
 import { badRequest, notFound, conflict, forbidden, serverError } from "../../utils/httpError.js";
 import { errorMessage } from "../../utils/errors.js";
 import { log } from "../../system/logger/index.js";
@@ -44,6 +52,10 @@ interface CollectionsListResponse {
 interface CollectionDetailResponse {
   collection: CollectionDetail;
   items: CollectionItem[];
+  /** Record files that failed validation (malformed JSON / schema
+   *  violation) and are silently skipped at read time. Drives the
+   *  in-view Repair prompt. Omitted/empty when every record is fine. */
+  issues?: RecordIssue[];
 }
 
 interface ItemMutationResponse {
@@ -89,7 +101,19 @@ router.get(API_ROUTES.collections.detail, async (req: Request<{ slug: string }>,
   }
   try {
     const items = await listItems(collection.dataDir);
-    res.json({ collection: toDetail(collection), items });
+    // Best-effort validation: a malformed record is silently skipped at
+    // read time, so surface the problems here too (the same pass
+    // presentCollection runs) and let the view offer a Repair button.
+    // Never let validation failure turn a successful detail into a 500.
+    let issues: RecordIssue[] = [];
+    try {
+      issues = await validateCollectionRecords(collection);
+    } catch (err) {
+      log.warn("collections", "detail validation skipped", { slug: collection.slug, error: errorMessage(err) });
+    }
+    // Omit `issues` entirely when everything is fine, matching the
+    // "absent when clean" contract on CollectionDetailResponse.
+    res.json({ collection: toDetail(collection), items, ...(issues.length > 0 ? { issues } : {}) });
   } catch (err) {
     log.warn("collections", "detail failed", { slug: collection.slug, error: errorMessage(err) });
     serverError(res, errorMessage(err));

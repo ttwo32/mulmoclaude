@@ -1237,6 +1237,10 @@ const ptBRMessages = {
     viewDashboard: "Painel",
     dashboardAlertHeading: "{label} — {count}",
     dashboardAllItems: "Todos os itens",
+    repair: "Reparar",
+    dataIssuesDetected: "{count} arquivo(s) de registro têm problemas de dados e podem não aparecer nesta visualização.",
+    repairPrompt:
+      "A coleção {title} tem {count} arquivo(s) de registro com problemas de dados que impedem que apareçam. Corrija cada um: leia o arquivo com Read, corrija-o e grave-o novamente com Write:\n{issues}\n\nQuando terminar, chame presentCollection para confirmar que os registros carregam.",
     source: {
       user: "Usuário",
       project: "Projeto",

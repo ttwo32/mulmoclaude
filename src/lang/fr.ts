@@ -1241,6 +1241,10 @@ const frMessages = {
     viewDashboard: "Tableau de bord",
     dashboardAlertHeading: "{label} — {count}",
     dashboardAllItems: "Tous les éléments",
+    repair: "Réparer",
+    dataIssuesDetected: "{count} fichier(s) d'enregistrement présentent des problèmes de données et peuvent être absents de cette vue.",
+    repairPrompt:
+      "La collection « {title} » comporte {count} fichier(s) d'enregistrement présentant des problèmes de données qui les empêchent d'apparaître. Corrigez chacun : lisez le fichier avec Read, corrigez-le, puis réécrivez-le avec Write :\n{issues}\n\nUne fois terminé, appelez presentCollection pour confirmer que les enregistrements se chargent.",
     source: {
       user: "Utilisateur",
       project: "Projet",

@@ -1231,6 +1231,10 @@ const jaMessages = {
     viewDashboard: "ダッシュボード",
     dashboardAlertHeading: "{label} — {count}件",
     dashboardAllItems: "一覧",
+    repair: "修復",
+    dataIssuesDetected: "{count} 件のレコードファイルにデータの問題があり、この表示に出てこない可能性があります。",
+    repairPrompt:
+      "コレクション「{title}」に、表示されない原因となるデータの問題を持つレコードファイルが {count} 件あります。それぞれを修正してください — ファイルを Read し、修正してから Write し直します:\n{issues}\n\n完了したら presentCollection を呼び出して、レコードが読み込めることを確認してください。",
     source: {
       user: "ユーザー",
       project: "プロジェクト",
