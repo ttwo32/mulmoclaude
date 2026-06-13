@@ -90,8 +90,8 @@ for per-collection configuration.
   forbid on preset collections consistent with `deleteCollection` rules.
 - Register the route key in `src/config/apiRoutes.ts`.
 
-**Frontend — config surface** (decided: **modal**, **views-only** scope with the
-`+` button moved in)
+**Frontend — config surface** (decided: **modal**, **views-only** scope; the
+header `+` button **stays** — it's the discoverable add-view entry point)
 - Add a gear/settings icon-button to the `CollectionView.vue` header chrome
   (icon-only, `h-8 w-8 flex items-center justify-center rounded`, standalone
   only — `!embedded`). Opens a **modal** (match the record/deck-modal pattern,
@@ -102,16 +102,19 @@ for per-collection configuration.
     row (confirm before delete). Wire to the new DELETE endpoint via
     `src/utils/api.ts` (`apiDelete`), with network + `!response.ok` handling.
     On success, refetch the collection detail so the toggle row updates.
-  - **Move the `+` "add view" affordance into this modal** (an "Add view" row /
-    button that calls the existing `addCustomView` seed-chat path). Remove the
-    standalone `+` button from the header toggle group (`CollectionView.vue:
-    214-224`) so all view management lives in one place. The header keeps only
-    the view *toggle* buttons.
-- Reassess the toggle-group `v-if` (`:147`) and outer `v-if` (`:118`) once `+`
-  leaves the header — they currently include `canAddCustomView` to keep the row
-  visible for the add button; that term moves to gating the gear icon instead.
-- New i18n keys (all 8 locales): modal title, "Views" heading, "Add view"
-  label, delete confirm/label, empty state.
+  - **Keep the `+` "add view" button in the header toggle group**
+    (`CollectionView.vue:214-224`, the existing `addCustomView` seed-chat path)
+    — it's far more discoverable than burying add inside a settings modal. The
+    modal owns delete; the header owns add. (Optionally also surface an "Add
+    view" row inside the modal as a secondary entry point, but the header `+`
+    is the primary one and must remain.)
+- The toggle-group `v-if` (`:147`) and outer `v-if` (`:118`) keep their
+  `canAddCustomView` term (the `+` stays in the header). The gear icon gets its
+  own gate (collection present, `!embedded`, and there's something to manage —
+  i.e. `hasCustomViews`, since delete is the only modal action today).
+- New i18n keys (all 8 locales): modal title, "Views" heading, delete
+  confirm/label, empty state. (No new "Add view" key needed — `addView` already
+  exists and stays on the header `+`.)
 
 ---
 
@@ -168,13 +171,13 @@ into an existing collections spec):
 - Flow: open the gear modal → assert each view row is listed → click delete →
   confirm → assert the DELETE was called (capture the request) → assert the row
   and the header toggle button both disappear after refetch.
-- Assert the `+` add-view affordance now lives **inside the modal** (not in the
-  header toggle group) and that clicking it triggers the seed-chat path
-  (`sendTextMessage` / `startNewChat` — stub/spy as the other specs do).
+- Assert the header `+` add-view button **remains** (`collection-view-add`) and
+  still triggers the seed-chat path (`sendTextMessage` / `startNewChat` —
+  stub/spy as the other specs do).
 - New `data-testid`s to add for these handles: e.g.
   `collection-config-open` (gear), `collection-config-modal`,
-  `collection-view-delete-<id>`, `collection-config-add-view`. Update
-  `docs/ui-cheatsheet.md` for the collections chrome.
+  `collection-view-delete-<id>`. Update `docs/ui-cheatsheet.md` for the
+  collections chrome.
 
 **Part 3 — feeds get custom views** (`feed-custom-view.spec.ts` or extend the
 above):
