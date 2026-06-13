@@ -59,6 +59,7 @@ import { useI18n } from "vue-i18n";
 import CollectionRecordModal from "./CollectionRecordModal.vue";
 import type { CollectionCustomView } from "./collectionTypes";
 import { apiDelete } from "../utils/api";
+import { errorMessage } from "../utils/errors";
 import { useConfirm } from "../composables/useConfirm";
 import { API_ROUTES } from "../config/apiRoutes";
 
@@ -87,13 +88,21 @@ async function onDelete(view: CollectionCustomView): Promise<void> {
   if (!ok) return;
   error.value = null;
   deleting.value = view.id;
-  const result = await apiDelete(viewDeleteUrl(view.id));
-  deleting.value = null;
-  if (!result.ok) {
-    error.value = result.error;
-    return;
+  try {
+    const result = await apiDelete(viewDeleteUrl(view.id));
+    if (!result.ok) {
+      error.value = result.error;
+      return;
+    }
+    // Parent reloads the collection detail; the `views` prop updates reactively.
+    emit("changed");
+  } catch (err) {
+    // apiDelete normalises network/HTTP errors into a result, so this only
+    // catches the unexpected — but a `finally` guarantees the row never stays
+    // stuck disabled.
+    error.value = errorMessage(err);
+  } finally {
+    deleting.value = null;
   }
-  // Parent reloads the collection detail; the `views` prop updates reactively.
-  emit("changed");
 }
 </script>

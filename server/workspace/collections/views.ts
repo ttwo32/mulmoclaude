@@ -80,12 +80,19 @@ export async function deleteCustomView(collection: LoadedCollection, viewId: str
   if (isPresetSlug(collection.slug)) return { kind: "preset" };
   const safeSlug = safeSlugName(collection.slug);
   if (safeSlug === null) return { kind: "unsafe-path", viewId };
-  const view = (collection.schema.views ?? []).find((entry) => entry.id === viewId);
+  const views = collection.schema.views ?? [];
+  const view = views.find((entry) => entry.id === viewId);
   if (!view) return { kind: "not-found", viewId };
   const workspaceRoot = opts.workspaceRoot ?? workspacePath;
   const htmlPath = resolveTemplatePath(canonicalBase(collection, workspaceRoot, safeSlug), view.file);
   if (htmlPath === null) return { kind: "unsafe-path", viewId };
-  await unlinkIfPresent(htmlPath);
+  // Rewrite the schema BEFORE unlinking: if the write fails the request errors
+  // out, but the HTML stays put and the still-registered view keeps working —
+  // an orphaned `views[]` entry pointing at a deleted file would 404 forever.
   await removeViewFromSchemas(collection, viewId, workspaceRoot, safeSlug);
+  // Distinct ids may point at the same `file` (unique ids are enforced, unique
+  // files are not), so only unlink when no remaining view still references it.
+  const stillReferenced = views.some((entry) => entry.id !== viewId && entry.file === view.file);
+  if (!stillReferenced) await unlinkIfPresent(htmlPath);
   return { kind: "ok", viewId };
 }

@@ -79,8 +79,21 @@ describe("deleteCustomView", () => {
     assert.deepEqual(readViewIds(path.join(staging, "schema.json")), ["month"]);
     assert.deepEqual(readViewIds(path.join(active, "schema.json")), ["month"]);
     // Its HTML is unlinked; the sibling view's HTML is untouched.
-    assert.equal(existsSync(path.join(staging, "views", "year.html")), false, "deleted view HTML remains");
-    assert.equal(existsSync(path.join(staging, "views", "month.html")), true, "sibling view HTML removed");
+    assert.equal(existsSync(path.join(staging, "views", "year.html")), false, "deleted view HTML must be unlinked");
+    assert.equal(existsSync(path.join(staging, "views", "month.html")), true, "sibling view HTML must remain");
+  });
+
+  it("keeps a shared HTML file when another view still references it", async () => {
+    // Two distinct ids pointing at the same file: deleting one must NOT unlink
+    // the file the other still renders from.
+    const shared = { ...MONTH_VIEW, id: "month-alt" };
+    const collection = seedProject("events", [MONTH_VIEW, shared]);
+    const result = await deleteCustomView(collection, "month", { workspaceRoot: workdir });
+
+    assert.equal(result.kind, "ok");
+    const staging = path.join(workdir, "data", "skills", "events");
+    assert.deepEqual(readViewIds(path.join(staging, "schema.json")), ["month-alt"]);
+    assert.equal(existsSync(path.join(staging, "views", "month.html")), true, "shared HTML must survive while a sibling references it");
   });
 
   it("removes a feed's view from its single-tree schema + HTML", async () => {

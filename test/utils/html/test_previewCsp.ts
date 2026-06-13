@@ -76,6 +76,10 @@ describe("buildCustomViewCsp", () => {
     assert.match(csp, /connect-src http:\/\/localhost:3001/);
     assert.ok(!/connect-src[^;]*https:/.test(csp), "connect-src must stay origin-locked, not widened to https:");
     assert.match(csp, /img-src http:\/\/localhost:3001 [^;]*data: blob: https:/);
+    // Only `https:` is admitted as a scheme-source — never a bare `http:` token
+    // (the `http://localhost` origin is a full URL, not the `http:` scheme).
+    const imgSrc = csp.match(/img-src ([^;]*)/)?.[1] ?? "";
+    assert.ok(!imgSrc.split(" ").includes("http:"), "img-src must not allow the insecure http: scheme");
   });
 
   it("keeps the wildcard out of img-src (https: scheme, not *)", () => {
