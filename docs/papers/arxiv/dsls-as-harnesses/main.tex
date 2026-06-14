@@ -1,0 +1,535 @@
+\documentclass[11pt]{article}
+
+% --- packages ---------------------------------------------------------------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{microtype}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[colorlinks=true,allcolors=blue]{hyperref}
+
+% --- listings (JSON / ascii diagrams) ---------------------------------------
+\definecolor{codebg}{gray}{0.96}
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  framesep=4pt,
+  rulecolor=\color{gray!40},
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  aboveskip=1em,
+  belowskip=1em,
+}
+
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+% --- title ------------------------------------------------------------------
+\title{\textbf{DSLs as Harnesses:}\\[2pt]
+\large Declarative Applications-as-Data as a Reliability Substrate for LLM Agents}
+
+\author{
+  Satoshi Nakajima\\
+  \small The Singularity Society\\
+  \small \texttt{satoshi.nakajima@gmail.com}
+}
+
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+A recurring lesson of applied agent engineering is that the \emph{harness}---the
+designed environment an agent operates in---governs reliability more than the
+underlying model. We argue that a \emph{domain-specific language} (DSL) is one of
+the most effective harnesses available for autonomous, long-horizon agents,
+precisely because it gives up the unbounded expressiveness of general-purpose
+code in exchange for a small, legible, checkable surface. We make this concrete
+by describing \textbf{Collections}, a declarative \emph{applications-as-data}
+system implemented in MulmoClaude, an open-source LLM-agent application. In
+Collections, a single JSON schema defines an application's data model,
+relationships, computed values, recurrence, user interface, external-data
+acquisition, and workflows; record files are the database; and the language model
+is the runtime that operates inside the schema rather than writing imperative
+code. We show how four well-known harness properties---schema-as-system-of-record,
+a validator as a free feedback loop, a grammar as a forcing function, and a unit
+of the language as a unit of context---fall out of this single design decision,
+and how a deliberate \emph{reliability dial} divides what the host guarantees
+deterministically (schema validity, derived-value computation, recurrence math,
+sandboxed rendering, scheduled ingestion) from what the model supplies (judgment,
+language, domain modeling). We report a longitudinal single-user deployment in
+which 26 applications, 6 bespoke sandboxed UI views, and 3 external feeds accreted
+over roughly two months without any host code being written per application. We
+discuss the design's principal hazard---the escape hatch from the declarative
+surface to arbitrary code---and its limitations, including non-replayable
+execution and the single-user, single-system scope of our evidence.
+\end{abstract}
+
+\noindent\textbf{Keywords:} LLM agents; agent harness; domain-specific languages;
+end-user software engineering; low-code; applications as data; declarative systems.
+
+% ===========================================================================
+\section{Introduction}
+\label{sec:intro}
+
+The prevailing lesson of applied AI engineering in 2024--2026 is that the
+\emph{harness}---the designed environment an agent operates inside: the tools it
+can call, the format of the information it receives, the feedback that catches its
+mistakes, and the scaffolding that lets it hand work to its future self---matters
+more than the model alone~\citep{yang2024sweagent,yao2023react}. The same model,
+given a better harness, produces dramatically better work. For a language model,
+the interface is not a convenience layer wrapped around the intelligence; it is
+the cognitive architecture.
+
+This paper argues a narrower and, we believe, more actionable point: \textbf{a
+domain-specific language (DSL) is one of the most powerful harnesses one can give
+an agent, precisely because it gives up power.} A general-purpose programming
+language is Turing-complete; that is its glory and, for an autonomous agent, its
+hazard. There are infinitely many ways to express any behavior, no two codebases
+agree on conventions, and nothing in the language tells the agent whether a given
+program is \emph{correct for this domain}. Freedom under uncertainty is where
+agents thrash: they explore broadly, drift toward locally plausible patterns, and
+accumulate subtle errors that surface much later. A DSL inverts every one of those
+properties---it expresses a bounded set of things, in a bounded number of ways,
+and typically ships with a parser and validator that can decide well-formedness
+before anything executes.
+
+We ground the argument in a working system. \textbf{Collections} is a feature of
+MulmoClaude,\footnote{\url{https://github.com/receptron/mulmoclaude}} an
+open-source agent application built on the Claude Agent SDK whose
+founding philosophy is \emph{the workspace is the database; files are the source
+of truth; the model is the intelligent interface.} A collection is defined by a
+single JSON \emph{schema} that simultaneously specifies a data model, inter-record
+relationships, spreadsheet-like derived computations, completion and notification
+rules, host-driven recurrence, a rendered user interface, optional bespoke HTML
+views, and optional scheduled ingestion of external data. The records are plain
+JSON files on disk. The host platform contains \emph{zero} domain knowledge; it
+understands only generic concepts (fields, relationships, derived values, views,
+actions, ingestion). Everything domain-specific lives in the schema, and the
+language model operates the application by reading and writing records under the
+schema's constraints.
+
+The significance for reliability is that a self-built, model-operated application
+need not be ``flaky chat with extra steps.'' The DSL is a contract that pins down
+what must be deterministic while the model supplies flexibility and judgment, and
+the two live on opposite sides of a deliberate line we call the \emph{reliability
+dial} (\S\ref{sec:dial}). A schema \emph{validator} makes the boundary
+self-enforcing: a structurally incoherent application is rejected at load, with an
+actionable message, before it can run.
+
+\paragraph{Contributions.}
+\begin{enumerate}
+  \item We articulate \textbf{DSL-as-harness}: a mapping from a single design
+  decision (constrain the agent's authoring surface to a validated DSL) to four
+  established harness properties, and an argument for why the case strengthens,
+  rather than weakens, as models improve (\S\ref{sec:harness}).
+  \item We describe \textbf{Collections}, a concrete declarative
+  applications-as-data system, including its schema DSL, relationships, derived
+  formulas, host-driven recurrence, sandboxed custom views, and declarative feed
+  ingestion (\S\ref{sec:collections}).
+  \item We formalize the \textbf{host/model responsibility split} and the
+  \emph{reliability dial}, and explain the validator and escape-hatch mechanisms
+  that keep the surface both safe and expressive (\S\ref{sec:dial},
+  \S\ref{sec:escape}).
+  \item We report a \textbf{longitudinal single-user deployment}: 26 applications,
+  6 bespoke sandboxed views, and 3 external feeds accreted over $\sim$2 months
+  with no per-application host code (\S\ref{sec:casestudy}).
+  \item We give an \textbf{honest account of the limitations}: the escape-hatch
+  hazard, non-replayable execution, and the scope of our evidence
+  (\S\ref{sec:limitations}).
+\end{enumerate}
+
+% ===========================================================================
+\section{Background and Related Work}
+\label{sec:related}
+
+\paragraph{Agent harnesses and agent--computer interfaces.}
+\citet{yang2024sweagent} showed that a purpose-built agent--computer interface
+(ACI)---structured tools, capped and guided search, and a linter that rejects
+syntactically broken edits at the moment of introduction---improves software-engineering
+agent performance substantially with a fixed model. \citet{yao2023react}
+interleave reasoning and acting; \citet{schick2023toolformer} teach models to call
+external tools. These works establish the empirical primacy of the surrounding
+environment. Our contribution is to identify the \emph{DSL} as a particularly
+sharp instance of such an environment and to instantiate it as an
+applications-as-data substrate.
+
+\paragraph{Self-improving and memory-augmented agents.}
+Voyager~\citep{wang2023voyager} accretes a reusable skill library, and Generative
+Agents~\citep{park2023generative} maintain a memory stream they reflect over. Both
+let an agent extend itself over time. Collections differ in substrate: the agent's
+accreted capabilities are \emph{declarative DSL artifacts on disk}, not learned
+weights or imperative code, which makes them inspectable, diffable, and validated.
+A complementary line of work makes the event log the primary
+artifact---\citet{ynakajima2026log} prioritizes an append-only log to obtain
+deterministic replay and cheap forking. We deliberately forgo byte-for-byte replay
+(the model step is nondeterministic) in exchange for an agent whose configuration
+is plain, readable, validated files; \S\ref{sec:limitations} returns to this
+trade.
+
+\paragraph{Domain-specific languages.}
+The software-engineering literature has long studied when and how a deliberately
+limited language pays off~\citep{mernik2005dsl,fowler2010dsl}: a DSL trades general
+expressiveness for analyzability, a smaller error surface, and tooling (parsers,
+validators) that come ``for free.'' We apply this classical argument to a new
+consumer---an autonomous language-model agent---and observe that the properties
+DSLs were always praised for map directly onto modern harness-engineering
+guidance.
+
+\paragraph{End-user software engineering and low-code.}
+End-user programming has sought for decades to let non-programmers build software,
+from the spreadsheet onward~\citep{nardi1993small,ko2011enduser}; commercial
+low-code/no-code platforms (Airtable, Notion, Retool, PowerApps) continue this
+lineage. The persistent constraint in that tradition is that the user must work
+inside a constrained authoring surface \emph{and} perform the assembly. Collections
+keeps the constrained, validated surface but moves authorship to the agent: the
+user expresses intent in natural language and the agent emits the DSL. We position
+this as a shift from \emph{no-code} (a human composes blocks) to
+\emph{intent-driven} (an agent composes the DSL program from intent).
+
+% ===========================================================================
+\section{A DSL Is a Harness}
+\label{sec:harness}
+
+When you hand an agent a DSL you are not merely giving it a tool; you are reshaping
+the space it must search. That reshaping makes four classic harness patterns fall
+out of a single design decision.
+
+\paragraph{(1) The schema is the system of record.}
+Harness engineering insists that anything the agent cannot read in context
+effectively does not exist; intent must live in a machine-readable artifact. A DSL
+satisfies this by construction: its schema \emph{is} the specification. When the
+agent writes a DSL document, the user's intent is captured as a structured,
+inspectable object rather than dissolved into the incidental details of imperative
+code. It can be diffed, versioned, validated, and reasoned about without running
+it.
+
+\paragraph{(2) The validator is a free feedback loop.}
+The highest-leverage component in the SWE-agent study was a linter that rejected
+broken edits at the moment of introduction, before the error could propagate
+through later steps~\citep{yang2024sweagent}. Every DSL ships with this loop:
+the instant the agent emits a malformed structure, a parser or schema checker
+rejects it with a localized, actionable message. The feedback loop came bundled
+with the language.
+
+\paragraph{(3) The grammar is a forcing function.}
+Because the vocabulary is finite, the room to hallucinate is structurally smaller.
+The agent cannot invent an option absent from the grammar; it can only compose the
+primitives the language provides. Constraint, here, is a feature.
+
+\paragraph{(4) The unit of the language is the unit of context.}
+A well-designed DSL has a natural decomposition---a field, a record, a rule---which
+becomes the agent's editing unit. It can work on one piece without holding the
+whole document in mind, and the language's structure, not an ad-hoc heuristic,
+defines the seams (progressive disclosure).
+
+\paragraph{Why this matters more as models improve.}
+A tempting intuition holds that DSLs are a crutch for weak models. We argue the
+opposite. The case for a constrained, validated surface is strongest exactly where
+we want to delegate \emph{autonomously and over long horizons}: where no human
+reviews each step, where output must be verifiable, and where execution must be
+deterministic and reversible. A stronger model inside a DSL harness is not wasted
+capability; it is capability aimed at the part of the problem that genuinely
+requires judgment---what to model, what to express---while the language guarantees
+the rest.
+
+% ===========================================================================
+\section{The Collections System}
+\label{sec:collections}
+
+Collections applies the DSL-as-harness idea to software itself. A collection is:
+\begin{center}
+\code{schema.json} \;+\; \code{records/*.json} \;+\; model \;=\; application.
+\end{center}
+There is no database server, no migration framework, and no application-specific
+backend. The host understands only generic capabilities; everything
+domain-specific lives in the collection.
+
+\subsection{The schema DSL}
+A schema declares typed \emph{fields}. The current implementation supports 17
+field types, including \code{string}, \code{text}, \code{number}, \code{date},
+\code{datetime}, \code{boolean}, \code{markdown}, \code{enum}, \code{money},
+\code{image}, \code{file}, a nested \code{table} of sub-records, two relationship
+types (\code{ref}, \code{embed}), a computed \code{derived} field, and a
+\code{toggle} that projects an enum. Relationships are first-class: a \code{ref}
+stores a foreign key and the host renders pickers, links, and navigation
+generically; an \code{embed} pulls a fixed record from another collection for
+display.
+
+\subsection{Computation without code}
+A \code{derived} field behaves like a spreadsheet formula, but formulas may follow
+references into other collections:
+\begin{lstlisting}
+"total": {
+  "type": "derived", "display": "money", "currencyField": "currency",
+  "formula": "sum(lineItems[].quantity * lineItems[].rate) * (1 + taxRate)"
+}
+\end{lstlisting}
+The host evaluates derived fields, and crucially returns them \emph{to the model}
+as well as to the screen, so the agent reasons over the same numbers the user
+sees. A portfolio can revalue itself when a quote changes elsewhere, with no
+synchronization code.
+
+\subsection{Completion, notification, and host-driven recurrence}
+A schema can mark which field and values count as ``done''
+(\code{completionField} / \code{completionDoneValues}), gate notifications on a
+date (\code{triggerField} / \code{triggerLeadDays}), and---via a \code{spawn}
+block---provision the next instance of a recurring obligation on a civil-date
+cadence when the current one closes:
+\begin{lstlisting}
+"triggerField": "dueOn", "triggerLeadDays": 3,
+"spawn": {
+  "every": { "unit": "month", "interval": 1, "dayOfMonth": 10 },
+  "carry": ["payee", "amount"], "set": { "status": "pending" }
+}
+\end{lstlisting}
+The author declares \emph{what recurs and when to nudge}; the host's reconciler
+owns the deterministic half---raising and clearing reminders and advancing each
+cycle with create-if-absent (idempotent) semantics. No timer, cron expression, or
+notification code is written.
+
+\subsection{Custom views: bespoke UI as data}
+Host-rendered field types give every collection a list, a detail form, and---when
+declared---calendar and Kanban layouts for free. When field types cannot present
+the data well (a portfolio as an allocation chart, a set of places as a map, a
+word list as flashcards), a collection may carry a \emph{custom view}: an HTML
+file the agent authors and the host serves.
+\begin{lstlisting}
+"views": [
+  { "id": "allocation", "label": "Allocation",
+    "file": "views/allocation.html", "capabilities": ["read", "write"] }
+]
+\end{lstlisting}
+A view is an ordinary web page (it may load a charting library from a curated CDN
+allow-list) but it is rendered inside a sandboxed \code{iframe} under a strict
+Content-Security-Policy: an opaque origin, \code{default-src 'none'}, and network
+access only back to the host. It receives its records through a capability-scoped,
+time-limited token rather than ambient access; the declared \code{capabilities}
+(\code{read}, \code{write}) bound what that token permits. A custom view is thus
+not a hole in the harness but the same bargain as the rest of the system: the
+model supplies the bespoke surface, the host supplies the deterministic, sandboxed
+boundary, and the presentation layer too becomes inspectable, versioned data.
+
+\subsection{Feeds: acquisition as data}
+Some applications track an external source---a podcast's episodes, a newspaper's
+headlines, a JSON API. Such a collection declares an \code{ingest} block and
+becomes a \emph{feed}:
+\begin{lstlisting}
+"ingest": {
+  "kind": "rss", "url": "https://lexfridman.com/feed/podcast/",
+  "schedule": "daily", "idFrom": "guid",
+  "map": { "headline": "title", "url": "link", "published": "pubDate" },
+  "maxItems": 100
+}
+\end{lstlisting}
+\code{kind} selects a retriever (\code{rss}, \code{atom}, \code{http-json});
+\code{map} projects source fields onto collection fields; \code{schedule}
+(\code{hourly}/\code{daily}/\code{weekly}/\code{on-demand}) sets cadence;
+\code{maxItems} caps retention. The host owns fetching, parsing, field mapping,
+de-duplication by id, pruning, and cursor/failure tracking. Because a feed is
+still a collection, the user can layer their own fields onto the ingested
+ones---a rating, a note, a resume position---turning a passive mirror into a
+read--write application over an external source.
+
+% ===========================================================================
+\section{The Reliability Dial}
+\label{sec:dial}
+
+The reason a self-built, model-operated application is reliable rather than flaky
+is a single principle: \textbf{the DSL is a contract that pins down what must be
+deterministic, while the model supplies flexibility, judgment, and language.}
+Table~\ref{tab:split} summarizes the split.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Host guarantees (deterministic)} & \textbf{Model owns (judgment)} \\
+\midrule
+Schema validity (load-time)        & What to model \\
+Path safety, record storage        & What a record means \\
+Derived-value computation          & How a workflow should proceed \\
+Recurrence / civil-date math       & When to hand off to a human \\
+Sandboxed view rendering (CSP)     & How to present data (authoring the view) \\
+Scheduled ingestion + de-dup       & Which external source, mapped how \\
+\bottomrule
+\end{tabular}
+\caption{The host/model responsibility split. Everything on the left runs
+identically every time; everything on the right is where the model's flexibility
+is wanted.}
+\label{tab:split}
+\end{table}
+
+A schema validator makes the boundary self-enforcing. A structurally incoherent
+application is rejected at load with an actionable reason---examples include a
+money field with neither a literal currency nor a per-record currency field, a
+\code{ref} pointing at a non-existent collection, a \code{triggerField} that does
+not name a real date field, and a \code{spawn} whose successor would be born
+already matching its own predicate (an unbounded respawn).
+
+The craft is \emph{where the dial sits}. Push everything into the DSL and you
+rebuild the brittle ``can't-express-this'' cage that made no-code platforms
+frustrating; push everything to the model and you lose the durable contract that
+made it an application at all. The guiding rule is to \emph{extend the declarative
+layer only when it outperforms the agent}.
+
+% ===========================================================================
+\section{The Escape Hatch}
+\label{sec:escape}
+
+The same rigidity that makes a DSL a good harness is its failure mode: when the
+language cannot express what the user needs, an agent will either give up or
+contort the DSL into something it was never meant to hold. Every well-designed DSL
+answers this with a deliberate exit to a more expressive layer.
+
+Collections provides two. First, a per-record or collection-level \code{action}
+hands off to a seeded chat---a full-tool agent---exactly when a task needs human
+judgment the form cannot capture (``generate the invoice PDF,'' ``what was the
+amount, and was it actually paid?''). This is business logic as prose, behind a
+declarative door. Second, the \emph{custom view} (\S\ref{sec:collections}) is the
+escape for presentation: when host-rendered field types cannot express a layout,
+the schema drops to arbitrary HTML in a sandbox rather than distorting the
+field-type vocabulary. The art is not to maximize constraint but to choose
+\emph{where} the constraint binds and to provide a clean, legible path out where it
+does not. A harness with no escape hatch eventually forces the agent to fail or to
+lie, and both are worse than a slightly leakier abstraction.
+
+% ===========================================================================
+\section{Case Study: A Longitudinal Single-User Deployment}
+\label{sec:casestudy}
+
+We report on one author's production workspace, which has accreted applications
+through ordinary use over roughly two months. No host code was written for any of
+these applications; each is a schema plus records, authored by the agent in
+response to natural-language requests.
+
+\paragraph{Scale.}
+The workspace contains 26 collections holding $\sim$700 records. Their sizes vary
+by three orders of magnitude (Table~\ref{tab:collections}), consistent with the
+claim that the marginal cost of a new application is low enough to justify even a
+single-record one.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lr lr lr@{}}
+\toprule
+Collection & \#rec & Collection & \#rec & Collection & \#rec \\
+\midrule
+mag2-subscribers & 466 & engagements & 22 & recurring-bills & 6 \\
+vocabulary       & 50  & restaurants & 20 & videos          & 6 \\
+todos            & 23  & lessons-biology & 12 & worklog      & 6 \\
+reading-list     & 10  & baseball-scout  & 11 & portfolio    & 4 \\
+stock-quotes     & 10  & watchlist       & 10 & html-apps    & 4 \\
+tax-payments     & 7   & clients         & 3  & \emph{(13 more)} & $\le 2$ \\
+\bottomrule
+\end{tabular}
+\caption{Representative collections by record count in the studied workspace
+(26 total). Sizes span from a single-record profile to 466 newsletter
+subscribers.}
+\label{tab:collections}
+\end{table}
+
+\paragraph{Mechanisms exercised in practice.}
+The deployment uses every major mechanism described in \S\ref{sec:collections}:
+relationships (an \code{invoice} references a \code{client} and embeds the issuer
+profile), derived computation (invoice totals from line items and tax),
+host-driven recurrence (monthly and annual obligations via \code{spawn}), and
+completion/notification gating (todos, tax payments).
+
+\paragraph{Bespoke views.}
+Six collections carry custom HTML views authored by the agent on request: a
+restaurant guide rendered as a transit-style map, a movie watchlist as a poster
+gallery, a vocabulary list as a flashcard drill, a portfolio as an allocation
+chart, a scouting collection as per-entity radar charts, and a subscriber
+collection as a trend line. Each is software with an addressable audience of
+one---software no vendor would build---produced for the cost of a request. The
+owner never wrote or read the HTML.
+
+\paragraph{Feeds.}
+Three collections are feeds: an hourly newspaper-technology feed (64 records at
+time of writing), and two daily podcast feeds (100 records each). One podcast feed
+is read--write: the schema layers the owner's own rating, notes, and
+resume-position fields on top of the ingested episode metadata, and the host
+serves a custom gallery view over the combined record.
+
+\paragraph{Observations.}
+Two qualitative observations stand out. (i) \emph{No per-application host code} was
+required for any of the 26 applications; the host's generic capabilities sufficed,
+which is the load-bearing claim of applications-as-data. (ii) The applications
+\emph{diverge sharply from any mass-market product}: a transit-map restaurant
+guide and a read--write podcast tracker with personal resume positions reflect one
+user's specific needs, supporting the view that a near-zero marginal build cost
+shifts the natural unit of software from the mass-market product toward the
+individual.
+
+% ===========================================================================
+\section{Discussion and Limitations}
+\label{sec:limitations}
+
+\paragraph{The escape-hatch hazard.}
+The expressiveness that escape hatches restore is also unconstrained: a custom
+view or a seeded-chat action runs outside the declarative guarantees. We mitigate
+this for views with sandboxing and capability-scoped tokens (\S\ref{sec:collections}),
+but the general tension---more expressiveness, fewer guarantees---is fundamental
+and must be managed per escape, not eliminated.
+
+\paragraph{Non-replayable execution.}
+Because the operating step is a nondeterministic model call, a run cannot be
+replayed byte-for-byte, and a self-modification's effect cannot be A/B-replayed
+against the prior behavior on identical inputs. This is the deliberate trade
+against log-primary designs~\citep{ynakajima2026log}. The mitigation is
+configuration-level rather than run-level: a git-backed workspace makes every
+schema and view edit auditable and revertable, which is the granularity that
+matters for an agent editing its own applications.
+
+\paragraph{Correctness has no second audience.}
+Mass software accumulates correctness through many users and years; an application
+with an audience of one does not. A wrong poster gallery is harmless, but a wrong
+financial or tax view is not, and only the model and the single user ever inspect
+it. The reliability dial is the relevant defense---push consequential computation
+into host-guaranteed derived fields rather than leaving it to a generated
+view---but the residual risk is real and is the price of building for one.
+
+\paragraph{Threats to validity.}
+Our empirical evidence is a single user, a single system, and an author-operated
+deployment; it demonstrates feasibility and the no-host-code property but does not
+establish generality, and it reports usage rather than a controlled comparison.
+Quantifying authoring effort, error rates, and how the reliability dial should be
+set across users and domains is future work.
+
+% ===========================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+A domain-specific language is a powerful harness for an autonomous agent precisely
+because it relinquishes expressiveness for a small, validated, inspectable
+surface. Collections applies that principle to applications themselves: a schema
+defines the application, record files are the database, the host runs the
+deterministic half, and the model operates inside the schema. The result is
+software an agent can author and refine on request, with the reliability of a
+declarative contract and the flexibility of a language model held apart by a
+deliberate dial. Building applications shifts from writing imperative code to
+declaring---and validating---harnesses; the records are data, the schema is the
+program, and the model is the runtime.
+
+% ===========================================================================
+\section*{Availability}
+MulmoClaude and the Collections implementation are open source. The schema
+validator, derived-formula evaluator, recurrence reconciler, custom-view sandbox,
+and feed engine referenced above are part of that codebase, available at
+\url{https://github.com/receptron/mulmoclaude}.
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}
