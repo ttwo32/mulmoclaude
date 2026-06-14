@@ -31,9 +31,15 @@
 
 \newcommand{\code}[1]{\texttt{\small #1}}
 
+% Include a screenshot if present, else a labeled placeholder box (keeps the
+% build green before the PNGs are dropped into figures/).
+\newcommand{\viewfig}[1]{%
+  \IfFileExists{#1}{\includegraphics[width=\linewidth]{#1}}{%
+    \fbox{\parbox[c][3cm][c]{0.92\linewidth}{\centering\footnotesize\itshape
+      screenshot pending\\\texttt{\scriptsize #1}}}}}
+
 % --- title ------------------------------------------------------------------
-\title{\textbf{DSLs as Harnesses:}\\[2pt]
-\large Declarative Applications-as-Data as a Reliability Substrate for LLM Agents}
+\title{\textbf{DSLs as Harnesses for Reliable LLM Agents}}
 
 \author{
   Satoshi Nakajima\\
@@ -65,12 +71,17 @@ of the language as a unit of context---fall out of this single design decision,
 and how a deliberate \emph{reliability dial} divides what the host guarantees
 deterministically (schema validity, derived-value computation, recurrence math,
 sandboxed rendering, scheduled ingestion) from what the model supplies (judgment,
-language, domain modeling). We report a longitudinal single-user deployment in
-which 26 applications, 6 bespoke sandboxed UI views, and 3 external feeds accreted
-over roughly two months without any host code being written per application. We
-discuss the design's principal hazard---the escape hatch from the declarative
-surface to arbitrary code---and its limitations, including non-replayable
-execution and the single-user, single-system scope of our evidence.
+language, domain modeling). We position the approach against token-level
+constrained decoding and schema-validated tool interfaces---which bound a single
+generation or call---whereas a collection schema bounds a persistent, on-disk
+application the agent operates \emph{inside}. We report a longitudinal single-user
+deployment in which 24 schema-defined applications, 3 external feeds, and 9 bespoke
+sandboxed UI views accreted over roughly two months without any host code being
+written per application. We discuss the design's principal hazard---the escape hatch from the
+declarative surface to arbitrary code---and its limitations: the open-ended
+formula and custom-view sub-surfaces that lie outside the finite grammar, indirect
+prompt injection through ingested feed content, non-replayable execution, and the
+single-user, single-system scope of our evidence.
 \end{abstract}
 
 \noindent\textbf{Keywords:} LLM agents; agent harness; domain-specific languages;
@@ -103,8 +114,7 @@ and typically ships with a parser and validator that can decide well-formedness
 before anything executes.
 
 We ground the argument in a working system. \textbf{Collections} is a feature of
-MulmoClaude,\footnote{\url{https://github.com/receptron/mulmoclaude}} an
-open-source agent application built on the Claude Agent SDK whose
+MulmoClaude, an open-source agent application built on the Claude Agent SDK whose
 founding philosophy is \emph{the workspace is the database; files are the source
 of truth; the model is the intelligent interface.} A collection is defined by a
 single JSON \emph{schema} that simultaneously specifies a data model, inter-record
@@ -129,8 +139,8 @@ actionable message, before it can run.
 \begin{enumerate}
   \item We articulate \textbf{DSL-as-harness}: a mapping from a single design
   decision (constrain the agent's authoring surface to a validated DSL) to four
-  established harness properties, and an argument for why the case strengthens,
-  rather than weakens, as models improve (\S\ref{sec:harness}).
+  established harness properties, and an analysis of how that case \emph{shifts}
+  rather than weakens as models improve (\S\ref{sec:harness}).
   \item We describe \textbf{Collections}, a concrete declarative
   applications-as-data system, including its schema DSL, relationships, derived
   formulas, host-driven recurrence, sandboxed custom views, and declarative feed
@@ -139,9 +149,9 @@ actionable message, before it can run.
   \emph{reliability dial}, and explain the validator and escape-hatch mechanisms
   that keep the surface both safe and expressive (\S\ref{sec:dial},
   \S\ref{sec:escape}).
-  \item We report a \textbf{longitudinal single-user deployment}: 26 applications,
-  6 bespoke sandboxed views, and 3 external feeds accreted over $\sim$2 months
-  with no per-application host code (\S\ref{sec:casestudy}).
+  \item We report a \textbf{longitudinal single-user deployment}: 24 schema-defined
+  applications, 3 external feeds, and 9 bespoke sandboxed views accreted over
+  $\sim$2 months with no per-application host code (\S\ref{sec:casestudy}).
   \item We give an \textbf{honest account of the limitations}: the escape-hatch
   hazard, non-replayable execution, and the scope of our evidence
   (\S\ref{sec:limitations}).
@@ -184,16 +194,55 @@ consumer---an autonomous language-model agent---and observe that the properties
 DSLs were always praised for map directly onto modern harness-engineering
 guidance.
 
+\paragraph{Constrained decoding and structured outputs.}
+A parallel line of work enforces structural validity at \emph{inference} time:
+grammar- and schema-constrained decoding masks the token distribution so that only
+well-formed continuations are sampled (Outlines~\citep{willard2023outlines}, LMQL~\citep{beurerkellner2023lmql},
+Guidance), and OpenAI's function calling and Structured
+Outputs~\citep{openai2024structured} make a JSON schema govern a model's output for
+a single call. These mechanisms realize our property
+(3)---grammar as a forcing function---at the \emph{token/model boundary}, and they
+do so more tightly than we do: Collections uses \emph{post-hoc} JSON-schema
+validation plus retry, enforcing well-formedness at the \emph{system boundary}
+rather than during generation. The distinction we draw is one of \emph{scope and
+persistence}, not of mechanism: constrained decoding shapes one generation, and a
+function/Structured-Outputs schema shapes one call's arguments, whereas a
+collection schema is a durable, on-disk definition of an entire application's data
+model, lifecycle, and UI that the agent operates \emph{inside} over many turns. We
+adopt the inference-time techniques as complementary---they could tighten how the
+agent emits a schema---rather than as alternatives to the application-as-data
+substrate.
+
+\paragraph{Schema-validated agent frameworks.}
+Agent frameworks already place machine-checkable schemas between an agent and its
+environment: LangChain's typed (Pydantic) tool definitions, AutoGen's agent
+configuration~\citep{wu2023autogen}, and Semantic Kernel's plugin manifests all
+validate the structure of \emph{individual tool calls}. This is properties (1) and
+(2) at the granularity of a callable interface. Collections differs in where the
+schema sits: rather than defining the boundary of a call the agent makes
+\emph{across}, the schema defines the interior structure of an application the
+agent inhabits---a persistent, evolvable configuration the host renders and
+reconciles, not a per-invocation contract. The novelty we claim is therefore not
+``schema-validated agent interface'' (which is established prior art) but
+``schema-\emph{as-the-application}, with the agent as its runtime.''
+
 \paragraph{End-user software engineering and low-code.}
 End-user programming has sought for decades to let non-programmers build software,
 from the spreadsheet onward~\citep{nardi1993small,ko2011enduser}; commercial
 low-code/no-code platforms (Airtable, Notion, Retool, PowerApps) continue this
-lineage. The persistent constraint in that tradition is that the user must work
-inside a constrained authoring surface \emph{and} perform the assembly. Collections
-keeps the constrained, validated surface but moves authorship to the agent: the
-user expresses intent in natural language and the agent emits the DSL. We position
-this as a shift from \emph{no-code} (a human composes blocks) to
-\emph{intent-driven} (an agent composes the DSL program from intent).
+lineage, and by 2024--2026 several added AI-assisted, intent-based authoring
+(Airtable's field generation, Notion AI's schema construction from natural
+language, Power Automate's Copilot)---so ``intent-driven authoring'' is no longer
+unique to our setting. The persistent constraint in that tradition is nonetheless
+that the schema remains a \emph{UI/data-layer supplement} a human owns and the AI
+\emph{assists}, with validation optional. Collections differs on three axes: the
+schema is the \emph{complete} application definition (data model, computation,
+recurrence, UI, ingestion) rather than a layer of one; validation is
+\emph{architectural} (a structurally incoherent schema cannot load) rather than
+advisory; and the agent \emph{authors the whole DSL program} from intent rather
+than assisting a human composer. We frame this as the shift from \emph{no-code}
+(a human composes blocks) to \emph{intent-driven} (an agent composes, and
+operates, the DSL program).
 
 % ===========================================================================
 \section{A DSL Is a Harness}
@@ -223,7 +272,19 @@ with the language.
 \paragraph{(3) The grammar is a forcing function.}
 Because the vocabulary is finite, the room to hallucinate is structurally smaller.
 The agent cannot invent an option absent from the grammar; it can only compose the
-primitives the language provides. Constraint, here, is a feature.
+primitives the language provides. Constraint, here, is a feature. Two
+qualifications matter. First, Collections enforces this property
+\emph{post hoc}---a parser/validator rejects a malformed schema and the agent
+retries---rather than at the token level as constrained decoding does
+(\S\ref{sec:related}); the forcing function therefore acts at the system boundary,
+not inside the generation step. Second, and more importantly, the finite-grammar
+guarantee covers the schema's \emph{structural} vocabulary---field types,
+relationship kinds, layout and recurrence declarations---but \emph{not} the two
+open-ended sub-surfaces the schema may embed: derived-field formula strings and
+custom-view HTML. We bound the formula sub-language deliberately (it is a small,
+non-Turing-complete expression grammar; \S\ref{sec:collections}), but a
+\emph{well-formed} formula or view can still be semantically wrong, which we treat
+as a residual reliability surface in \S\ref{sec:limitations}.
 
 \paragraph{(4) The unit of the language is the unit of context.}
 A well-designed DSL has a natural decomposition---a field, a record, a rule---which
@@ -231,15 +292,27 @@ becomes the agent's editing unit. It can work on one piece without holding the
 whole document in mind, and the language's structure, not an ad-hoc heuristic,
 defines the seams (progressive disclosure).
 
-\paragraph{Why this matters more as models improve.}
-A tempting intuition holds that DSLs are a crutch for weak models. We argue the
-opposite. The case for a constrained, validated surface is strongest exactly where
-we want to delegate \emph{autonomously and over long horizons}: where no human
-reviews each step, where output must be verifiable, and where execution must be
-deterministic and reversible. A stronger model inside a DSL harness is not wasted
-capability; it is capability aimed at the part of the problem that genuinely
-requires judgment---what to model, what to express---while the language guarantees
-the rest.
+\paragraph{How the value shifts as models improve.}
+A tempting intuition holds that DSLs are a crutch for weak models, to be discarded
+as models get stronger. We argue the value does not vanish but \emph{shifts among
+the four properties}, and we are careful to separate two claims the objection
+conflates. The strongest form of the objection is about \emph{capability scaling}:
+a frontier model emits structurally valid schemas at near-unit frequency, so the
+marginal benefit of properties (2) the validator and (3) the grammar---both of
+which catch \emph{structural} errors---does indeed tend toward zero as structural
+generation improves. We concede this. But properties (1) and (4) are not error-correction:
+making intent a diffable, inspectable artifact (1) and decomposing it into editing
+units (4) are valuable independent of how good the model is at avoiding mistakes;
+they govern \emph{auditability and progressive disclosure}, which a more capable
+model exploits more, not less. Separately, there is a \emph{deployment-context}
+claim: when work is delegated autonomously, over long horizons, with no human
+reviewing each step and a requirement that execution be verifiable and reversible,
+a persistent validated contract remains valuable regardless of model strength---not
+to catch the model's structural mistakes but to make the system's behavior
+checkable by something other than trust. A stronger model inside a DSL harness is
+thus not wasted capability; it is capability aimed at judgment---what to model,
+what to express---while the language supplies durability and inspectability that
+scaling does not provide on its own.
 
 % ===========================================================================
 \section{The Collections System}
@@ -277,6 +350,18 @@ The host evaluates derived fields, and crucially returns them \emph{to the model
 as well as to the screen, so the agent reasons over the same numbers the user
 sees. A portfolio can revalue itself when a quote changes elsewhere, with no
 synchronization code.
+
+The formula is itself a small DSL, and a deliberately bounded one. Its grammar
+admits only the four arithmetic operators, parentheses, a single aggregation
+function (\code{sum} over a table column or product of table columns), and
+single-level reference dereferencing (e.g.\ \code{ticker.price}); it has no
+conditionals, loops, string operations, comparisons, user-defined functions, or
+nested calls. It is therefore \emph{not} Turing-complete---closer to a spreadsheet
+cell expression than a scripting language---and it is parsed before evaluation, so
+a malformed formula, an unbound identifier, or a non-finite result yields a null
+that the host renders as an em-dash rather than a wrong number. This bound limits
+the \emph{structural} surface of a formula; it does not make a well-formed formula
+\emph{semantically} correct, a gap we return to in \S\ref{sec:limitations}.
 
 \subsection{Completion, notification, and host-driven recurrence}
 A schema can mark which field and values count as ``done''
@@ -339,6 +424,27 @@ still a collection, the user can layer their own fields onto the ingested
 ones---a rating, a note, a resume position---turning a passive mirror into a
 read--write application over an external source.
 
+\subsection{Schema evolution}
+\label{sec:evolution}
+Because an agent edits schemas in place as needs change, records written under an
+earlier schema coexist with a later one, and the host must define what happens.
+Its rule is asymmetric: schemas are validated at \emph{load} (the path-independent
+gate of \S\ref{sec:dial}) and records are validated on \emph{write}, but records
+are \emph{not} re-validated on \emph{read}. The consequence is that
+\emph{additive} changes are non-breaking by construction: a record lacking a
+newly-added field is read without error, the missing value renders as empty, and
+any derived field that referenced it evaluates to the em-dash null rather than
+failing. A newly-\emph{required} field or a field-type change is breaking only
+\emph{prospectively}---existing records still load and display, but the next write
+to such a record (or a new record) must satisfy the new constraint. There is no
+migration framework, and this is deliberate: re-validating on read would make a
+single stale record look like data loss, so the host favors graceful degradation
+over hard failure, and leaves true migrations (backfilling a required field across
+old records) to an ordinary agent task. This behavior is exercised in our
+deployment, not hypothetical: the podcast feed of \S\ref{sec:casestudy} gained
+user rating and notes fields after ingestion had populated it, and the pre-existing
+records absorbed the additive change without migration.
+
 % ===========================================================================
 \section{The Reliability Dial}
 \label{sec:dial}
@@ -361,6 +467,8 @@ Derived-value computation          & How a workflow should proceed \\
 Recurrence / civil-date math       & When to hand off to a human \\
 Sandboxed view rendering (CSP)     & How to present data (authoring the view) \\
 Scheduled ingestion + de-dup       & Which external source, mapped how \\
+Record-write validation (every path) & Conducting a seeded-chat workflow \\
+Load-time schema re-validation     & Which fields/views to add as needs evolve \\
 \bottomrule
 \end{tabular}
 \caption{The host/model responsibility split. Everything on the left runs
@@ -403,6 +511,21 @@ field-type vocabulary. The art is not to maximize constraint but to choose
 does not. A harness with no escape hatch eventually forces the agent to fail or to
 lie, and both are worse than a slightly leakier abstraction.
 
+It is important to be precise about how bounded the seeded-chat escape actually is,
+because ``full-tool agent'' overstates it. The chat runs under a named \emph{role},
+and the role's allow-list determines the tool surface; the agent in the seeded chat
+can do only what that role grants. Record reads and writes go through the same
+\emph{record-write validation} that governs every other path, so a seeded chat
+cannot write a record the schema would reject. Crucially, there is no tool that
+edits a schema directly, and even if a schema file were modified by any path, it is
+re-validated by the same load-time validator before the collection can be used
+again (\S\ref{sec:dial}): the validator is a \emph{path-independent gate}, not a
+write-time check that an escape could sidestep. What the escape genuinely relaxes is
+the \emph{conduct of the workflow}---the conversation itself is model-driven and
+unconstrained---not the structural guarantees over what gets persisted. The
+honest residual, then, is semantic rather than structural, which the next section
+takes up.
+
 % ===========================================================================
 \section{Case Study: A Longitudinal Single-User Deployment}
 \label{sec:casestudy}
@@ -413,10 +536,13 @@ these applications; each is a schema plus records, authored by the agent in
 response to natural-language requests.
 
 \paragraph{Scale.}
-The workspace contains 26 collections holding $\sim$700 records. Their sizes vary
-by three orders of magnitude (Table~\ref{tab:collections}), consistent with the
-claim that the marginal cost of a new application is low enough to justify even a
-single-record one.
+The workspace contains 24 schema-defined collections holding $\sim$700 records,
+plus 3 feeds (\S\ref{sec:collections}) holding a further $\sim$260 ingested
+records. Collection sizes vary by nearly three orders of magnitude
+(Table~\ref{tab:collections}), consistent with the claim that the marginal cost of
+a new application is low enough to justify even a single-record one. Each schema is
+small---32 lines of JSON on average---and there is, by construction, zero
+per-application host code behind any of them.
 
 \begin{table}[t]
 \centering
@@ -425,17 +551,17 @@ single-record one.
 \toprule
 Collection & \#rec & Collection & \#rec & Collection & \#rec \\
 \midrule
-mag2-subscribers & 466 & engagements & 22 & recurring-bills & 6 \\
+subscribers      & 466 & engagements & 22 & recurring-bills & 6 \\
 vocabulary       & 50  & restaurants & 20 & videos          & 6 \\
 todos            & 23  & lessons-biology & 12 & worklog      & 6 \\
-reading-list     & 10  & baseball-scout  & 11 & portfolio    & 4 \\
+reading-list     & 10  & members         & 11 & portfolio    & 4 \\
 stock-quotes     & 10  & watchlist       & 10 & html-apps    & 4 \\
-tax-payments     & 7   & clients         & 3  & \emph{(13 more)} & $\le 2$ \\
+tax-payments     & 7   & clients         & 3  & \emph{(7 more)} & $\le 2$ \\
 \bottomrule
 \end{tabular}
 \caption{Representative collections by record count in the studied workspace
-(26 total). Sizes span from a single-record profile to 466 newsletter
-subscribers.}
+(24 schema-defined collections total). Sizes span from a single-record profile to
+466 newsletter subscribers.}
 \label{tab:collections}
 \end{table}
 
@@ -447,13 +573,36 @@ host-driven recurrence (monthly and annual obligations via \code{spawn}), and
 completion/notification gating (todos, tax payments).
 
 \paragraph{Bespoke views.}
-Six collections carry custom HTML views authored by the agent on request: a
-restaurant guide rendered as a transit-style map, a movie watchlist as a poster
-gallery, a vocabulary list as a flashcard drill, a portfolio as an allocation
-chart, a scouting collection as per-entity radar charts, and a subscriber
-collection as a trend line. Each is software with an addressable audience of
-one---software no vendor would build---produced for the cost of a request. The
-owner never wrote or read the HTML.
+Nine custom HTML views, authored by the agent on request, are deployed---seven over
+collections and two over feeds. They include a restaurant guide rendered as a
+transit-style map, a movie watchlist as a poster gallery, a vocabulary list as a
+flashcard drill, a portfolio as an allocation chart, a stock list as a valuation
+scatter plot, a scouting collection as per-entity radar charts, and a subscriber
+collection as a trend line (Figure~\ref{fig:views}). Each is software with an
+addressable audience of one---software no vendor would build---produced for the cost
+of a request. The owner never wrote or read the HTML.
+
+\begin{figure}[t]
+\centering
+\begin{minipage}[t]{0.31\textwidth}\centering
+  \viewfig{figures/restaurants-map.png}\\[2pt]\footnotesize (a) a restaurant guide as a transit-style map
+\end{minipage}\hfill
+\begin{minipage}[t]{0.31\textwidth}\centering
+  \viewfig{figures/portfolio-allocation.png}\\[2pt]\footnotesize (b) a portfolio as an allocation chart
+\end{minipage}\hfill
+\begin{minipage}[t]{0.31\textwidth}\centering
+  \viewfig{figures/feed-gallery.png}\\[2pt]\footnotesize (c) a podcast feed as a read--write gallery
+\end{minipage}
+\caption{Three of the nine agent-authored custom views in the studied deployment
+(two collection views and one feed view): a restaurant collection rendered as a
+transit-style map (a); a portfolio whose host-computed valuations (\S\ref{sec:collections})
+drive an allocation chart (b); and an ingested podcast feed turned into a
+read--write gallery (c), where the owner's rating, notes, and resume position are
+layered on top of episode metadata. Each is a self-contained HTML file the host
+serves in a sandboxed, capability-scoped iframe; the owner described each in
+natural language and never saw the generated markup.}
+\label{fig:views}
+\end{figure}
 
 \paragraph{Feeds.}
 Three collections are feeds: an hourly newspaper-technology feed (64 records at
@@ -465,7 +614,12 @@ serves a custom gallery view over the combined record.
 \paragraph{Observations.}
 Two qualitative observations stand out. (i) \emph{No per-application host code} was
 required for any of the 26 applications; the host's generic capabilities sufficed,
-which is the load-bearing claim of applications-as-data. (ii) The applications
+which is the load-bearing claim of applications-as-data. This includes the one
+instance of schema evolution we observed---the podcast feed gaining user rating and
+notes fields after ingestion---which the host absorbed as an additive,
+non-breaking change with no migration code (\S\ref{sec:evolution}); we did not
+stress breaking changes (a newly-required field or a type change across a large
+record set), so the no-migration claim is bounded to additive evolution. (ii) The applications
 \emph{diverge sharply from any mass-market product}: a transit-map restaurant
 guide and a read--write podcast tracker with personal resume positions reflect one
 user's specific needs, supporting the view that a near-zero marginal build cost
@@ -492,13 +646,52 @@ configuration-level rather than run-level: a git-backed workspace makes every
 schema and view edit auditable and revertable, which is the granularity that
 matters for an agent editing its own applications.
 
+\paragraph{Unconstrained sub-surfaces within the schema.}
+As noted in \S\ref{sec:harness} and \S\ref{sec:collections}, the finite-grammar
+guarantee covers the schema's structural vocabulary but not the two expressive
+sub-surfaces it can embed: derived-field formula strings and custom-view HTML.
+These are where the harness's structural guarantee ends and ordinary
+model-reliability concerns resume. We bound the formula grammar (non-Turing-complete,
+parsed before evaluation) and sandbox the views (opaque-origin iframe, strict CSP,
+capability-scoped tokens), so the \emph{blast radius} of an error in either is
+contained; what is \emph{not} contained is whether a well-formed formula or a
+well-rendered view is \emph{correct}. Structural validity and semantic correctness
+are different guarantees, and the DSL provides only the first.
+
 \paragraph{Correctness has no second audience.}
 Mass software accumulates correctness through many users and years; an application
 with an audience of one does not. A wrong poster gallery is harmless, but a wrong
 financial or tax view is not, and only the model and the single user ever inspect
 it. The reliability dial is the relevant defense---push consequential computation
 into host-guaranteed derived fields rather than leaving it to a generated
-view---but the residual risk is real and is the price of building for one.
+view---but it \emph{relocates} the valid-but-wrong failure mode rather than
+removing it. A derived formula is itself a model-authored string: the host
+evaluates it deterministically but cannot judge whether it is the right formula for
+the domain. A plausible-but-erroneous tax formula---say, applying the rate before a
+discount rather than after---passes schema validation and then executes reliably
+and wrongly on every record, with no second reviewer to catch it. The mitigation
+that the substrate does afford is that formulas are short, inspectable, plain-text
+expressions in the schema file, so \emph{diffing a formula against the user's
+stated intent} is a tractable review step in a way that auditing generated
+imperative code is not; but the residual risk is real and is part of the price of
+building for one.
+
+\paragraph{Indirect prompt injection via ingested content.}
+Feeds (\S\ref{sec:collections}) introduce a threat the sandboxing does not address.
+Ingested fields---headlines, descriptions, show notes---are untrusted natural
+language that then enters records the model reads and reasons over, and indirect
+prompt injection (adversarial instructions embedded in retrieved content that the
+model subsequently follows) is a documented attack on content-consuming
+agents~\citep{greshake2023injection}. The custom-view CSP sandbox governs UI
+rendering, not the model's context, so it offers no protection here; and because
+the operating agent may hold write-capable tokens, a compromised feed could in
+principle steer record writes or cross-collection reads within whatever permissions
+the active role grants. Capability scoping bounds \emph{what} an injected
+instruction could reach but does not stop the model from acting on embedded text in
+the first place. We did not observe such an attack in our benign deployment, but we
+flag it as the feed architecture's primary unmitigated threat; plausible defenses
+include processing ingested content in a system-prompt-isolated context and
+flagging model operations initiated over recently-ingested records for confirmation.
 
 \paragraph{Threats to validity.}
 Our empirical evidence is a single user, a single system, and an author-operated

@@ -42,9 +42,10 @@ source** to arXiv (not a pre-built PDF) so arXiv compiles it.
 - [ ] ORCID (optional for arXiv) — add to `\author{}` if you want one linked.
 
 **Content**
-- [ ] Verify every reference in `refs.bib` — lines marked `VERIFY` (arXiv ids,
-  DOIs, page ranges) are best-effort and must be checked against the canonical
-  record.
+- [x] All references in `refs.bib` verified (arXiv ids via the arXiv API, DOIs via
+  Crossref, 2026-06); `VERIFY` flags cleared.
+- [ ] Add the 3 custom-view screenshots for Figure 1 (see
+  `dsls-as-harnesses/figures/README.md`); builds with placeholders until then.
 - [x] Open-source repository URL added (footnote + Availability):
   `https://github.com/receptron/mulmoclaude`.
 - [ ] Re-run the case-study numbers (`docs/papers/arxiv/dsls-as-harnesses` quotes
