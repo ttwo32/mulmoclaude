@@ -54,8 +54,8 @@ source** to arXiv (not a pre-built PDF) so arXiv compiles it.
   voice survives moderation better.
 
 **Mechanics**
-- [ ] Choose a license (recommend **CC BY 4.0** for dissemination; arXiv default
-  is its non-exclusive license).
+- [x] License: **CC BY 4.0** (noted on page 1 of the paper). Also select CC BY 4.0
+  in the arXiv submission form at upload.
 - [ ] Pick primary + cross-list categories (table above).
 - [ ] Compile clean with `tectonic` locally, then upload `main.tex` + `refs.bib`
   to arXiv; check arXiv's own AutoTeX build log.
