@@ -12,9 +12,9 @@
 // `@mulmoclaude/markdown-plugin` and this file stays behind as
 // MulmoClaude's host adapter.
 
-import { executeMarkdown } from "../../src/plugins/markdown/core.js";
-import type { MarkdownDispatchArgs, MarkdownHostApp } from "../../src/plugins/markdown/contract.js";
-import { isMarkdownPath, loadMarkdown, overwriteMarkdown } from "../utils/files/markdown-store.js";
+import { executeMarkdown } from "@mulmoclaude/markdown-plugin";
+import type { MarkdownDispatchArgs, MarkdownHostApp } from "@mulmoclaude/markdown-plugin";
+import { isMarkdownPath, loadMarkdown, overwriteMarkdown, saveMarkdown } from "../utils/files/markdown-store.js";
 import { publishFileChange } from "../events/file-change.js";
 import { listMarpThemes } from "../workspace/marp-themes.js";
 import { renderMarkdownPdf } from "../api/routes/pdf.js";
@@ -38,6 +38,13 @@ const markdownHostApp: MarkdownHostApp = {
     await overwriteMarkdown(path, markdown);
     // Fire-and-forget: refresh sibling tabs / agents watching this file.
     void publishFileChange(path);
+    return { path };
+  },
+  async saveNewDoc(prefix, markdown) {
+    // The package's context.app create path (MulmoTerminal); MulmoClaude's
+    // own tool-call create still uses POST /api/markdown, but implementing
+    // this keeps the host app conformant + usable either way.
+    const path = await saveMarkdown(markdown, prefix);
     return { path };
   },
   async marpThemes() {

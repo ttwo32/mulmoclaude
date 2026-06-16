@@ -5,6 +5,8 @@ import type { MarkdownToolData, MarkdownArgs } from "../plugins/markdown/definit
 import { pluginCore } from "../core/plugin";
 import View from "../plugins/markdown/View.vue";
 import Preview from "../plugins/markdown/Preview.vue";
+import MarpView from "../plugins/markdown/MarpView.vue";
+import MarpSplitEditor from "../plugins/markdown/MarpSplitEditor.vue";
 
 export const TOOL_NAME = "presentDocument";
 
@@ -21,6 +23,10 @@ export { TOOL_DEFINITION, executeDocument, pluginCore } from "../core/plugin";
 export { isFilePath } from "../plugins/markdown/definition";
 export { setFilesRawUrl } from "../utils/image/resolve";
 
-export { View, Preview };
+// MarpView / MarpSplitEditor are also consumed standalone by hosts that
+// render Marp outside the plugin canvas (e.g. MulmoClaude's File
+// Explorer). They call useRuntime(), so the host must mount them inside
+// a markdown scope provider.
+export { View, Preview, MarpView, MarpSplitEditor };
 
 export default { plugin };

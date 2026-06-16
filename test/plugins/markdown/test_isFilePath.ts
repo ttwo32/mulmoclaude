@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { isFilePath } from "../../../src/plugins/markdown/definition.js";
+import { isFilePath } from "@mulmoclaude/markdown-plugin";
 
 describe("markdown isFilePath", () => {
   it("accepts the canonical artifacts/documents/ path", () => {

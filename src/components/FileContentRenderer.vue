@@ -235,7 +235,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, ref, watch } from "vue";
+import { computed, defineAsyncComponent, ref, watch, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import TextResponseView from "../plugins/textResponse/View.vue";
 import SystemFileBanner from "./SystemFileBanner.vue";
@@ -250,8 +250,14 @@ import { API_ROUTES } from "../config/apiRoutes";
 import { descriptorForPath, jsonEditableByPolicy } from "../config/systemFileDescriptors";
 import { isMarpDocument } from "../utils/markdown/marpDetect";
 import { buildPdfFilename } from "../utils/files/filename";
-import MarpView from "../plugins/markdown/MarpView.vue";
-import MarpSplitEditor from "../plugins/markdown/MarpSplitEditor.vue";
+import { MarpView as MarpViewRaw, MarpSplitEditor as MarpSplitEditorRaw } from "@mulmoclaude/markdown-plugin/vue";
+import { wrapWithScope } from "../plugins/scope";
+// MarpView / MarpSplitEditor call useRuntime() (for marpThemes + PDF
+// export via dispatch), so they must mount inside a markdown scope
+// provider — same scope the plugin canvas uses, so both reach the
+// built-in "markdown" dispatch handler (task #6).
+const MarpView = wrapWithScope("markdown", MarpViewRaw as unknown as Component);
+const MarpSplitEditor = wrapWithScope("markdown", MarpSplitEditorRaw as unknown as Component);
 // Lazy: CodeMirror (~390 KB raw) is only fetched when a user actually
 // opens the inline JSON editor, keeping it out of the initial bundle.
 const JsonEditor = defineAsyncComponent(() => import("./JsonEditor.vue"));

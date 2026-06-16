@@ -14,6 +14,7 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import type { IPubSub } from "./pub-sub/index.js";
 import { fileChannel, toPosixWorkspacePath, type FileChannelPayload } from "../../src/config/pubsubChannels.js";
+import { isMarkdownPath } from "../utils/files/markdown-store.js";
 import { workspacePath } from "../workspace/workspace.js";
 import { maybeRegenerateTopicIndex, TOPIC_INDEX_RELATIVE_PATH } from "../workspace/memory/topic-index-hook.js";
 import { log } from "../system/logger/index.js";
@@ -62,6 +63,21 @@ export async function publishFileChange(relativePath: string): Promise<void> {
       pathPreview: posixPath,
       error: errorMessage(err),
     });
+  }
+  // Bridge to the markdown plugin's scoped channel. The extracted
+  // @mulmoclaude/markdown-plugin View subscribes via runtime.pubsub
+  // ("file:<path>" → "plugin:markdown:file:<path>"), so forwarding here
+  // gives it the same any-source live-refresh the in-tree useFileChange
+  // had (task #6). Channel must match `pluginChannelName("markdown", …)`.
+  if (isMarkdownPath(posixPath)) {
+    try {
+      pubsub.publish(`plugin:markdown:file:${posixPath}`, payload);
+    } catch (err) {
+      log.warn("file-change", "markdown plugin forward failed; the markdown view will miss this event", {
+        pathPreview: posixPath,
+        error: errorMessage(err),
+      });
+    }
   }
   // Side-effect hook: keep the topic-format MEMORY.md index in sync
   // when a user edits a topic file via the file explorer (#1032).
