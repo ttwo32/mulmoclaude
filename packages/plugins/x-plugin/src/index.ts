@@ -1,101 +1,29 @@
-import { errorMessage } from "../../utils/errors.js";
-import { fetchWithTimeout } from "../../utils/fetch.js";
-import { safeResponseText } from "../../utils/http.js";
-import { toUtcIsoDate } from "../../utils/date.js";
-import { ONE_SECOND_MS } from "../../utils/time.js";
-import { env } from "../../system/env.js";
+// @mulmoclaude/x-plugin — X (Twitter) API tools.
+//
+// Two server-only MCP tools (no Vue View): `readXPost` and `searchX`.
+// Shared by MulmoClaude and MulmoTerminal so the X integration isn't
+// duplicated. Each host imports these objects and slots them into its own
+// MCP tool registry; the host gates them on `requiredEnv` and supplies the
+// `X_BEARER_TOKEN` env var. All formatting/fetch logic lives here.
 
-const X_API_BASE = "https://api.twitter.com/2";
+import { errorMessage } from "./internal";
+import { EXPANSIONS, extractTweetId, fetchX, formatTweet, TWEET_FIELDS, USER_FIELDS, type XApiResponse, type XTweet, type XUser } from "./client";
 
-// X API can stall under rate limit — a 10 s default (used for internal
-// localhost calls) would produce false timeouts. 20 s gives enough
-// headroom for a slow but real response while still bailing long
-// before the MCP client's tool-call timeout fires.
-const X_API_TIMEOUT_MS = 20 * ONE_SECOND_MS;
-const TWEET_FIELDS = "tweet.fields=created_at,author_id,public_metrics,entities,note_tweet,article";
-const EXPANSIONS = "expansions=author_id";
-const USER_FIELDS = "user.fields=name,username";
-
-interface XUser {
-  id: string;
-  name: string;
-  username: string;
-}
-
-interface XTweet {
-  id: string;
-  text: string;
-  author_id?: string;
-  created_at?: string;
-  // Long-form Post (>280 chars): full body lives here, not in `text`.
-  note_tweet?: { text: string };
-  // X Article (rich long-form, up to 100k chars): `text` only holds the t.co
-  // link, so the body must be read from `article.plain_text`.
-  article?: { title?: string; plain_text?: string };
-  public_metrics?: {
-    like_count: number;
-    retweet_count: number;
-    reply_count: number;
+/** Minimal MCP-tool shape these tools conform to. Structurally compatible
+ *  with the host's `McpTool` interface (server/agent/mcp-tools/index.ts), so
+ *  a host can drop these straight into its `McpTool[]` registry. */
+export interface XTool {
+  definition: {
+    name: string;
+    description: string;
+    inputSchema: object;
   };
+  requiredEnv: string[];
+  prompt: string;
+  handler: (args: Record<string, unknown>) => Promise<string>;
 }
 
-interface XApiResponse {
-  data?: XTweet | XTweet[];
-  includes?: { users?: XUser[] };
-  errors?: { detail: string }[];
-  meta?: { result_count: number };
-}
-
-async function fetchX(path: string): Promise<XApiResponse> {
-  const token = env.xBearerToken;
-  if (!token) throw new Error("X_BEARER_TOKEN is not configured in .env");
-
-  let response: Response;
-  try {
-    response = await fetchWithTimeout(`${X_API_BASE}${path}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      timeoutMs: X_API_TIMEOUT_MS,
-    });
-  } catch (err) {
-    throw new Error(`Network error calling X API: ${errorMessage(err)}`);
-  }
-
-  if (response.status === 401) throw new Error("X API error 401: Invalid or expired Bearer Token.");
-  if (response.status === 429) throw new Error("X API error 429: Rate limit exceeded. Please wait before retrying.");
-  if (!response.ok) {
-    const body = await safeResponseText(response);
-    throw new Error(`X API error ${response.status}: ${body}`);
-  }
-
-  return response.json() as Promise<XApiResponse>;
-}
-
-// `text` caps at 280 chars; long-form Posts and Articles carry their real body
-// in `note_tweet` / `article`. Prefer those so the LLM sees the full content.
-function tweetBody(tweet: XTweet): string {
-  if (tweet.note_tweet?.text) return tweet.note_tweet.text;
-  const { article } = tweet;
-  if (article?.plain_text) {
-    return [article.title, article.plain_text].filter(Boolean).join("\n\n");
-  }
-  return tweet.text;
-}
-
-function formatTweet(tweet: XTweet, author?: XUser, url?: string): string {
-  const date = tweet.created_at ? toUtcIsoDate(new Date(tweet.created_at)) : "";
-  const dateSuffix = date ? ` · ${date}` : "";
-  const byline = author ? `@${author.username} (${author.name})${dateSuffix}` : date;
-  const metrics = tweet.public_metrics
-    ? `Likes: ${tweet.public_metrics.like_count} | Retweets: ${tweet.public_metrics.retweet_count} | Replies: ${tweet.public_metrics.reply_count}`
-    : "";
-  const link = url ?? "";
-  return [byline, "", tweetBody(tweet), "", metrics, link]
-    .filter((line) => line !== undefined)
-    .join("\n")
-    .trimEnd();
-}
-
-export const readXPost = {
+export const readXPost: XTool = {
   definition: {
     name: "readXPost",
     description: "Fetch the content of a single X (Twitter) post by URL or tweet ID. Returns the author, text, and engagement metrics.",
@@ -117,8 +45,7 @@ export const readXPost = {
 
   async handler(args: Record<string, unknown>): Promise<string> {
     const url = String(args.url ?? "");
-    const match = url.match(/status\/(\d+)/);
-    const tweetId = match ? match[1] : /^\d+$/.test(url) ? url : null;
+    const tweetId = extractTweetId(url);
     if (!tweetId) return `Could not extract a tweet ID from: ${url}. Provide a full x.com URL or a numeric tweet ID.`;
 
     let data: XApiResponse;
@@ -139,7 +66,7 @@ export const readXPost = {
   },
 };
 
-export const searchX = {
+export const searchX: XTool = {
   definition: {
     name: "searchX",
     description: "Search recent X (Twitter) posts by keyword or query. Returns up to max_results posts (default 10, max 100).",
@@ -196,7 +123,7 @@ export const searchX = {
     if (tweets.length === 0) return `No recent posts found for: "${query}"`;
 
     const users = data.includes?.users ?? [];
-    const userMap = new Map(users.map((user) => [user.id, user]));
+    const userMap = new Map<string, XUser>(users.map((user) => [user.id, user]));
 
     const lines: string[] = [`Search: "${query}" — ${tweets.length} result${tweets.length !== 1 ? "s" : ""}`, ""];
     tweets.forEach((tweet, i) => {
@@ -208,3 +135,6 @@ export const searchX = {
     return lines.join("\n").trimEnd();
   },
 };
+
+export type { XApiResponse, XTweet, XUser } from "./client";
+export { extractTweetId, formatTweet, tweetBody } from "./client";

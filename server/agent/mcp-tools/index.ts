@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { readXPost, searchX } from "./x.js";
+import { readXPost, searchX } from "@mulmoclaude/x-plugin";
 import { notify } from "./notify.js";
 import { handlePermission } from "./handlePermission.js";
 import { spawnBackgroundChat } from "./spawnBackgroundChat.js";
