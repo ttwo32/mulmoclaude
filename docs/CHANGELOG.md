@@ -8,6 +8,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions use [Se
 
 ## [Unreleased]
 
+### Changed
+- **`@mulmoclaude/collection-plugin@0.3.0` — Vue UI layer extraction (Phase 2, in progress)** — the package gains a `./vue` entry (and a shipped `./style.css`) built through a real Vue-SFC pipeline (`@vitejs/plugin-vue` + `@tailwindcss/vite`, d.ts via `vue-tsc`). Six View components move into the package behind a `configureCollectionUi()` host binding — `CollectionRecordModal`, `CollectionEmbedView`, `CollectionCalendarView`, `CollectionDayView`, `CollectionKanbanView`, `CollectionRecordPanel` — so MulmoTerminal can import the collection card UI the way it imports the chart/form plugins. No user-facing behaviour change; the host renders the same components from the package. `CollectionView` + its two config/custom-view modals follow in a later pass.
+
 ---
 
 ## [0.8.0] - 2026-06-16
