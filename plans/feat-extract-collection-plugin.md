@@ -18,24 +18,54 @@ Goal: package the Collections feature so MulmoTerminal can import it like `@mulm
 - ✅ **1d-core** — `presentCollection` tool definition + pure executor → package `.` (gui-chat-protocol peer dep).
 - ✅ **1d step 1** — UI view-state types + `enumColors` + `draft` → core; host `collectionTypes.ts` owns no types now. `enumColors`/`draft` reached by host components via thin re-export shims (removed when components move).
 
-## Remaining — the collection frontend (1d-View + Phase 2)
+## Phase 2 — the collection frontend (in progress, branch `feat/collection-ui-context`)
 
-The card View (`CollectionView`, 2,131 LOC) + 7 sub-components + `useCollectionRendering` + the
-browsable `/collections` pages are one tightly-coupled unit, gated on a **`CollectionUiContext`**
-injection layer (provided via Vue `provide`; host supplies it, MulmoTerminal supplies its own):
+The View layer is gated on a **`CollectionUi`** injection binding — NOT Vue `provide`, but a
+module-level singleton in `src/vue/uiContext.ts` (`configureCollectionUi()` / `collectionUi()`),
+mirroring the server's `configureCollectionHost`. The host wires it once at startup
+(`src/composables/collections/uiHost.ts`, side-effect import in `main.ts`); MulmoTerminal supplies
+its own. The `./vue` entry side-effect-imports the package's compiled `style.css`.
 
-- `fetchCollectionDetail(slug)` + the CRUD ops (replaces `apiGet`/`apiPost`/`apiPut`/`apiDelete` + `API_ROUTES`)
-- `fileAssetUrl(value)` + `customViewUrl(...)` (replaces `htmlPreviewUrlFor`/`svgPreviewUrlFor`/`isValidFilePath` + the capability-token iframe URL — folded in here, so **no gui-chat-protocol `assetUrl` primitive / extra publish needed**)
-- `navigate` (router `push`/`replace` + `PAGE_ROUTES`) — for the browsable pages
-- `sendMessage` / `startNewChat` (`useAppApi`), `confirm` (`useConfirm`), `pin` (`useShortcuts`), `notify` (`useNotifications`)
-- generic UI (`ConfirmModal`, `PinToggle`) — injected or moved
+**The SFC build pipeline is done** (step 2a): `./vue` now builds Vue SFCs via
+`@vitejs/plugin-vue` + `@tailwindcss/vite` (shipped `dist/style.css`, new `./style.css` export),
+with d.ts emitted by `vue-tsc` (not vite-plugin-dts). vue-i18n is a peer (`^11.4.4`); components
+keep `useI18n()` and resolve the host's i18n instance + keys.
+
+- ✅ **step 1** — `CollectionUi` binding + move `useCollectionRendering` onto it (`7f675b94`).
+- ✅ **step 2a** — SFC build pipeline + move `CollectionRecordModal` (pure) — `d48040a5`.
+- ✅ **step 2b** — `CollectionEmbedView` (validates the vue-i18n + global `<router-link>` path) — `721f1433`.
+- ✅ **step 2c** — `CollectionCalendarView` + `CollectionDayView` — `68694c73`.
+- ✅ **step 2d** — `CollectionKanbanView` (+ `vuedraggable` package dep, `CollectionNotifySeverity` type) — `294856f4`.
+- ✅ **step 2e** — `CollectionRecordPanel` (+ `imageSrc` context capability) — `0f040837`.
+
+`CollectionUi` now exposes: `fetchCollectionDetail`, `fileAssetUrl`, `fileRoutePath`, `imageSrc`.
+
+### Remaining — the API-heavy cluster (design the rest of the context in one pass)
+
+`CollectionViewConfigModal` (108) + `CollectionCustomView` (152) + `CollectionView` (2,131, the
+root that renders both) share one large host surface. Survey of `CollectionView`'s coupling →
+the `CollectionUi` additions needed:
+
+- **Collection CRUD/actions** (replaces `apiGet/Post/Put/Delete` + `API_ROUTES.collections.*`):
+  create item, update item, delete item, run item-action, run collection-action, refresh,
+  feed detail (`API_ROUTES.feeds.detail`).
+- **Custom views** (`CollectionCustomView`): `mintViewToken(slug, viewId)` (apiPost), `fetchViewHtml(slug, viewId)`
+  (apiFetchRaw). `buildCustomViewSrcdoc` is a pure util → move into the package (`vue/` or core).
+- **Custom-view delete** (`CollectionViewConfigModal`): `deleteView(slug, viewId)` (apiDelete) + `confirm(opts)`.
+- **Navigation**: `navigate` (router push/replace + `PAGE_ROUTES.collections` / `PAGE_ROUTES.feeds`).
+- **App integration**: `sendMessage`/`startNewChat` (`useAppApi`), `confirm` (`useConfirm`),
+  `pin` (`useShortcuts`), `notify` (`useNotifications`).
+- **Generic UI**: `ConfirmModal`, `PinToggle` — inject as context-provided components or move.
+- **Misc utils**: `shortHexId` (`utils/id`), `defangForPrompt` (`utils/promptSafety`),
+  `BUILTIN_ROLE_IDS` (`config/roles`), `collectionNotifiedSeverities` (host notifier bridge stays host-side).
 
 ### Sequence (each its own green commit)
-1. `CollectionUiContext` interface + host provider + move `useCollectionRendering` onto it.
-2. Move `CollectionView` + sub-components → package `./vue`, host imports replaced by the context. Remove the `enumColors`/`draft` shims.
+1. ✅ done — see steps 1, 2a–2e above. Six leaf components migrated; `enumColors`/`draft` shims still in place (removed when `CollectionView` moves).
+2. Expand `CollectionUi` with the CRUD/nav/confirm/app surface above; move `CollectionViewConfigModal` + `CollectionCustomView` + `CollectionView` → package `./vue`; remove the `enumColors`/`draft` shims.
 3. Browsable pages (`CollectionsIndexView`, `/collections` route) → package + host router wiring.
-4. Plugin `./vue` entry (View + Preview + lang); shrink the host `presentCollection` adapter; final version bump + publish.
+4. Plugin `./vue` entry (View + Preview + lang); shrink the host `presentCollection` adapter; bump to `0.3.0` (new `./vue` + `./style.css` exports) + publish.
 
 ## Publish gate
 The launcher pins `@mulmoclaude/collection-plugin@^0.2.x`; bump + republish before each PR/smoke run
-so the clean-install resolves the current content (0.2.0 → 0.2.1 already done this PR).
+so the clean-install resolves the current content (0.2.0 → 0.2.1 already done in PR #1723). The
+`./vue` + `./style.css` additions make the next release a minor bump (`0.3.0`).
