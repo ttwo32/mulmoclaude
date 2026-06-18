@@ -16,7 +16,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { isContainedInRoot, safeSlugName } from "../../../server/workspace/collections/paths.js";
+import { isContainedInRoot, safeSlugName } from "@mulmoclaude/collection-plugin/server";
 
 let rootDir: string;
 let outsideDir: string;

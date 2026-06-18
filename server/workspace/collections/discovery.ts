@@ -13,7 +13,7 @@ import { workspacePath } from "../workspace.js";
 import { USER_SKILLS_DIR, projectSkillsDir } from "../skills/paths.js";
 import { feedsRoot } from "../feeds/paths.js";
 import { INGEST_KINDS, FEED_SCHEDULES } from "../feeds/ingestTypes.js";
-import { SCHEMA_FILE, resolveDataDir, safeSlugName } from "./paths.js";
+import { SCHEMA_FILE, resolveDataDir, safeSlugName } from "@mulmoclaude/collection-plugin/server";
 import { isSafeActionTemplatePath, isSafeCustomViewPath } from "./templatePath.js";
 import type { CollectionDetail, CollectionSchema, CollectionSource, CollectionSummary } from "./types.js";
 

@@ -15,11 +15,16 @@ export default defineConfig({
   ],
   build: {
     lib: {
-      entry: { index: "src/index.ts" },
+      // `.` = isomorphic core (schema + pure engine), imported by the host
+      // frontend AND server. `./server` = node-only storage engine (fs/path),
+      // imported only by the host server — kept out of `.` so the frontend
+      // bundle never pulls in node:fs.
+      entry: { index: "src/index.ts", server: "src/server/index.ts" },
       formats: ["es", "cjs"],
       fileName: (format, entryName) => `${entryName}.${format === "es" ? "js" : "cjs"}`,
     },
     rollupOptions: {
+      external: [/^node:/],
       output: { exports: "named" },
     },
     minify: false,

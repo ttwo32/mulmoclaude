@@ -4,7 +4,7 @@
 
 import path from "node:path";
 import { realpathSync } from "node:fs";
-import { workspacePath } from "../workspace.js";
+import { getWorkspaceRoot } from "./host";
 
 export const SCHEMA_FILE = "schema.json";
 
@@ -74,7 +74,7 @@ export function isContainedInRoot(absPath: string, rootPath: string): boolean {
 /** Workspace-bound convenience over `isContainedInRoot`. Production
  *  callers use this; the tests exercise the pure helper. */
 export function isContainedInWorkspace(absPath: string): boolean {
-  return isContainedInRoot(absPath, workspacePath);
+  return isContainedInRoot(absPath, getWorkspaceRoot());
 }
 
 /** Resolve a schema-declared dataPath against `rootPath` (default:
@@ -92,7 +92,7 @@ export function isContainedInWorkspace(absPath: string): boolean {
  *  Without this, `discoverApps({ workspaceRoot: tmpdir })` would
  *  discover skills in tmpdir but resolve every app's dataDir against
  *  `~/mulmoclaude/`, breaking isolation. */
-export function resolveDataDir(dataPath: string, rootPath: string = workspacePath): string | null {
+export function resolveDataDir(dataPath: string, rootPath: string = getWorkspaceRoot()): string | null {
   if (typeof dataPath !== "string" || dataPath.length === 0) return null;
   if (path.isAbsolute(dataPath)) return null;
   const normalized = path.normalize(dataPath);

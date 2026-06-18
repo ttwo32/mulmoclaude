@@ -24,7 +24,7 @@ import { log } from "../../system/logger/index.js";
 import { WORKSPACE_DIRS } from "../paths.js";
 import { workspacePath } from "../workspace.js";
 import { isPresetSlug } from "../skills-preset.js";
-import { isContainedInRoot } from "./paths.js";
+import { isContainedInRoot } from "@mulmoclaude/collection-plugin/server";
 import type { LoadedCollection } from "./discovery.js";
 
 export type DeleteCollectionResult =

@@ -10,7 +10,7 @@ import { readdir, readFile, lstat } from "node:fs/promises";
 import path from "node:path";
 import { log } from "../../system/logger/index.js";
 import { workspacePath } from "../workspace.js";
-import { isContainedInRoot } from "./paths.js";
+import { isContainedInRoot } from "@mulmoclaude/collection-plugin/server";
 import type { LoadedCollection } from "./discovery.js";
 import type { CollectionItem, CollectionSchema } from "./types.js";
 

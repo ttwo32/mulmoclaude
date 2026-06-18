@@ -8,7 +8,7 @@ import { rm } from "node:fs/promises";
 import { workspacePath } from "../workspace.js";
 import { log } from "../../system/logger/index.js";
 import { discoverCollections, type LoadedCollection } from "../collections/index.js";
-import { resolveDataDir, safeSlugName } from "../collections/paths.js";
+import { resolveDataDir, safeSlugName } from "@mulmoclaude/collection-plugin/server";
 import { feedDir } from "./paths.js";
 
 /** Every registered feed, as a discovered collection (carrying its

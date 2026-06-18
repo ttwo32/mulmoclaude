@@ -9,7 +9,7 @@ import path from "node:path";
 import { log } from "../../system/logger/index.js";
 import { writeFileAtomic } from "../../utils/files/atomic.js";
 import { workspacePath } from "../workspace.js";
-import { isContainedInRoot, itemFilePath, resolveTemplatePath, safeSlugName } from "./paths.js";
+import { isContainedInRoot, itemFilePath, resolveTemplatePath, safeSlugName } from "@mulmoclaude/collection-plugin/server";
 import type { CollectionItem, CollectionSchema } from "./types.js";
 import type { LoadedCollection } from "./discovery.js";
 
