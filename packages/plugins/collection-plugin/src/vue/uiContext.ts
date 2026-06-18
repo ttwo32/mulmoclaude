@@ -7,7 +7,9 @@
 // This grows as more of the View moves into the package (navigation, chat,
 // confirm, …) as components migrate.
 
-import type { CollectionDetailResponse } from "../core/uiTypes";
+import type { Component } from "vue";
+import type { CollectionDetailResponse, ItemMutationResponse, CollectionNotifySeverity } from "../core/uiTypes";
+import type { CollectionItem } from "../core/schema";
 
 /** Result of a host data fetch — structurally a subset of the host's own
  *  `ApiResult` (so the host can pass `apiGet` straight through). The view layer
@@ -19,9 +21,24 @@ export type CollectionFetchResult<T> = { ok: true; data: T } | { ok: false };
  *  Carries the host's error string on failure for inline display. */
 export type CollectionMutationResult = { ok: true } | { ok: false; error: string };
 
-/** Full host `ApiResult<T>` (data on success, error string on failure) — used
- *  where the view layer needs both the payload and a failure message. */
-export type CollectionApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
+/** Full host `ApiResult<T>` (data on success, error + HTTP status on failure) —
+ *  matches the host's `ApiResult` exactly, so `apiGet`/`apiPost`/`apiPut` pass
+ *  straight through. `status` lets the view distinguish 404 (not-found) from a
+ *  generic failure. */
+export type CollectionApiResult<T> = { ok: true; data: T } | { ok: false; error: string; status: number };
+
+/** A collection / item action's result — a seed prompt + role for a new chat. */
+export interface CollectionActionResult {
+  prompt: string;
+  role: string;
+}
+
+/** A feed refresh's result — counts + per-source errors. */
+export interface CollectionRefreshResult {
+  refreshed: boolean;
+  written: number;
+  errors: string[];
+}
 
 /** Scoped capability token for a sandboxed custom view (mirrors the host's mint
  *  response) — the iframe reads/writes the collection through it. */
@@ -55,9 +72,10 @@ export interface CollectionConfirmOptions {
 }
 
 export interface CollectionUi {
-  /** Fetch a collection's detail (schema + records) by slug — backs ref/embed
-   *  resolution. Replaces the host's `apiGet(API_ROUTES.collections.detail)`. */
-  fetchCollectionDetail: (slug: string) => Promise<CollectionFetchResult<CollectionDetailResponse>>;
+  /** Fetch a collection's detail (schema + records) by slug — backs both the
+   *  View's own load (reads `status` for 404 → not-found) and ref/embed
+   *  resolution (treats `!ok` as a skip). Replaces `apiGet(…collections.detail)`. */
+  fetchCollectionDetail: (slug: string) => Promise<CollectionApiResult<CollectionDetailResponse>>;
   /** Browser-loadable URL for a file/image asset value (an html/svg artifact),
    *  or null when the value isn't a renderable asset path. Replaces
    *  `isValidFilePath` + `htmlPreviewUrlFor`/`svgPreviewUrlFor`. */
@@ -85,6 +103,54 @@ export interface CollectionUi {
    *  data URL injected and the host's CSP applied. Replaces the host's
    *  `buildCustomViewSrcdoc`. */
   buildViewSrcdoc: (html: string, boot: CollectionViewSrcdocBoot) => string;
+
+  // ── record CRUD + actions (host: api{Post,Put,Delete} over API_ROUTES.collections) ──
+  /** Create a record (`apiPost` over `…collections.items`). */
+  createItem: (slug: string, record: CollectionItem) => Promise<CollectionApiResult<ItemMutationResponse>>;
+  /** Update a record (`apiPut` over `…collections.item`). */
+  updateItem: (slug: string, itemId: string, record: CollectionItem) => Promise<CollectionApiResult<ItemMutationResponse>>;
+  /** Delete a record (`apiDelete` over `…collections.item`). */
+  deleteItem: (slug: string, itemId: string) => Promise<CollectionMutationResult>;
+  /** Delete a whole collection (`apiDelete` over `…collections.detail`). */
+  deleteCollection: (slug: string) => Promise<CollectionMutationResult>;
+  /** Delete a feed via the project-scope feed-delete route (`…feeds.detail`). */
+  deleteFeed: (slug: string) => Promise<CollectionMutationResult>;
+  /** Run a per-record action (`apiPost` over `…collections.itemAction`). */
+  runItemAction: (slug: string, itemId: string, actionId: string) => Promise<CollectionApiResult<CollectionActionResult>>;
+  /** Run a collection-level action (`apiPost` over `…collections.collectionAction`). */
+  runCollectionAction: (slug: string, actionId: string) => Promise<CollectionApiResult<CollectionActionResult>>;
+  /** Refresh a feed-backed collection (`apiPost` over `…collections.refresh`). */
+  refreshCollection: (slug: string) => Promise<CollectionApiResult<CollectionRefreshResult>>;
+
+  // ── routing (host: the vue-router instance) ──
+  /** Current route's `:slug` param (standalone page), or undefined. */
+  routeSlug: () => string | undefined;
+  /** Current route's `?selected=` query (deep-linked record), or undefined. */
+  routeSelectedId: () => string | undefined;
+  /** True when the standalone page is the feeds route (vs collections). */
+  isFeedRoute: () => boolean;
+  /** Set/clear the `?selected=` deep-link (router.replace, no history entry). */
+  setSelectedId: (itemId: string | null) => void;
+  /** Navigate to the collections / feeds index after a delete. */
+  gotoIndex: (kind: "collection" | "feed") => void;
+
+  // ── app integration ──
+  /** Start a new chat with a seed prompt + role (host: `useAppApi().startNewChat`). */
+  startChat: (prompt: string, role: string) => void;
+  /** The host's "general" role id, for chats seeded without a specific role. */
+  generalRoleId: string;
+  /** Remove a pinned launcher shortcut for a 404'd collection/feed
+   *  (`useShortcuts().unpin`). */
+  unpin: (kind: "collection" | "feed", slug: string) => Promise<boolean>;
+  /** Active-notification severity per record id, for accenting flagged rows/cards
+   *  (`collectionNotifiedSeverities` over the host's live notifier entries). */
+  notifiedSeverities: (slug: string) => Map<string, CollectionNotifySeverity>;
+
+  // ── injected host component ──
+  /** The host's pin/unpin toggle (couples to the host's shortcut store + is
+   *  shared with other host views), rendered in the View header via
+   *  `<component :is>`. Props: `kind`, `slug`, `title`, `icon`. */
+  pinToggle: Component;
 }
 
 let current: CollectionUi | null = null;

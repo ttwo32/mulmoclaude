@@ -17,7 +17,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { ToolResult } from "gui-chat-protocol";
-import CollectionView from "../../components/CollectionView.vue";
+import { CollectionView } from "@mulmoclaude/collection-plugin/vue";
 import type { PresentCollectionData } from "./types";
 
 /** Card-local UI state persisted in the tool result's `viewState` so it

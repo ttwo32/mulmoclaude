@@ -26,7 +26,8 @@
         </span>
       </div>
 
-      <PinToggle
+      <component
+        :is="pinToggle"
         v-if="collection && !embedded"
         :kind="isFeedRoute ? 'feed' : 'collection'"
         :slug="collection.slug"
@@ -711,40 +712,31 @@
         </footer>
       </div>
     </div>
-
-    <ConfirmModal />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useRoute, useRouter } from "vue-router";
-import { apiDelete, apiGet, apiPost, apiPut } from "../utils/api";
-import { API_ROUTES } from "../config/apiRoutes";
-import { PAGE_ROUTES } from "../router/pageRoutes";
-import { BUILTIN_ROLE_IDS } from "../config/roles";
-import ConfirmModal from "./ConfirmModal.vue";
-import PinToggle from "./PinToggle.vue";
+import CollectionRecordModal from "./CollectionRecordModal.vue";
+import CollectionCalendarView from "./CollectionCalendarView.vue";
+import CollectionDayView from "./CollectionDayView.vue";
+import CollectionKanbanView from "./CollectionKanbanView.vue";
+import CollectionRecordPanel from "./CollectionRecordPanel.vue";
+import CollectionViewConfigModal from "./CollectionViewConfigModal.vue";
+import CollectionCustomView from "./CollectionCustomView.vue";
+import { useCollectionRendering } from "../useCollectionRendering";
 import {
-  CollectionRecordModal,
-  CollectionCalendarView,
-  CollectionDayView,
-  CollectionKanbanView,
-  CollectionRecordPanel,
-  CollectionViewConfigModal,
-  CollectionCustomView,
-  useCollectionRendering,
   readCollectionViewMode,
   writeCollectionViewMode,
   readCollectionSort,
   writeCollectionSort,
   type CollectionViewMode,
   type BuiltInViewMode,
-} from "@mulmoclaude/collection-plugin/vue";
+} from "../collectionViewMode";
+import { collectionUi } from "../uiContext";
+import { dateOf, type Ymd } from "../../core/calendarGrid";
 import {
-  dateOf,
-  type Ymd,
   isSortableField,
   nextSortDirection,
   sortItems,
@@ -755,29 +747,20 @@ import {
   boolSortValue,
   type SortState,
   type SortValue,
-  shortHexId,
-  defangForPrompt,
-} from "@mulmoclaude/collection-plugin";
-import { useConfirm } from "../composables/useConfirm";
-import { useAppApi } from "../composables/useAppApi";
-import { useShortcuts } from "../composables/useShortcuts";
-import { actionVisible, fieldVisible } from "@mulmoclaude/collection-plugin";
-import { resolveEnumColor } from "../utils/collections/enumColors";
-import { buildUpdatedRecord, coerceInlineValue, draftToRecord, firstMissingRequiredField, rowFromItem } from "../utils/collections/draft";
+} from "../../core/sortItems";
+import { shortHexId } from "../../core/shortHexId";
+import { defangForPrompt } from "../../core/promptSafety";
+import { actionVisible, fieldVisible } from "../../core/actionVisible";
+import { resolveEnumColor } from "../../core/enumColors";
+import { buildUpdatedRecord, coerceInlineValue, draftToRecord, firstMissingRequiredField, rowFromItem } from "../../core/draft";
 import type {
   CollectionAction,
   CollectionCustomView as CustomViewSpec,
   CollectionDetail,
-  CollectionDetailResponse,
   CollectionItem,
-  CollectionRecordIssue,
-  EditState,
-  FieldSpec,
-  ItemMutationResponse,
-  TableRowDraft,
-} from "./collectionTypes";
-import { useNotifications } from "../composables/useNotifications";
-import { collectionNotifiedSeverities, type NotifierSeverity } from "../utils/collections/notifiedItems";
+  CollectionFieldSpec as FieldSpec,
+} from "../../core/schema";
+import type { CollectionRecordIssue, CollectionNotifySeverity, EditState, TableRowDraft } from "../../core/uiTypes";
 
 /** `slug` / `selected` are supplied only in EMBEDDED mode (the
  *  `presentCollection` chat card mounts this component and drives both
@@ -814,12 +797,12 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
-const route = useRoute();
-const router = useRouter();
-const { openConfirm } = useConfirm();
-const appApi = useAppApi();
-const { unpin } = useShortcuts();
-const { entries: notifierEntries } = useNotifications();
+// All host couplings (data, routing, confirm, chat, shortcuts, notifications,
+// the pin toggle) come through the injected CollectionUi binding. The aliases
+// keep the body's call sites unchanged where the host shape matched 1:1.
+const cui = collectionUi();
+const { confirm: openConfirm, unpin, pinToggle, startChat } = cui;
+const appApi = { startNewChat: startChat };
 
 /** Embedded when a `slug` prop is supplied; standalone (route-driven)
  *  otherwise. Switches the slug/selected source and the open/close
@@ -830,16 +813,15 @@ const embedded = computed<boolean>(() => props.slug !== undefined);
  *  param. */
 const activeSlug = computed<string | undefined>(() => {
   if (props.slug !== undefined) return props.slug;
-  const { slug } = route.params;
-  return typeof slug === "string" && slug.length > 0 ? slug : undefined;
+  const slug = cui.routeSlug();
+  return slug !== undefined && slug.length > 0 ? slug : undefined;
 });
 
 /** Active open-record id: the prop in embedded mode (may be undefined),
  *  else the `?selected=` query. */
 const activeSelected = computed<string | undefined>(() => {
   if (embedded.value) return props.selected;
-  const { selected } = route.query;
-  return typeof selected === "string" ? selected : undefined;
+  return cui.routeSelectedId();
 });
 
 const collection = ref<CollectionDetail | null>(null);
@@ -854,9 +836,9 @@ const dataIssues = ref<CollectionRecordIssue[]>([]);
 // Primary-key → notification severity for this collection's records that
 // currently have an active bell notification — passed to the Kanban board so
 // it can flag those cards in the matching bell colour (urgent red / nudge amber).
-const notifiedSeverities = computed<Map<string, NotifierSeverity>>(() => {
+const notifiedSeverities = computed<Map<string, CollectionNotifySeverity>>(() => {
   const slug = collection.value?.slug;
-  return slug ? collectionNotifiedSeverities(notifierEntries.value, slug) : new Map<string, NotifierSeverity>();
+  return slug ? cui.notifiedSeverities(slug) : new Map<string, CollectionNotifySeverity>();
 });
 /** True while a feed collection's manual refresh is in flight. */
 const refreshing = ref(false);
@@ -1096,10 +1078,6 @@ function isEditingRow(item: CollectionItem): boolean {
   return draft.originalId === rowId(item);
 }
 
-function detailUrl(slug: string): string {
-  return API_ROUTES.collections.detail.replace(":slug", encodeURIComponent(slug));
-}
-
 /** Re-run a feed collection's retrieval now, then reload its records.
  *  Only reachable when `schema.ingest` is present (button is gated). */
 async function refreshFeed(): Promise<void> {
@@ -1107,8 +1085,7 @@ async function refreshFeed(): Promise<void> {
   if (!current?.schema.ingest || refreshing.value) return;
   refreshing.value = true;
   inlineError.value = null;
-  const url = API_ROUTES.collections.refresh.replace(":slug", encodeURIComponent(current.slug));
-  const result = await apiPost<{ refreshed: boolean; written: number; errors: string[] }>(url, {});
+  const result = await cui.refreshCollection(current.slug);
   refreshing.value = false;
   if (!result.ok) {
     loadError.value = result.error;
@@ -1122,25 +1099,6 @@ async function refreshFeed(): Promise<void> {
   }
 }
 
-function itemsUrl(slug: string): string {
-  return API_ROUTES.collections.items.replace(":slug", encodeURIComponent(slug));
-}
-
-function itemUrl(slug: string, itemId: string): string {
-  return API_ROUTES.collections.item.replace(":slug", encodeURIComponent(slug)).replace(":itemId", encodeURIComponent(itemId));
-}
-
-function actionUrl(slug: string, itemId: string, actionId: string): string {
-  return API_ROUTES.collections.itemAction
-    .replace(":slug", encodeURIComponent(slug))
-    .replace(":itemId", encodeURIComponent(itemId))
-    .replace(":actionId", encodeURIComponent(actionId));
-}
-
-function collectionActionUrl(slug: string, actionId: string): string {
-  return API_ROUTES.collections.collectionAction.replace(":slug", encodeURIComponent(slug)).replace(":actionId", encodeURIComponent(actionId));
-}
-
 /** Collection-level header actions. No `when` predicate (no record). */
 const collectionActions = computed<CollectionAction[]>(() => collection.value?.schema.collectionActions ?? []);
 
@@ -1152,7 +1110,7 @@ async function runCollectionAction(action: CollectionAction): Promise<void> {
   if (!current || collectionActionPending.value) return;
   collectionActionPending.value = true;
   inlineError.value = null;
-  const result = await apiPost<{ prompt: string; role: string }>(collectionActionUrl(current.slug, action.id), {});
+  const result = await cui.runCollectionAction(current.slug, action.id);
   collectionActionPending.value = false;
   if (!result.ok) {
     inlineError.value = result.error;
@@ -1183,7 +1141,7 @@ function repairCollection(): void {
     props.sendTextMessage(prompt);
     return;
   }
-  appApi.startNewChat(prompt, BUILTIN_ROLE_IDS.general);
+  appApi.startNewChat(prompt, cui.generalRoleId);
 }
 
 /** Actions whose optional `when` predicate matches the open record.
@@ -1204,7 +1162,7 @@ async function runAction(action: CollectionAction): Promise<void> {
   if (!itemId) return;
   actionPending.value = true;
   actionError.value = null;
-  const result = await apiPost<{ prompt: string; role: string }>(actionUrl(collection.value.slug, itemId, action.id), {});
+  const result = await cui.runItemAction(collection.value.slug, itemId, action.id);
   actionPending.value = false;
   if (!result.ok) {
     actionError.value = result.error;
@@ -1264,7 +1222,7 @@ function submitChat(): void {
     props.sendTextMessage(text);
     return;
   }
-  appApi.startNewChat(text, BUILTIN_ROLE_IDS.general);
+  appApi.startNewChat(text, cui.generalRoleId);
 }
 
 async function loadCollection(slug: string): Promise<void> {
@@ -1272,7 +1230,7 @@ async function loadCollection(slug: string): Promise<void> {
   // between /feeds/:slug and /collections/:slug while the fetch is in
   // flight, reading route.name in the 404 branch could unpin the wrong
   // (kind, slug) pair.
-  const requestedKind = !embedded.value && route.name === PAGE_ROUTES.feeds ? "feed" : "collection";
+  const requestedKind = !embedded.value && cui.isFeedRoute() ? "feed" : "collection";
   loading.value = true;
   loadError.value = null;
   collection.value = null;
@@ -1285,7 +1243,7 @@ async function loadCollection(slug: string): Promise<void> {
   render.resetLinkedCaches();
   viewing.value = null;
   openDay.value = null; // never carry a previous collection's open day over
-  const result = await apiGet<CollectionDetailResponse>(detailUrl(slug));
+  const result = await cui.fetchCollectionDetail(slug);
   loading.value = false;
   if (!result.ok) {
     loadError.value = result.status === 404 ? "not-found" : result.error;
@@ -1382,7 +1340,7 @@ const canDeleteFeed = computed<boolean>(() => isFeed.value && !embedded.value);
 
 // Which list to return to from the back arrow: feeds opened via /feeds
 // go back to the feed list; everything else to the collections index.
-const isFeedRoute = computed<boolean>(() => !embedded.value && route.name === PAGE_ROUTES.feeds);
+const isFeedRoute = computed<boolean>(() => !embedded.value && cui.isFeedRoute());
 
 // ── View mode (table | calendar | kanban) ─────────────────────────
 // Local UI state only — NEVER persisted to schema. The user toggles it;
@@ -1488,7 +1446,7 @@ function addCustomView(): void {
     props.sendTextMessage(prompt);
     return;
   }
-  appApi.startNewChat(prompt, BUILTIN_ROLE_IDS.general);
+  appApi.startNewChat(prompt, cui.generalRoleId);
 }
 
 // ── Per-collection config (gear → manage custom views) ──────────────
@@ -1705,10 +1663,8 @@ function closeView(): void {
     emit("select", null);
     return;
   }
-  if (route.query.selected !== undefined) {
-    const query = { ...route.query };
-    delete query.selected;
-    router.replace({ query }).catch(() => {});
+  if (cui.routeSelectedId() !== undefined) {
+    cui.setSelectedId(null);
   }
 }
 
@@ -1812,9 +1768,7 @@ async function saveEditor(): Promise<void> {
   saving.value = true;
   const record = draftToRecord(draft, schema);
   const isCreate = draft.mode === "create";
-  const result = isCreate
-    ? await apiPost<ItemMutationResponse>(itemsUrl(slug), record)
-    : await apiPut<ItemMutationResponse>(itemUrl(slug, draft.originalId ?? ""), record);
+  const result = isCreate ? await cui.createItem(slug, record) : await cui.updateItem(slug, draft.originalId ?? "", record);
   saving.value = false;
   if (!result.ok) {
     saveError.value = result.error;
@@ -1857,7 +1811,7 @@ async function commitInlineEdit(item: CollectionItem, key: string, field: FieldS
   applyInlineValue(item, key, coerced);
   inlineError.value = null;
   inlineSavingRows.value.add(itemId);
-  const result = await apiPut<ItemMutationResponse>(itemUrl(slug, itemId), buildUpdatedRecord(item, key, coerced));
+  const result = await cui.updateItem(slug, itemId, buildUpdatedRecord(item, key, coerced));
   inlineSavingRows.value.delete(itemId);
   if (!result.ok) {
     applyInlineValue(item, key, previous);
@@ -1900,7 +1854,7 @@ async function confirmDelete(item: CollectionItem): Promise<void> {
     variant: "danger",
   });
   if (!ok) return;
-  const result = await apiDelete(itemUrl(slug, itemId));
+  const result = await cui.deleteItem(slug, itemId);
   if (!result.ok) {
     loadError.value = result.error;
     return;
@@ -1924,17 +1878,16 @@ async function confirmCollectionDelete(): Promise<void> {
     variant: "danger",
   });
   if (!ok) return;
-  const result = await apiDelete(detailUrl(slug));
+  const result = await cui.deleteCollection(slug);
   if (!result.ok) {
     loadError.value = result.error;
     return;
   }
-  router.push({ name: PAGE_ROUTES.collections, params: {} }).catch(() => {});
+  cui.gotoIndex("collection");
 }
 
 function goBack(): void {
-  const name = isFeedRoute.value ? PAGE_ROUTES.feeds : PAGE_ROUTES.collections;
-  router.push({ name, params: {} }).catch(() => {});
+  cui.gotoIndex(isFeedRoute.value ? "feed" : "collection");
 }
 
 // Delete a feed: remove its feeds/<slug>/ registry entry (records on disk
@@ -1952,12 +1905,12 @@ async function confirmFeedDelete(): Promise<void> {
     variant: "danger",
   });
   if (!ok) return;
-  const result = await apiDelete(API_ROUTES.feeds.detail.replace(":slug", encodeURIComponent(slug)));
+  const result = await cui.deleteFeed(slug);
   if (!result.ok) {
     loadError.value = result.error;
     return;
   }
-  router.push({ name: PAGE_ROUTES.feeds, params: {} }).catch(() => {});
+  cui.gotoIndex("feed");
 }
 
 // Load on slug change, immediate so the initial value (route param or
@@ -1988,8 +1941,8 @@ function dayOfItem(item: CollectionItem): Ymd | null {
  *  so the calendar's day-view + selection is a copy-pasteable link. In-app
  *  selection didn't previously touch the URL; the calendar now does. */
 function writeSelectedToUrl(itemId: string): void {
-  if (embedded.value || route.query.selected === itemId) return;
-  router.replace({ query: { ...route.query, selected: itemId } }).catch(() => {});
+  if (embedded.value || cui.routeSelectedId() === itemId) return;
+  cui.setSelectedId(itemId);
 }
 
 /** Calendar chip / kanban card click → open that record's detail. In the

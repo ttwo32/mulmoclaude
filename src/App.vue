@@ -295,6 +295,12 @@
       @ask-gemini="handleAskGemini"
       @saved="refreshGoogleMapsApiKey"
     />
+
+    <!-- Global confirm dialog. Renders the module-global confirm state opened
+         via useConfirm()/the collection plugin's confirm() capability — mounted
+         here at the app root so it survives any single view (CollectionView used
+         to render its own before moving into @mulmoclaude/collection-plugin). -->
+    <ConfirmModal />
   </div>
 </template>
 
@@ -323,7 +329,7 @@ import WikiView from "./plugins/wiki/View.vue";
 import { buildWikiRouteParams } from "./plugins/wiki/route";
 import FeedsView from "./components/FeedsView.vue";
 import CollectionsIndexView from "./components/CollectionsIndexView.vue";
-import CollectionView from "./components/CollectionView.vue";
+import { CollectionView } from "@mulmoclaude/collection-plugin/vue";
 import PluginScopedRoot from "./components/PluginScopedRoot.vue";
 import SettingsModal from "./components/SettingsModal.vue";
 import { PAGE_ROUTES, type PageRouteName } from "./router";
@@ -360,6 +366,10 @@ import { useTranslatedQueries } from "./composables/useTranslatedQueries";
 import { BUILTIN_ROLE_IDS, type Role } from "./config/roles";
 import { usePubSub } from "./composables/usePubSub";
 import { sessionChannel } from "./config/pubsubChannels";
+import ConfirmModal from "./components/ConfirmModal.vue";
+import { useNotifications } from "./composables/useNotifications";
+import { collectionNotifiedSeverities } from "./utils/collections/notifiedItems";
+import { installCollectionAppBindings } from "./composables/collections/uiHost";
 import { useHealth } from "./composables/useHealth";
 import { useSessionHistory } from "./composables/useSessionHistory";
 import { useRightSidebar } from "./composables/useRightSidebar";
@@ -1094,6 +1104,16 @@ provideAppApi({
   startNewChat: (message: string, roleId?: string) => startNewChat(message, roleId),
   navigateToWorkspacePath: (href: string) => navigateToWorkspacePath(href),
   getResultTimestamp: (uuid: string) => activeSession.value?.resultTimestamps.get(uuid),
+});
+
+// Wire the two collection-plugin UI capabilities that need a component context
+// (the rest are configured at module load in composables/collections/uiHost.ts).
+// `useNotifications()` needs onUnmounted + pubsub inject; `startNewChat` is
+// App-owned. Done here so it's set before any CollectionView (a descendant) mounts.
+const { entries: notifierEntries } = useNotifications();
+installCollectionAppBindings({
+  startChat: (prompt: string, role: string) => startNewChat(prompt, role),
+  notifiedSeverities: (slug: string) => collectionNotifiedSeverities(notifierEntries.value, slug),
 });
 // Plugin Views that need to tag background work with the current
 // session (e.g. MulmoScript generations) inject this.

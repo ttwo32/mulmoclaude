@@ -25,6 +25,8 @@ export {
   type CollectionViewToken,
   type CollectionViewHtmlResult,
   type CollectionViewSrcdocBoot,
+  type CollectionActionResult,
+  type CollectionRefreshResult,
 } from "./uiContext";
 export { useCollectionRendering, type CollectionRendering } from "./useCollectionRendering";
 export {
@@ -44,3 +46,4 @@ export { default as CollectionKanbanView } from "./components/CollectionKanbanVi
 export { default as CollectionRecordPanel } from "./components/CollectionRecordPanel.vue";
 export { default as CollectionViewConfigModal } from "./components/CollectionViewConfigModal.vue";
 export { default as CollectionCustomView } from "./components/CollectionCustomView.vue";
+export { default as CollectionView } from "./components/CollectionView.vue";
