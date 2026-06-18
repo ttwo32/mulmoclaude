@@ -34,8 +34,12 @@
   "dependencies": {
     "zod": "^4.4.3"
   },
+  "peerDependencies": {
+    "gui-chat-protocol": "^0.4.0"
+  },
   "devDependencies": {
     "@types/node": "^25.9.3",
+    "gui-chat-protocol": "^0.4.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.13",
     "vite-plugin-dts": "^5.0.0"

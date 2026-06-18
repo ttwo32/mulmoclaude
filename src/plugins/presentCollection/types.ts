@@ -1,13 +1,4 @@
-/** Render payload carried in the tool result's `data` field. The View
- *  mounts `<CollectionView>` keyed off these — the live collection
- *  schema + items are fetched client-side via the existing
- *  `/api/collections/...` routes, so only the addressing travels here. */
-export interface PresentCollectionData {
-  /** Slug of the collection to display (e.g. "clients", "invoices"). */
-  collectionSlug: string;
-  /** Optional primary-key value of a single item to open on mount. */
-  itemId?: string;
-}
-
-/** Tool arguments — same shape as the render payload. */
-export type PresentCollectionArgs = PresentCollectionData;
+// presentCollection's render/arg types now live in the shared
+// @mulmoclaude/collection-plugin package. Re-exported here so existing relative
+// imports (View.vue, Preview.vue, index.ts) keep working unchanged.
+export type { PresentCollectionData, PresentCollectionArgs } from "@mulmoclaude/collection-plugin";

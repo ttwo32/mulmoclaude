@@ -6,6 +6,7 @@
 // longer reaches into `src/` for it. Vue surfaces will live in `./vue`.
 
 export * from "./core/schema";
+export * from "./core/presentCollection";
 export * from "./core/actionVisible";
 export * from "./core/derivedFormula";
 export * from "./core/deriveAll";

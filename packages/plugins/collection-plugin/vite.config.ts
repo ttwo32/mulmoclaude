@@ -24,9 +24,9 @@ export default defineConfig({
       fileName: (format, entryName) => `${entryName}.${format === "es" ? "js" : "cjs"}`,
     },
     rollupOptions: {
-      // node built-ins + zod stay external (resolved from node_modules at
-      // runtime); only the package's own modules are bundled.
-      external: [/^node:/, "zod"],
+      // node built-ins + zod + gui-chat-protocol stay external (resolved from
+      // node_modules at runtime); only the package's own modules are bundled.
+      external: [/^node:/, "zod", "gui-chat-protocol"],
       output: { exports: "named" },
     },
     minify: false,

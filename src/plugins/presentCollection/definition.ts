@@ -1,30 +1,13 @@
-import type { ToolDefinition } from "gui-chat-protocol";
 import { META } from "./meta";
 import type { ResolvedRoute } from "../meta-types";
+import { TOOL_DEFINITION, TOOL_NAME } from "@mulmoclaude/collection-plugin";
 
-export const TOOL_NAME = META.toolName;
+// presentCollection's tool schema + executor now live in the shared
+// @mulmoclaude/collection-plugin package (single source of truth, also consumed
+// by MulmoTerminal). This built-in is a thin host adapter: it keeps MulmoClaude's
+// host-specific routing META + endpoint types while sourcing the definition from
+// the package. The plugin codegen scans this file's default ToolDefinition export.
 export type PresentCollectionEndpoints = { readonly [K in keyof typeof META.apiRoutes]: ResolvedRoute };
 
-export const TOOL_DEFINITION: ToolDefinition = {
-  type: "function",
-  name: META.toolName,
-  description:
-    "Display a schema-driven collection inline in the chat as an interactive, editable card. Shows the collection's list of records. Pass `itemId` to open one specific record on mount.",
-  parameters: {
-    type: "object",
-    properties: {
-      collectionSlug: {
-        type: "string",
-        description: "The slug of the collection to display (e.g. 'clients', 'invoices', 'contacts').",
-      },
-      itemId: {
-        type: "string",
-        description: "Optional primary-key value of a single record to open in detail view on mount. Omit to show the full list.",
-      },
-    },
-    required: ["collectionSlug"],
-  },
-  prompt: `After making changes to schema-driven collections, use ${META.toolName} to present either the collection or the item`,
-};
-
+export { TOOL_NAME, TOOL_DEFINITION };
 export default TOOL_DEFINITION;
