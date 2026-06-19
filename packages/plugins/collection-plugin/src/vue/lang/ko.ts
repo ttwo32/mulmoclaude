@@ -102,6 +102,11 @@ const koMessages: CollectionMessages = {
     saving: "저장 중...",
     yes: "예",
   },
+  pluginPresentCollection: {
+    fallbackTitle: "컬렉션",
+    itemLabel: "항목: {id}",
+    listLabel: "모든 레코드",
+  },
 };
 
 export default koMessages;

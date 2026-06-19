@@ -895,11 +895,6 @@ const zhMessages = {
     submit: "提交",
     progress: "已填写 {filled} / {total} 个必填字段",
   },
-  pluginPresentCollection: {
-    fallbackTitle: "集合",
-    itemLabel: "项目：{id}",
-    listLabel: "全部记录",
-  },
   pluginPresentHtml: {
     saveAsPdf: "另存为 PDF(打开打印对话框)",
     pdf: "PDF",

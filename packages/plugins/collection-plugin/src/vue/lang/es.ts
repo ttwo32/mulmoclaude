@@ -102,6 +102,11 @@ const esMessages: CollectionMessages = {
     saving: "Guardando...",
     yes: "Sí",
   },
+  pluginPresentCollection: {
+    fallbackTitle: "Colección",
+    itemLabel: "Elemento: {id}",
+    listLabel: "Todos los registros",
+  },
 };
 
 export default esMessages;

@@ -510,14 +510,18 @@
                       @change="commitInlineEdit(item, String(key), field, ($event.target as HTMLInputElement).checked)"
                     />
 
-                    <!-- Ref router-link badge -->
+                    <!-- Ref link badge (binding-driven nav, router-optional) -->
                     <span v-else-if="field.type === 'ref' && field.to && typeof item[key] === 'string' && item[key]" class="block truncate">
-                      <router-link
-                        :to="{ path: `/collections/${field.to}`, query: { selected: String(item[key]) } }"
+                      <a
+                        :href="cui.recordHref?.(field.to, String(item[key]))"
+                        :tabindex="cui.recordHref?.(field.to, String(item[key])) ? undefined : 0"
+                        role="link"
                         class="text-indigo-600 hover:text-indigo-800 hover:underline font-semibold"
                         :data-testid="`collections-ref-link-${key}-${item[key]}`"
-                        @click.stop
-                        >{{ refDisplay(field.to, String(item[key])) }}</router-link
+                        @click="activateRefLink($event, field.to, String(item[key]), true)"
+                        @keydown.enter="activateRefLink($event, field.to, String(item[key]), true)"
+                        @keydown.space="activateRefLink($event, field.to, String(item[key]), true)"
+                        >{{ refDisplay(field.to, String(item[key])) }}</a
                       >
                     </span>
 
@@ -588,13 +592,13 @@
                     >
 
                     <!-- File: any other workspace path → open in File Explorer. -->
-                    <router-link
+                    <a
                       v-else-if="field.type === 'file' && fileRoutePath(item[key])"
-                      :to="fileRoutePath(item[key]) ?? ''"
+                      :href="fileRoutePath(item[key]) ?? undefined"
                       class="block truncate text-blue-600 hover:text-blue-800 hover:underline font-semibold"
                       :data-testid="`collections-file-link-${key}-${item[collection.schema.primaryKey]}`"
-                      @click.stop
-                      >{{ String(item[key]) }}</router-link
+                      @click="activatePathLink($event, fileRoutePath(item[key]) ?? '', true)"
+                      >{{ String(item[key]) }}</a
                     >
 
                     <span v-else class="block truncate text-slate-600">{{ formatCell(item[key], field.type) }}</span>
@@ -735,6 +739,7 @@ import {
   type BuiltInViewMode,
 } from "../collectionViewMode";
 import { collectionUi } from "../uiContext";
+import { activateRefLink, activatePathLink } from "../refLink";
 import { dateOf, type Ymd } from "../../core/calendarGrid";
 import {
   isSortableField,

@@ -1,11 +1,16 @@
 <template>
   <!-- Found: the whole card links to the embedded record's detail view,
        like a normal `ref` link (record → record hop). -->
-  <router-link
+  <a
     v-if="view.found"
-    :to="{ path: `/collections/${view.targetSlug}`, query: { selected: view.recordId } }"
+    :href="cui.recordHref?.(view.targetSlug, view.recordId)"
+    :tabindex="cui.recordHref?.(view.targetSlug, view.recordId) ? undefined : 0"
+    role="link"
     class="group block relative rounded-xl border border-slate-200 bg-slate-50/50 p-4 pl-5 space-y-3 hover:bg-indigo-50/20 hover:border-indigo-200 transition-all duration-300 shadow-sm"
     :data-testid="`collections-embed-${fieldKey}`"
+    @click="activateRefLink($event, view.targetSlug, view.recordId)"
+    @keydown.enter="activateRefLink($event, view.targetSlug, view.recordId)"
+    @keydown.space="activateRefLink($event, view.targetSlug, view.recordId)"
   >
     <!-- Left Accent Stripe -->
     <div class="absolute left-0 top-0 bottom-0 w-1 bg-indigo-500 rounded-l-xl transition-all duration-300 group-hover:w-1.5 group-hover:bg-indigo-600"></div>
@@ -34,7 +39,7 @@
         </div>
       </div>
     </div>
-  </router-link>
+  </a>
 
   <div v-else class="relative rounded-xl border border-red-100 bg-red-50/30 p-4 pl-5 shadow-sm" :data-testid="`collections-embed-${fieldKey}`">
     <!-- Left Accent Stripe for Error/Missing -->
@@ -46,29 +51,38 @@
         <p class="text-xs text-red-600" :data-testid="`collections-embed-missing-${fieldKey}`">
           {{ t("collectionsView.embedMissing", { collection: view.targetSlug, id: view.recordId }) }}
         </p>
-        <router-link
+        <a
           v-if="view.targetSlug"
-          :to="{ path: `/collections/${view.targetSlug}` }"
+          :href="cui.recordHref?.(view.targetSlug)"
+          :tabindex="cui.recordHref?.(view.targetSlug) ? undefined : 0"
+          role="link"
           class="inline-flex items-center gap-0.5 text-xs text-indigo-600 hover:text-indigo-800 font-semibold mt-2 hover:underline"
+          @click="activateRefLink($event, view.targetSlug)"
+          @keydown.enter="activateRefLink($event, view.targetSlug)"
+          @keydown.space="activateRefLink($event, view.targetSlug)"
         >
           <span>{{ t("collectionsView.embedCreate") }}</span>
           <span class="material-icons text-xs">arrow_forward</span>
-        </router-link>
+        </a>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-// `<router-link>` is a host-provided global (vue-router). MulmoClaude registers
-// it app-wide; a host embedding this card must do the same and own a
-// `/collections/:slug` route. Translation keys resolve through the plugin's own
+// Ref/embed navigation goes through the binding (`navigateToRecord` + the
+// optional `recordHref` for real links on router hosts) rather than a global
+// `<router-link>`, so a router-less host (e.g. MulmoTerminal) can map it to its
+// own view state. Translation keys resolve through the plugin's own
 // `useCollectionI18n()` instance (self-contained); a host only feeds the active
 // locale via `collectionUi().localeTag()`.
 import { useCollectionI18n } from "../lang";
+import { collectionUi } from "../uiContext";
+import { activateRefLink } from "../refLink";
 import type { EmbedView } from "../../core/uiTypes";
 
 defineProps<{ view: EmbedView; fieldKey: string }>();
 
 const { t } = useCollectionI18n();
+const cui = collectionUi();
 </script>

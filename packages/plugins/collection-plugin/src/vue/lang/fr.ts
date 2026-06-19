@@ -103,6 +103,11 @@ const frMessages: CollectionMessages = {
     saving: "Enregistrement...",
     yes: "Oui",
   },
+  pluginPresentCollection: {
+    fallbackTitle: "Collection",
+    itemLabel: "Élément : {id}",
+    listLabel: "Tous les enregistrements",
+  },
 };
 
 export default frMessages;

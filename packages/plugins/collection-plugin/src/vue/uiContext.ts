@@ -142,6 +142,20 @@ export interface CollectionUi {
   gotoIndex: (kind: "collection" | "feed") => void;
   /** Navigate to a specific collection / feed detail page (from an index card). */
   gotoDetail: (kind: "collection" | "feed", slug: string) => void;
+  /** Navigate to a record in another collection — a `ref`/embed hop (the bare
+   *  `<router-link>` the components used to render). A router host pushes
+   *  `/collections/:slug?selected=:id`; a router-less host switches its own view
+   *  state. `recordId` omitted ⇒ the "create it in that collection" target. */
+  navigateToRecord: (targetSlug: string, recordId?: string) => void;
+  /** Optional `href` for the same target, so router hosts keep real links
+   *  (middle-click / accessibility). Router-less hosts return `undefined` and the
+   *  components fall back to a plain click handler. */
+  recordHref?: (targetSlug: string, recordId?: string) => string | undefined;
+  /** Navigate to an arbitrary in-app host path (used by `file`-field values that
+   *  link into the host's File Explorer via `fileRoutePath`). A router host does
+   *  `router.push(path)`; router-less hosts that return null from `fileRoutePath`
+   *  never render the link, so this can be a no-op there. */
+  navigate?: (path: string) => void;
 
   // ── index pages (the browsable /collections + /feeds lists) ──
   /** List skill-backed collections (`apiGet` over `…collections.list`). */
@@ -175,6 +189,12 @@ export interface CollectionUi {
    *  shared with other host views), rendered in the View header via
    *  `<component :is>`. Props: `kind`, `slug`, `title`, `icon`. */
   pinToggle: Component;
+
+  // ── optional host overrides ──
+  /** Where the record modal teleports. Defaults to `"body"`; a Shadow-DOM host
+   *  (e.g. MulmoTerminal) points it at an in-shadow node so the injected styles
+   *  still apply to the teleported modal. */
+  modalTeleportTarget?: () => string | HTMLElement;
 }
 
 let current: CollectionUi | null = null;

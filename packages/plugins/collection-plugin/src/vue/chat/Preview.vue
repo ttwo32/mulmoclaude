@@ -13,11 +13,11 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useI18n } from "vue-i18n";
+import { useCollectionI18n } from "../lang";
 import type { ToolResult } from "gui-chat-protocol";
-import type { PresentCollectionData } from "./types";
+import type { PresentCollectionData } from "../../core/presentCollection";
 
-const { t } = useI18n();
+const { t } = useCollectionI18n();
 
 const props = defineProps<{
   result: ToolResult;

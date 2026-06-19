@@ -109,6 +109,16 @@ configureCollectionUi({
   gotoDetail: (kind, slug) => {
     router.push({ name: kind === "feed" ? PAGE_ROUTES.feeds : PAGE_ROUTES.collections, params: { slug } }).catch(() => {});
   },
+  navigateToRecord: (targetSlug, recordId) => {
+    router.push({ name: PAGE_ROUTES.collections, params: { slug: targetSlug }, query: recordId !== undefined ? { selected: recordId } : {} }).catch(() => {});
+  },
+  recordHref: (targetSlug, recordId) => {
+    const base = `/collections/${encodeURIComponent(targetSlug)}`;
+    return recordId !== undefined ? `${base}?selected=${encodeURIComponent(recordId)}` : base;
+  },
+  navigate: (path) => {
+    router.push(path).catch(() => {});
+  },
 
   // index pages
   listCollections: () => apiGet<CollectionsListResponse>(API_ROUTES.collections.list),

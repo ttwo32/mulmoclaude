@@ -102,6 +102,11 @@ const ptBRMessages: CollectionMessages = {
     saving: "Salvando...",
     yes: "Sim",
   },
+  pluginPresentCollection: {
+    fallbackTitle: "Coleção",
+    itemLabel: "Item: {id}",
+    listLabel: "Todos os registros",
+  },
 };
 
 export default ptBRMessages;

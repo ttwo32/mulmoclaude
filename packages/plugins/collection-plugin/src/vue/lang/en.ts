@@ -100,6 +100,11 @@ const enMessages = {
     saving: "Saving...",
     yes: "Yes",
   },
+  pluginPresentCollection: {
+    fallbackTitle: "Collection",
+    itemLabel: "Item: {id}",
+    listLabel: "All records",
+  },
 };
 
 export default enMessages;
