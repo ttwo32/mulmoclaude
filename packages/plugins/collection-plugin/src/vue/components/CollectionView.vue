@@ -510,14 +510,14 @@
                       @change="commitInlineEdit(item, String(key), field, ($event.target as HTMLInputElement).checked)"
                     />
 
-                    <!-- Ref router-link badge -->
+                    <!-- Ref link badge (binding-driven nav, router-optional) -->
                     <span v-else-if="field.type === 'ref' && field.to && typeof item[key] === 'string' && item[key]" class="block truncate">
-                      <router-link
-                        :to="{ path: `/collections/${field.to}`, query: { selected: String(item[key]) } }"
+                      <a
+                        :href="cui.recordHref?.(field.to, String(item[key]))"
                         class="text-indigo-600 hover:text-indigo-800 hover:underline font-semibold"
                         :data-testid="`collections-ref-link-${key}-${item[key]}`"
-                        @click.stop
-                        >{{ refDisplay(field.to, String(item[key])) }}</router-link
+                        @click="onRefLinkClick($event, field.to, String(item[key]))"
+                        >{{ refDisplay(field.to, String(item[key])) }}</a
                       >
                     </span>
 
@@ -588,13 +588,13 @@
                     >
 
                     <!-- File: any other workspace path → open in File Explorer. -->
-                    <router-link
+                    <a
                       v-else-if="field.type === 'file' && fileRoutePath(item[key])"
-                      :to="fileRoutePath(item[key]) ?? ''"
+                      :href="fileRoutePath(item[key]) ?? undefined"
                       class="block truncate text-blue-600 hover:text-blue-800 hover:underline font-semibold"
                       :data-testid="`collections-file-link-${key}-${item[collection.schema.primaryKey]}`"
-                      @click.stop
-                      >{{ String(item[key]) }}</router-link
+                      @click="onFileLinkClick($event, fileRoutePath(item[key]) ?? '')"
+                      >{{ String(item[key]) }}</a
                     >
 
                     <span v-else class="block truncate text-slate-600">{{ formatCell(item[key], field.type) }}</span>
@@ -803,6 +803,23 @@ const { t, locale } = useCollectionI18n();
 const cui = collectionUi();
 const { confirm: openConfirm, unpin, pinToggle, startChat } = cui;
 const appApi = { startNewChat: startChat };
+
+// Ref/file cell links navigate via the binding (router-optional). Stop row-click
+// propagation on every click; on a plain left-click prevent default + navigate,
+// while a modified click (cmd/ctrl/shift/alt) falls through to the href (new tab)
+// when the host provides one.
+function onRefLinkClick(event: MouseEvent, targetSlug: string, recordId: string): void {
+  event.stopPropagation();
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  cui.navigateToRecord(targetSlug, recordId);
+}
+function onFileLinkClick(event: MouseEvent, path: string): void {
+  event.stopPropagation();
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  event.preventDefault();
+  cui.navigate?.(path);
+}
 
 /** Embedded when a `slug` prop is supplied; standalone (route-driven)
  *  otherwise. Switches the slug/selected source and the open/close

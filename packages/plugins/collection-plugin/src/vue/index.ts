@@ -14,6 +14,11 @@
 // itself (see uiHost.ts). The import here only covers this package's own dev.
 import "../style.css";
 
+import type { ToolPlugin } from "gui-chat-protocol/vue";
+import { TOOL_DEFINITION, executePresentCollection, type PresentCollectionData, type PresentCollectionArgs } from "../core/presentCollection";
+import ChatView from "./chat/View.vue";
+import ChatPreview from "./chat/Preview.vue";
+
 export {
   configureCollectionUi,
   collectionUi,
@@ -49,3 +54,18 @@ export { default as CollectionCustomView } from "./components/CollectionCustomVi
 export { default as CollectionView } from "./components/CollectionView.vue";
 export { default as CollectionsIndexView } from "./components/CollectionsIndexView.vue";
 export { default as FeedsView } from "./components/FeedsView.vue";
+
+// ── presentCollection ToolPlugin (the chat-result registration shape, like
+//    chart/form/markdown). A runtime host (MulmoTerminal) registers `{ plugin }`
+//    directly; a built-in host (MulmoClaude) wraps `viewComponent`/`previewComponent`
+//    in its own scope. ──
+export const plugin: ToolPlugin<PresentCollectionData, PresentCollectionData, PresentCollectionArgs> = {
+  toolDefinition: TOOL_DEFINITION,
+  execute: executePresentCollection,
+  generatingMessage: "Loading collection...",
+  isEnabled: () => true,
+  viewComponent: ChatView,
+  previewComponent: ChatPreview,
+};
+
+export { ChatView as PresentCollectionView, ChatPreview as PresentCollectionPreview };

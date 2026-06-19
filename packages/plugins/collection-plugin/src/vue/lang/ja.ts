@@ -102,6 +102,11 @@ const jaMessages: CollectionMessages = {
     saving: "保存中...",
     yes: "はい",
   },
+  pluginPresentCollection: {
+    fallbackTitle: "コレクション",
+    itemLabel: "項目: {id}",
+    listLabel: "すべてのレコード",
+  },
 };
 
 export default jaMessages;

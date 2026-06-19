@@ -317,12 +317,13 @@
             </template>
 
             <!-- Ref details link -->
-            <router-link
+            <a
               v-else-if="field.type === 'ref' && field.to && typeof detailRecord[key] === 'string' && detailRecord[key]"
-              :to="{ path: `/collections/${field.to}`, query: { selected: String(detailRecord[key]) } }"
+              :href="cui.recordHref?.(field.to, String(detailRecord[key]))"
               class="text-indigo-600 hover:text-indigo-800 font-bold hover:underline"
               :data-testid="`collections-detail-ref-${key}`"
-              >{{ render.refDisplay(field.to, String(detailRecord[key])) }}</router-link
+              @click.exact.prevent="cui.navigateToRecord(field.to, String(detailRecord[key]))"
+              >{{ render.refDisplay(field.to, String(detailRecord[key])) }}</a
             >
 
             <!-- Money format -->
@@ -410,12 +411,13 @@
             >
 
             <!-- File: any other workspace path → open in File Explorer. -->
-            <router-link
+            <a
               v-else-if="field.type === 'file' && render.fileRoutePath(detailRecord[key])"
-              :to="render.fileRoutePath(detailRecord[key]) ?? ''"
+              :href="render.fileRoutePath(detailRecord[key]) ?? undefined"
               class="text-blue-600 hover:text-blue-800 font-semibold hover:underline break-all"
               :data-testid="`collections-detail-file-${key}`"
-              >{{ String(detailRecord[key]) }}</router-link
+              @click.exact.prevent="cui.navigate?.(render.fileRoutePath(detailRecord[key]) ?? '')"
+              >{{ String(detailRecord[key]) }}</a
             >
 
             <!-- Fallback text styling -->
@@ -443,10 +445,11 @@ import type { CollectionRendering } from "../useCollectionRendering";
 import type { CollectionAction, CollectionDetail, CollectionItem, CollectionFieldSpec as FieldSpec } from "../../core/schema";
 import type { EditState, TableRowDraft } from "../../core/uiTypes";
 
-// `resolveImageSrc` lives host-side (it points at the host's raw-file endpoint);
-// the view layer reaches it through the UI binding. Kept under the same local
-// name so the template's `:src` binding is unchanged.
-const resolveImageSrc = collectionUi().imageSrc;
+// The UI binding: ref/file navigation (router-optional) + the host's raw-file
+// `imageSrc`. `resolveImageSrc` keeps its local name so the template's `:src` is
+// unchanged.
+const cui = collectionUi();
+const resolveImageSrc = cui.imageSrc;
 
 const props = defineProps<{
   collection: CollectionDetail;

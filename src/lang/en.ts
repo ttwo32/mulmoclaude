@@ -904,11 +904,6 @@ const enMessages = {
     submit: "Submit",
     progress: "{filled} of {total} required fields completed",
   },
-  pluginPresentCollection: {
-    fallbackTitle: "Collection",
-    itemLabel: "Item: {id}",
-    listLabel: "All records",
-  },
   pluginPresentHtml: {
     saveAsPdf: "Save as PDF (opens print dialog)",
     pdf: "PDF",

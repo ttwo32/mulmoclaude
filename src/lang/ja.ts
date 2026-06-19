@@ -903,11 +903,6 @@ const jaMessages = {
     submit: "送信",
     progress: "必須項目 {total} 件中 {filled} 件入力済み",
   },
-  pluginPresentCollection: {
-    fallbackTitle: "コレクション",
-    itemLabel: "項目: {id}",
-    listLabel: "すべてのレコード",
-  },
   pluginPresentHtml: {
     saveAsPdf: "PDF として保存（印刷ダイアログを開きます）",
     pdf: "PDF",

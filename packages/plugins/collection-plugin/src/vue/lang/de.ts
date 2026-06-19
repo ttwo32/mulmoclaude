@@ -102,6 +102,11 @@ const deMessages: CollectionMessages = {
     saving: "Wird gespeichert...",
     yes: "Ja",
   },
+  pluginPresentCollection: {
+    fallbackTitle: "Sammlung",
+    itemLabel: "Eintrag: {id}",
+    listLabel: "Alle Datensätze",
+  },
 };
 
 export default deMessages;

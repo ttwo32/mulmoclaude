@@ -11,7 +11,7 @@
        Focus is contained while open (Tab/Shift+Tab wrap inside the dialog)
        and restored to the trigger on close, so keyboard users can't reach
        the controls behind the overlay (WCAG focus containment). -->
-  <Teleport to="body">
+  <Teleport :to="teleportTarget">
     <div class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 p-4" data-testid="collections-record-modal" @click.self="emit('close')">
       <div
         ref="dialogEl"
@@ -30,8 +30,14 @@
 
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { collectionUi } from "../uiContext";
 
 const emit = defineEmits<{ close: [] }>();
+
+// Teleport target — `body` by default; a Shadow-DOM host overrides it with an
+// in-shadow node so the modal keeps the injected styles. Stable for the modal's
+// lifetime, so resolve it once.
+const teleportTarget = collectionUi().modalTeleportTarget?.() ?? "body";
 
 const dialogEl = ref<HTMLDivElement | null>(null);
 

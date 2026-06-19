@@ -905,11 +905,6 @@ const koMessages = {
     submit: "제출",
     progress: "필수 항목 {total}개 중 {filled}개 입력됨",
   },
-  pluginPresentCollection: {
-    fallbackTitle: "컬렉션",
-    itemLabel: "항목: {id}",
-    listLabel: "모든 레코드",
-  },
   pluginPresentHtml: {
     saveAsPdf: "PDF 로 저장 (인쇄 대화 상자 열기)",
     pdf: "PDF",

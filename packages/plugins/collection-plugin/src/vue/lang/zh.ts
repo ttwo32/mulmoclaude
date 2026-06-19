@@ -102,6 +102,11 @@ const zhMessages: CollectionMessages = {
     saving: "保存中...",
     yes: "是",
   },
+  pluginPresentCollection: {
+    fallbackTitle: "集合",
+    itemLabel: "项目：{id}",
+    listLabel: "全部记录",
+  },
 };
 
 export default zhMessages;
