@@ -19,7 +19,10 @@ export interface HtmlDispatchContext {
  * throw to a non-2xx, which the View's `dispatch` rejects on.
  */
 export async function executeHtmlDispatch(context: HtmlDispatchContext, args: HtmlDispatchArgs): Promise<{ html: string } | { path: string }> {
-  if (!isHtmlArtifactPath(args.path)) {
+  // `args` is cast from `unknown` in host dispatch wiring, so validate at
+  // runtime before touching FileOps — a malformed payload must surface as a
+  // clean error, not a TypeError / a write of a non-string body.
+  if (typeof args?.path !== "string" || !isHtmlArtifactPath(args.path)) {
     throw new Error("path must be an existing .html file under artifacts/html/");
   }
   const rel = toArtifactsRelative(args.path);
@@ -29,6 +32,9 @@ export async function executeHtmlDispatch(context: HtmlDispatchContext, args: Ht
       return { html };
     }
     case "saveHtml": {
+      if (typeof args.html !== "string") {
+        throw new Error("saveHtml requires `html` as a string");
+      }
       await context.files.artifacts.write(rel, args.html);
       return { path: args.path };
     }

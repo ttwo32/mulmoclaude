@@ -84,6 +84,10 @@ export function htmlArtifactPreviewUrl(filePath: string | null): string | null {
   if (!lower.endsWith(".html") && !lower.endsWith(".htm")) return null;
   const prefix = `${ARTIFACTS_ROOT}/${HTML_DIR}/`;
   if (!filePath.startsWith(prefix)) return null;
+  // Reject traversal / non-canonical segments so the derived URL can never point
+  // the iframe outside artifacts/html/ — defence-in-depth even though `filePath`
+  // is normally produced by `htmlArtifactPath` / validated by `presentExisting`.
+  if (filePath.split("/").some((seg) => seg === "" || seg === "." || seg === "..")) return null;
   const rest = filePath.slice(prefix.length);
   if (rest.length === 0) return null;
   return `/${ARTIFACTS_ROOT}/${HTML_DIR}/${rest.split("/").map(encodeURIComponent).join("/")}`;

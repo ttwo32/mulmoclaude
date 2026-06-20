@@ -16,8 +16,9 @@ export interface PresentHtmlData {
    *  (`<img src="../../../images/…">`) resolve against the file's real URL.
    *  The HOST injects this (it knows how it serves `artifacts/html/…` — e.g.
    *  MulmoClaude's `/artifacts/html/…` static mount); the package never
-   *  hardcodes a host path. Absent ⇒ the View shows an empty frame until the
-   *  page is re-presented. */
+   *  hardcodes a host path. Absent ⇒ the View derives the default
+   *  `/artifacts/html/…` URL from `filePath` (`htmlArtifactPreviewUrl`), so
+   *  results stored before this field existed still render. */
   previewUrl?: string;
 }
 
