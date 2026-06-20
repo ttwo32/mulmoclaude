@@ -2,7 +2,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { executeHtml, executeHtmlUpdate, type HtmlExecuteContext } from "../src/core/plugin";
-import { htmlArtifactPath, isHtmlArtifactPath, toArtifactsRelative, slugify } from "../src/core/paths";
+import { executeHtmlDispatch, type HtmlDispatchContext } from "../src/core/dispatch";
+import { htmlArtifactPath, htmlArtifactPreviewUrl, isHtmlArtifactPath, toArtifactsRelative, slugify } from "../src/core/paths";
 
 // Minimal in-memory FileOps stand-in. Only the methods the html core touches
 // (`write`, `exists`) are implemented; the rest throw so an accidental new
@@ -117,6 +118,58 @@ describe("executeHtml", () => {
     const { context } = makeFakeArtifacts({ "../etc/passwd": "x" });
     const result = await executeHtml(context, { path: "artifacts/secrets/x.html" });
     assert.match(result.message, /artifacts\/html/);
+  });
+});
+
+describe("htmlArtifactPreviewUrl", () => {
+  it("derives the served URL from a clean filePath (per-segment encoded)", () => {
+    assert.equal(htmlArtifactPreviewUrl("artifacts/html/2026/06/the cell.html"), "/artifacts/html/2026/06/the%20cell.html");
+  });
+  it("returns null for non-html, wrong root, and traversal segments", () => {
+    assert.equal(htmlArtifactPreviewUrl("artifacts/html/x.json"), null);
+    assert.equal(htmlArtifactPreviewUrl("artifacts/images/x.html"), null);
+    assert.equal(htmlArtifactPreviewUrl("artifacts/html/../secret.html"), null);
+    assert.equal(htmlArtifactPreviewUrl("artifacts/html//x.html"), null);
+    assert.equal(htmlArtifactPreviewUrl(null), null);
+  });
+});
+
+describe("executeHtmlDispatch", () => {
+  function dispatchCtx(seed: Record<string, string> = {}) {
+    const store = new Map<string, string>(Object.entries(seed));
+    const artifacts = {
+      async read(rel: string) {
+        const hit = store.get(rel);
+        if (hit === undefined) throw new Error(`ENOENT ${rel}`);
+        return hit;
+      },
+      async write(rel: string, content: string | Uint8Array) {
+        store.set(rel, typeof content === "string" ? content : Buffer.from(content).toString("utf8"));
+      },
+    };
+    return { store, context: { files: { artifacts } } as unknown as HtmlDispatchContext };
+  }
+
+  it("loadHtml reads the page bytes", async () => {
+    const { context } = dispatchCtx({ "html/2026/06/p.html": "<x>" });
+    assert.deepEqual(await executeHtmlDispatch(context, { kind: "loadHtml", path: "artifacts/html/2026/06/p.html" }), { html: "<x>" });
+  });
+
+  it("saveHtml writes and echoes the path", async () => {
+    const { store, context } = dispatchCtx();
+    const result = await executeHtmlDispatch(context, { kind: "saveHtml", path: "artifacts/html/2026/06/p.html", html: "<y>" });
+    assert.deepEqual(result, { path: "artifacts/html/2026/06/p.html" });
+    assert.equal(store.get("html/2026/06/p.html"), "<y>");
+  });
+
+  it("rejects a bad path and a non-string saveHtml body", async () => {
+    const { context } = dispatchCtx();
+    await assert.rejects(() => executeHtmlDispatch(context, { kind: "loadHtml", path: "artifacts/evil/p.html" }), /artifacts\/html/);
+    await assert.rejects(() => executeHtmlDispatch(context, { kind: "loadHtml", path: 42 as unknown as string }), /artifacts\/html/);
+    await assert.rejects(
+      () => executeHtmlDispatch(context, { kind: "saveHtml", path: "artifacts/html/2026/06/p.html", html: 5 as unknown as string }),
+      /html.*string/,
+    );
   });
 });
 

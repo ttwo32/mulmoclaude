@@ -68,3 +68,27 @@ export function isHtmlArtifactPath(value: string): boolean {
 export function toArtifactsRelative(workspaceRelPath: string): string {
   return workspaceRelPath.startsWith(`${ARTIFACTS_ROOT}/`) ? workspaceRelPath.slice(ARTIFACTS_ROOT.length + 1) : workspaceRelPath;
 }
+
+/**
+ * Default browser URL for an HTML artifact, derived purely from its
+ * workspace-relative `filePath` — `artifacts/html/2026/04/p.html` →
+ * `/artifacts/html/2026/04/p.html` (per-segment URL-encoded). The View uses
+ * this when the host hasn't injected a `previewUrl`, so already-presented
+ * results (whose stored data predates that field) still render. A host that
+ * serves `artifacts/html/…` at a different URL injects `previewUrl` to override.
+ * Returns null for non-HTML / out-of-tree paths.
+ */
+export function htmlArtifactPreviewUrl(filePath: string | null): string | null {
+  if (!filePath) return null;
+  const lower = filePath.toLowerCase();
+  if (!lower.endsWith(".html") && !lower.endsWith(".htm")) return null;
+  const prefix = `${ARTIFACTS_ROOT}/${HTML_DIR}/`;
+  if (!filePath.startsWith(prefix)) return null;
+  // Reject traversal / non-canonical segments so the derived URL can never point
+  // the iframe outside artifacts/html/ — defence-in-depth even though `filePath`
+  // is normally produced by `htmlArtifactPath` / validated by `presentExisting`.
+  if (filePath.split("/").some((seg) => seg === "" || seg === "." || seg === "..")) return null;
+  const rest = filePath.slice(prefix.length);
+  if (rest.length === 0) return null;
+  return `/${ARTIFACTS_ROOT}/${HTML_DIR}/${rest.split("/").map(encodeURIComponent).join("/")}`;
+}

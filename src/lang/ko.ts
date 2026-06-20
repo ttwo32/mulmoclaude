@@ -905,18 +905,6 @@ const koMessages = {
     submit: "제출",
     progress: "필수 항목 {total}개 중 {filled}개 입력됨",
   },
-  pluginPresentHtml: {
-    saveAsPdf: "PDF 로 저장 (인쇄 대화 상자 열기)",
-    pdf: "PDF",
-    untitled: "HTML 페이지",
-    editSource: "HTML 소스 편집",
-    cancel: "취소",
-    applyChanges: "변경 사항 적용",
-    saving: "저장 중...",
-    saveError: "⚠ 저장 실패: {error}",
-    loadingSource: "소스를 불러오는 중…",
-    sourceError: "소스 로드 실패: {error}",
-  },
   pluginPresentSvg: {
     saveAsPng: "PNG 로 다운로드",
     png: "PNG",

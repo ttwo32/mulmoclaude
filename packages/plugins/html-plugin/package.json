@@ -1,7 +1,7 @@
 {
   "name": "@mulmoclaude/html-plugin",
-  "version": "0.1.0",
-  "description": "presentHtml — self-contained HTML page tool for MulmoClaude and MulmoTerminal. Server core (validation + artifacts persistence) shared via the generic gui-chat-protocol files.artifacts capability. Vue View lands in a follow-up (./vue).",
+  "version": "0.2.2",
+  "description": "presentHtml — self-contained HTML page tool for MulmoClaude and MulmoTerminal. Server core (validation + artifacts persistence via the generic gui-chat-protocol files.artifacts capability) on `.`, Vue View/Preview on `./vue`.",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -12,7 +12,14 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs",
       "default": "./dist/index.js"
-    }
+    },
+    "./vue": {
+      "types": "./dist/vue/index.d.ts",
+      "import": "./dist/vue.js",
+      "require": "./dist/vue.cjs",
+      "default": "./dist/vue.js"
+    },
+    "./style.css": "./dist/style.css"
   },
   "files": [
     "dist"
@@ -21,20 +28,34 @@
     "access": "public"
   },
   "scripts": {
-    "build": "vite build",
-    "typecheck": "tsc --noEmit",
+    "build": "vite build && vue-tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "prepack": "vite build && vue-tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint .",
     "test": "tsx --test test/test_*.ts"
   },
   "peerDependencies": {
-    "gui-chat-protocol": "^0.4.0"
+    "gui-chat-protocol": "^0.4.0",
+    "vue": "^3.5.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^25.9.3",
+    "@typescript-eslint/eslint-plugin": "^8.58.0",
+    "@typescript-eslint/parser": "^8.58.0",
+    "@vitejs/plugin-vue": "^6.0.5",
+    "eslint": "^10.1.0",
+    "eslint-plugin-vue": "^10.8.0",
+    "globals": "^17.4.0",
     "gui-chat-protocol": "^0.4.0",
+    "tailwindcss": "^4.2.2",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3",
+    "typescript": "~6.0.2",
     "vite": "^8.0.13",
-    "vite-plugin-dts": "^5.0.0"
+    "vue": "^3.5.31",
+    "vue-eslint-parser": "^10.4.0",
+    "vue-tsc": "^3.2.6"
   },
   "license": "MIT"
 }

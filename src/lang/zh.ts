@@ -895,18 +895,6 @@ const zhMessages = {
     submit: "提交",
     progress: "已填写 {filled} / {total} 个必填字段",
   },
-  pluginPresentHtml: {
-    saveAsPdf: "另存为 PDF(打开打印对话框)",
-    pdf: "PDF",
-    untitled: "HTML 页面",
-    editSource: "编辑 HTML 源代码",
-    cancel: "取消",
-    applyChanges: "应用更改",
-    saving: "保存中...",
-    saveError: "⚠ 保存失败：{error}",
-    loadingSource: "正在加载源代码…",
-    sourceError: "加载源代码失败：{error}",
-  },
   pluginPresentSvg: {
     saveAsPng: "下载为 PNG",
     png: "PNG",

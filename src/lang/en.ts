@@ -904,18 +904,6 @@ const enMessages = {
     submit: "Submit",
     progress: "{filled} of {total} required fields completed",
   },
-  pluginPresentHtml: {
-    saveAsPdf: "Save as PDF (opens print dialog)",
-    pdf: "PDF",
-    untitled: "HTML Page",
-    editSource: "Edit HTML Source",
-    cancel: "Cancel",
-    applyChanges: "Apply Changes",
-    saving: "Saving...",
-    saveError: "⚠ Save failed: {error}",
-    loadingSource: "Loading source…",
-    sourceError: "Failed to load source: {error}",
-  },
   pluginPresentSvg: {
     saveAsPng: "Download as PNG",
     png: "PNG",

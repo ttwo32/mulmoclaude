@@ -15,6 +15,7 @@ import path from "node:path";
 import type { IPubSub } from "./pub-sub/index.js";
 import { fileChannel, toPosixWorkspacePath, type FileChannelPayload } from "../../src/config/pubsubChannels.js";
 import { isMarkdownPath } from "../utils/files/markdown-store.js";
+import { isHtmlPath } from "../utils/files/html-store.js";
 import { workspacePath } from "../workspace/workspace.js";
 import { maybeRegenerateTopicIndex, TOPIC_INDEX_RELATIVE_PATH } from "../workspace/memory/topic-index-hook.js";
 import { log } from "../system/logger/index.js";
@@ -74,6 +75,21 @@ export async function publishFileChange(relativePath: string): Promise<void> {
       pubsub.publish(`plugin:markdown:file:${posixPath}`, payload);
     } catch (err) {
       log.warn("file-change", "markdown plugin forward failed; the markdown view will miss this event", {
+        pathPreview: posixPath,
+        error: errorMessage(err),
+      });
+    }
+  }
+  // Same bridge for the extracted @mulmoclaude/html-plugin View (phase 2): it
+  // subscribes via runtime.pubsub ("file:<path>" → "plugin:html:file:<path>"),
+  // so forwarding here gives the source editor + iframe the same any-source
+  // live-refresh the in-tree useFileChange had. Channel must match
+  // `pluginChannelName("html", …)`.
+  if (isHtmlPath(posixPath)) {
+    try {
+      pubsub.publish(`plugin:html:file:${posixPath}`, payload);
+    } catch (err) {
+      log.warn("file-change", "html plugin forward failed; the html view will miss this event", {
         pathPreview: posixPath,
         error: errorMessage(err),
       });

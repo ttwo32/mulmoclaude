@@ -1,43 +1,39 @@
 <template>
   <div class="html-container">
     <div class="px-4 py-2 border-b border-gray-100 shrink-0 flex items-center justify-between">
-      <span class="text-sm font-medium text-gray-700 truncate">{{ title ?? t("pluginPresentHtml.untitled") }}</span>
-      <button
-        class="px-2 py-1 text-xs rounded border border-gray-300 text-gray-500 hover:bg-gray-50 shrink-0"
-        :title="t('pluginPresentHtml.saveAsPdf')"
-        @click="printToPdf"
-      >
+      <span class="text-sm font-medium text-gray-700 truncate">{{ title ?? t.untitled }}</span>
+      <button class="px-2 py-1 text-xs rounded border border-gray-300 text-gray-500 hover:bg-gray-50 shrink-0" :title="t.saveAsPdf" @click="printToPdf">
         <span class="material-icons text-sm align-middle">picture_as_pdf</span>
-        {{ t("pluginPresentHtml.pdf") }}
+        {{ t.pdf }}
       </button>
     </div>
     <div class="iframe-wrapper">
-      <iframe v-if="previewUrl" data-testid="present-html-iframe" :src="previewUrl" sandbox="allow-scripts" class="w-full h-full border-0" />
+      <iframe v-if="frameSrc" data-testid="present-html-iframe" :src="frameSrc" sandbox="allow-scripts" class="w-full h-full border-0" />
       <div v-else class="h-full flex items-center justify-center text-sm text-gray-500">
-        {{ t("pluginPresentHtml.untitled") }}
+        {{ t.untitled }}
       </div>
     </div>
 
     <div class="bottom-bar-wrapper">
       <details ref="sourceDetails" class="html-source" @toggle="onDetailsToggle">
-        <summary>{{ t("pluginPresentHtml.editSource") }}</summary>
+        <summary>{{ t.editSource }}</summary>
         <div v-if="sourceError" class="load-error-banner" role="alert">
-          {{ t("pluginPresentHtml.sourceError", { error: sourceError }) }}
+          {{ t.sourceError(sourceError) }}
         </div>
         <textarea
           v-model="editableHtml"
           :disabled="sourceLoading"
-          :placeholder="sourceLoading ? t('pluginPresentHtml.loadingSource') : ''"
+          :placeholder="sourceLoading ? t.loadingSource : ''"
           spellcheck="false"
           class="html-editor"
         ></textarea>
         <div class="editor-actions">
           <button class="apply-btn" :disabled="!hasChanges || saving || sourceLoading" @click="applyHtml">
-            {{ saving ? t("pluginPresentHtml.saving") : t("pluginPresentHtml.applyChanges") }}
+            {{ saving ? t.saving : t.applyChanges }}
           </button>
-          <button class="cancel-btn" @click="cancelEdit">{{ t("pluginPresentHtml.cancel") }}</button>
+          <button class="cancel-btn" @click="cancelEdit">{{ t.cancel }}</button>
         </div>
-        <p v-if="saveError" class="save-error" role="alert">{{ t("pluginPresentHtml.saveError", { error: saveError }) }}</p>
+        <p v-if="saveError" class="save-error" role="alert">{{ t.saveError(saveError) }}</p>
       </details>
     </div>
   </div>
@@ -45,25 +41,24 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
-import type { ToolResultComplete } from "gui-chat-protocol/vue";
-import type { PresentHtmlData } from "./index";
-import { htmlPreviewUrlFor } from "../../composables/useContentDisplay";
-import { apiFetchRaw, apiPut } from "../../utils/api";
-import { pluginEndpoints } from "../api";
-import type { HtmlEndpoints } from "./definition";
-import { errorMessage } from "../../utils/errors";
-import { buildPrintCspContent } from "../../utils/html/previewCsp";
-import { useFileChange } from "../../composables/useFileChange";
+import { useRuntime, type ToolResultComplete } from "gui-chat-protocol/vue";
+import type { PresentHtmlData } from "../core/types";
+import type { HtmlDispatchResult } from "../core/contract";
+import { htmlArtifactPreviewUrl } from "../core/paths";
+import { useT } from "../lang";
+import { buildPrintCspContent } from "./previewCsp";
+import { useFileWatch } from "./useFileWatch";
 
-const endpoints = pluginEndpoints<HtmlEndpoints>("html");
-const filesEndpoints = pluginEndpoints<{ raw: string }>("files");
-
-const { t } = useI18n();
+const runtime = useRuntime();
+const t = useT();
 
 const props = defineProps<{
   selectedResult: ToolResultComplete<PresentHtmlData>;
 }>();
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 const PRINT_STYLE_CSS = `@media print {
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -71,15 +66,11 @@ const PRINT_STYLE_CSS = `@media print {
   @page { margin: 10mm; }
 }`;
 
-// Inline auto-print script tags injected into the hidden print iframe.
-// Both opening and closing tags are built by concatenation so the raw
-// open- and close-script byte sequences never appear verbatim in this
-// source file — otherwise the Vue SFC HTML parser would either misread
-// an inner opening tag as a new block, or terminate the surrounding
-// setup block early.
-// eslint-disable-next-line no-useless-concat -- prevent the opening-script byte sequence from appearing in source; see comment above
+// Inline auto-print script tags injected into the hidden print iframe. Both
+// tags are built by concatenation so the raw open/close-script byte sequences
+// never appear verbatim in this SFC source (the Vue SFC parser would otherwise
+// misread them).
 const PRINT_SCRIPT_OPEN_TAG = `<` + `script>`;
-// eslint-disable-next-line no-useless-concat -- prevent the closing-script byte sequence from appearing in source; see comment above
 const PRINT_SCRIPT_CLOSE_TAG = `<` + `/script>`;
 const PRINT_AUTO_SCRIPT = `${PRINT_SCRIPT_OPEN_TAG}addEventListener("load", () => setTimeout(() => window.print(), 100));${PRINT_SCRIPT_CLOSE_TAG}`;
 
@@ -87,20 +78,28 @@ const data = computed(() => props.selectedResult.data);
 const title = computed(() => data.value?.title);
 const filePath = computed(() => data.value?.filePath ?? null);
 
-// `version` bumps to the post-write `mtimeMs` whenever any tab (or
-// browser, or the agent loop) writes this file. Wired to the iframe
-// `:src` as `?v=<mtime>` so the browser cache-busts the stale page.
-const { version: previewVersion } = useFileChange(filePath);
-const previewUrl = computed(() => {
-  const base = htmlPreviewUrlFor(filePath.value);
+// `version` bumps to the post-write `mtimeMs` whenever any tab / the agent loop
+// rewrites this file. Wired to the iframe `:src` as `?v=<mtime>` so the browser
+// cache-busts the stale page.
+const { version: previewVersion } = useFileWatch(filePath);
+
+// Prefer the host-injected served URL (`data.previewUrl`) when present — a host
+// can serve `artifacts/html/…` at a custom path. Otherwise derive the default
+// `/artifacts/html/…` URL from `filePath` so already-presented results (whose
+// stored data predates `previewUrl`) still render. Relative asset refs resolve
+// against this real URL. Single source for BOTH the iframe render and the print
+// base href, so they stay in lockstep for pre-`previewUrl` artifacts.
+const previewBaseUrl = computed(() => data.value?.previewUrl ?? htmlArtifactPreviewUrl(filePath.value));
+
+const frameSrc = computed(() => {
+  const base = previewBaseUrl.value;
   if (!base) return null;
   return previewVersion.value > 0 ? `${base}?v=${previewVersion.value}` : base;
 });
 
 const sourceDetails = ref<HTMLDetailsElement>();
-const editing = ref(false);
-// Keyed by filePath so a remounted/reused View instance with a
-// different selectedResult does not return stale source.
+// Keyed by filePath so a remounted/reused View instance with a different
+// selectedResult does not return stale source.
 const sourceCache = ref<Record<string, string>>({});
 const sourceLoading = ref(false);
 const sourceError = ref<string | null>(null);
@@ -119,21 +118,17 @@ async function fetchSource(): Promise<string | null> {
   sourceLoading.value = true;
   sourceError.value = null;
   try {
-    const resp = await apiFetchRaw(filesEndpoints.raw, { query: { path } });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const text = await resp.text();
-    // Stale-response guard: only commit the result if the user has
-    // not navigated to a different file in the meantime.
+    const { html } = await runtime.dispatch<HtmlDispatchResult["loadHtml"]>({ kind: "loadHtml", path });
+    // Stale-response guard: only commit if the user hasn't navigated away.
     if (filePath.value === path) {
-      sourceCache.value = { ...sourceCache.value, [path]: text };
-      // Seed the editor with the fresh source if the user hasn't
-      // started typing — avoids clobbering an in-progress edit if a
-      // refetch races with user input.
+      sourceCache.value = { ...sourceCache.value, [path]: html };
+      // Seed the editor only if the user hasn't started typing — avoids
+      // clobbering an in-progress edit if a refetch races with input.
       if (editableHtml.value === "") {
-        editableHtml.value = text;
+        editableHtml.value = html;
       }
     }
-    return text;
+    return html;
   } catch (err) {
     if (filePath.value === path) {
       sourceError.value = errorMessage(err);
@@ -148,7 +143,6 @@ async function fetchSource(): Promise<string | null> {
 
 function onDetailsToggle(event: Event) {
   const { open } = event.target as HTMLDetailsElement;
-  editing.value = open;
   if (open) {
     saveError.value = null;
     editableHtml.value = cachedSource.value ?? "";
@@ -170,26 +164,23 @@ async function applyHtml() {
   if (!path) return;
   saveError.value = null;
   saving.value = true;
-  const result = await apiPut<{ path: string }>(endpoints.update.url, {
-    relativePath: path,
-    html: editableHtml.value,
-  });
-  saving.value = false;
-  if (!result.ok) {
-    saveError.value = result.error;
-    return;
+  try {
+    await runtime.dispatch<HtmlDispatchResult["saveHtml"]>({ kind: "saveHtml", path, html: editableHtml.value });
+    // Commit the just-saved text as canonical so the editor doesn't refetch
+    // over its own write when the file-change event arrives. Iframe cache-bust
+    // happens via `previewVersion` when the event lands.
+    sourceCache.value = { ...sourceCache.value, [path]: editableHtml.value };
+    if (sourceDetails.value) sourceDetails.value.open = false;
+  } catch (err) {
+    saveError.value = errorMessage(err);
+  } finally {
+    saving.value = false;
   }
-  // Commit the just-saved text as the canonical source so the editor
-  // doesn't refetch over its own write when the file-change event
-  // arrives. Iframe cache-bust happens via `previewVersion` when the
-  // event lands.
-  sourceCache.value = { ...sourceCache.value, [path]: editableHtml.value };
-  if (sourceDetails.value) sourceDetails.value.open = false;
 }
 
-// When the user navigates to a different result, reset the editor so
-// stale text from the previous file doesn't carry over. `previewVersion`
-// resets inside the composable when `filePath` flips.
+// Reset the editor when the user navigates to a different result so stale text
+// doesn't carry over. `previewVersion` resets inside the composable when
+// `filePath` flips.
 watch(filePath, () => {
   if (sourceDetails.value) sourceDetails.value.open = false;
   editableHtml.value = "";
@@ -197,21 +188,15 @@ watch(filePath, () => {
   sourceError.value = null;
 });
 
-// Remote write detected: invalidate the editor's cached source so the
-// next read goes back to disk. If the edit panel is open AND the user
-// has no pending changes, silently refresh `editableHtml` to the new
-// on-disk text. If they have unsaved edits, leave `editableHtml` alone
-// — `cachedSource` becomes the newly-fetched text, `hasChanges` stays
-// true, and pressing Apply overwrites the remote change. (Surfacing a
-// "remote changed" banner is a follow-up — see
-// plans/done/feat-file-change-pubsub.md.)
+// Remote write detected: invalidate the editor's cached source so the next read
+// goes back to disk. If the edit panel is open AND the user has no pending
+// changes, silently refresh `editableHtml`; otherwise leave their edits alone.
 watch(previewVersion, async (current, previous) => {
   if (current === 0 || current === previous) return;
   const path = filePath.value;
   if (!path) return;
-  // Snapshot dirtiness BEFORE invalidating the cache — `hasChanges`
-  // depends on `cachedSource`, which flips to `null` the moment we
-  // delete the entry.
+  // Snapshot dirtiness BEFORE invalidating the cache — `hasChanges` depends on
+  // `cachedSource`, which flips to null the moment we delete the entry.
   const wasDirty = hasChanges.value;
   const next = { ...sourceCache.value };
   Reflect.deleteProperty(next, path);
@@ -224,16 +209,11 @@ watch(previewVersion, async (current, previous) => {
   }
 });
 
-// Build the print-mode HTML by injecting four pieces into <head>:
-// (1) `<base href>` so relative refs in the LLM HTML
-// (`../../../images/...`) resolve against the file's real URL.
-// (2) `<meta CSP>` with `img-src ${origin}` — the print iframe is
-// srcdoc, so its origin is opaque and `'self'` would not match.
-// (3) PRINT_STYLE_CSS for color-exact print and tight margins.
-// (4) Auto-print script — fires `window.print()` once load completes.
-// Match `</head>` case-insensitively with optional whitespace before
-// the `>` — same convention as `wrapHtmlWithPreviewCsp` so uppercase
-// or weird whitespace LLM HTML still gets the injection.
+// Build the print-mode HTML by injecting four pieces into <head>: a `<base href>`
+// so relative refs resolve against the file's real URL, a `<meta CSP>` with the
+// explicit origin (srcdoc is opaque-origin so `'self'` wouldn't match), the
+// print stylesheet, and the auto-print script. Match `</head>`
+// case-insensitively (same convention as the preview CSP wrapper).
 const HEAD_CLOSE_RE = /<\/head\s*>/i;
 
 function buildPrintableHtml(sourceHtml: string, baseHrefDir: string): string {
@@ -249,23 +229,22 @@ function buildPrintableHtml(sourceHtml: string, baseHrefDir: string): string {
   return `<head>${injection}</head>${sourceHtml}`;
 }
 
-function printableBaseHrefDir(filePathValue: string): string | null {
-  const previewPath = htmlPreviewUrlFor(filePathValue);
-  if (!previewPath) return null;
-  // Strip filename: `/artifacts/html/2026/04/page.html` -> `/artifacts/html/2026/04/`
-  const lastSlash = previewPath.lastIndexOf("/");
-  return lastSlash >= 0 ? previewPath.slice(0, lastSlash + 1) : previewPath;
+// Strip the filename from the host-served preview URL:
+// `/artifacts/html/2026/04/page.html` -> `/artifacts/html/2026/04/`
+function printableBaseHrefDir(previewUrlValue: string): string {
+  const lastSlash = previewUrlValue.lastIndexOf("/");
+  return lastSlash >= 0 ? previewUrlValue.slice(0, lastSlash + 1) : previewUrlValue;
 }
 
 async function printToPdf() {
-  if (!filePath.value) return;
-  const baseHrefDir = printableBaseHrefDir(filePath.value);
-  if (!baseHrefDir) return;
+  // Same fallback source as `frameSrc` — print must work for legacy results
+  // that have no persisted `previewUrl`, exactly like the iframe render.
+  const url = previewBaseUrl.value;
+  if (!url) return;
+  const baseHrefDir = printableBaseHrefDir(url);
   const sourceHtml = await fetchSource();
   if (sourceHtml === null) {
-    // Reuse the sourceError banner so the user sees the failure
-    // without shipping a second error UI. Open the edit panel so the
-    // banner is visible.
+    // Reuse the sourceError banner so the failure is visible; open the panel.
     if (sourceDetails.value) sourceDetails.value.open = true;
     return;
   }
@@ -275,9 +254,8 @@ async function printToPdf() {
   printFrame.sandbox.value = "allow-scripts allow-modals";
   printFrame.srcdoc = printable;
   document.body.appendChild(printFrame);
-  // Browsers keep the iframe alive until the user dismisses the
-  // print dialog. Schedule a long-tail cleanup so the frame does not
-  // leak even if the dialog stays open.
+  // Browsers keep the iframe alive until the print dialog is dismissed.
+  // Schedule a long-tail cleanup so the frame doesn't leak.
   setTimeout(() => printFrame.remove(), 60_000);
 }
 </script>

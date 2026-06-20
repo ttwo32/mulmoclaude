@@ -1,4 +1,5 @@
-import type { FileOps, ToolResult } from "gui-chat-protocol";
+import type { FileOps, ToolPluginCore, ToolResult } from "gui-chat-protocol";
+import { TOOL_DEFINITION } from "./definition";
 import { htmlArtifactPath, isHtmlArtifactPath, toArtifactsRelative } from "./paths";
 import type { HtmlArgs, PresentHtmlData, UpdateHtmlArgs } from "./types";
 
@@ -100,3 +101,15 @@ export async function executeHtmlUpdate(context: HtmlExecuteContext, args: Updat
   await context.files.artifacts.write(toArtifactsRelative(args.relativePath), args.html);
   return { ok: true, filePath: args.relativePath };
 }
+
+/** Non-Vue plugin core for runtime hosts (e.g. MulmoTerminal) that register the
+ *  package's `./vue` plugin directly. MulmoClaude consumes only View/Preview +
+ *  TOOL_DEFINITION and builds its own ToolPlugin, so it doesn't use this. The
+ *  create path runs server-side against the generic `{ files: { artifacts } }`
+ *  context the host supplies on `ToolContext`. */
+export const pluginCore: ToolPluginCore<PresentHtmlData, PresentHtmlData, HtmlArgs> = {
+  toolDefinition: TOOL_DEFINITION,
+  execute: executeHtml as unknown as ToolPluginCore<PresentHtmlData, PresentHtmlData, HtmlArgs>["execute"],
+  generatingMessage: "Presenting HTML page…",
+  isEnabled: () => true,
+};

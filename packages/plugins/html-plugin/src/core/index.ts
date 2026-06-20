@@ -1,4 +1,6 @@
 export type { HtmlArgs, PresentHtmlData, UpdateHtmlArgs } from "./types";
 export { TOOL_NAME, TOOL_DEFINITION } from "./definition";
-export { executeHtml, executeHtmlUpdate, type HtmlExecuteContext, type UpdateHtmlResult } from "./plugin";
-export { htmlArtifactPath, isHtmlArtifactPath, toArtifactsRelative, slugify, type HtmlPath } from "./paths";
+export { executeHtml, executeHtmlUpdate, pluginCore, type HtmlExecuteContext, type UpdateHtmlResult } from "./plugin";
+export { executeHtmlDispatch, type HtmlDispatchContext } from "./dispatch";
+export type { HtmlDispatchArgs, HtmlDispatchResult, LoadHtmlArgs, SaveHtmlArgs } from "./contract";
+export { htmlArtifactPath, htmlArtifactPreviewUrl, isHtmlArtifactPath, toArtifactsRelative, slugify, type HtmlPath } from "./paths";

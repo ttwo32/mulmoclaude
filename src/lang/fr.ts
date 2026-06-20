@@ -911,18 +911,6 @@ const frMessages = {
     submit: "Envoyer",
     progress: "{filled} sur {total} champs obligatoires remplis",
   },
-  pluginPresentHtml: {
-    saveAsPdf: "Enregistrer en PDF (ouvre la boîte de dialogue d'impression)",
-    pdf: "PDF",
-    untitled: "Page HTML",
-    editSource: "Modifier la source HTML",
-    cancel: "Annuler",
-    applyChanges: "Appliquer les modifications",
-    saving: "Enregistrement...",
-    saveError: "⚠ Échec de l'enregistrement : {error}",
-    loadingSource: "Chargement de la source…",
-    sourceError: "Échec du chargement de la source : {error}",
-  },
   pluginPresentSvg: {
     saveAsPng: "Télécharger en PNG",
     png: "PNG",

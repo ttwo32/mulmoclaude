@@ -908,18 +908,6 @@ const ptBRMessages = {
     submit: "Enviar",
     progress: "{filled} de {total} campos obrigatórios preenchidos",
   },
-  pluginPresentHtml: {
-    saveAsPdf: "Salvar como PDF (abre o diálogo de impressão)",
-    pdf: "PDF",
-    untitled: "Página HTML",
-    editSource: "Editar fonte HTML",
-    cancel: "Cancelar",
-    applyChanges: "Aplicar alterações",
-    saving: "Salvando...",
-    saveError: "⚠ Falha ao salvar: {error}",
-    loadingSource: "Carregando fonte…",
-    sourceError: "Falha ao carregar a fonte: {error}",
-  },
   pluginPresentSvg: {
     saveAsPng: "Baixar como PNG",
     png: "PNG",

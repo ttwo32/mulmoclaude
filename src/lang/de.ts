@@ -921,18 +921,6 @@ const deMessages = {
     submit: "Senden",
     progress: "{filled} von {total} Pflichtfeldern ausgefüllt",
   },
-  pluginPresentHtml: {
-    saveAsPdf: "Als PDF speichern (öffnet Druckdialog)",
-    pdf: "PDF",
-    untitled: "HTML-Seite",
-    editSource: "HTML-Quelltext bearbeiten",
-    cancel: "Abbrechen",
-    applyChanges: "Änderungen anwenden",
-    saving: "Wird gespeichert...",
-    saveError: "⚠ Speichern fehlgeschlagen: {error}",
-    loadingSource: "Quelltext wird geladen…",
-    sourceError: "Quelltext konnte nicht geladen werden: {error}",
-  },
   pluginPresentSvg: {
     saveAsPng: "Als PNG herunterladen",
     png: "PNG",

@@ -916,18 +916,6 @@ const esMessages = {
     submit: "Enviar",
     progress: "{filled} de {total} campos obligatorios completados",
   },
-  pluginPresentHtml: {
-    saveAsPdf: "Guardar como PDF (abre el diálogo de impresión)",
-    pdf: "PDF",
-    untitled: "Página HTML",
-    editSource: "Editar código HTML",
-    cancel: "Cancelar",
-    applyChanges: "Aplicar cambios",
-    saving: "Guardando...",
-    saveError: "⚠ Error al guardar: {error}",
-    loadingSource: "Cargando código…",
-    sourceError: "Error al cargar el código: {error}",
-  },
   pluginPresentSvg: {
     saveAsPng: "Descargar como PNG",
     png: "PNG",

@@ -38,6 +38,9 @@ import runtimePluginRoutes from "./api/routes/runtime-plugin.js";
 // Side-effect: registers the built-in "markdown" dispatch handler so the
 // markdown View's useRuntime().dispatch({ kind }) resolves (task #6).
 import "./plugins/markdown-builtin.js";
+// Side-effect: registers the built-in "html" dispatch handler so the
+// presentHtml View's useRuntime().dispatch({ kind }) resolves (phase 2).
+import "./plugins/html-builtin.js";
 import { loadRuntimePlugins } from "./plugins/runtime-loader.js";
 import { evaluateDevPluginGate, loadDevPlugins, parseDevPluginsEnv } from "./plugins/dev-loader.js";
 import { watchDevPlugins } from "./plugins/dev-watcher.js";

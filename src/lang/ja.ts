@@ -903,18 +903,6 @@ const jaMessages = {
     submit: "送信",
     progress: "必須項目 {total} 件中 {filled} 件入力済み",
   },
-  pluginPresentHtml: {
-    saveAsPdf: "PDF として保存（印刷ダイアログを開きます）",
-    pdf: "PDF",
-    untitled: "HTML ページ",
-    editSource: "HTML ソースを編集",
-    cancel: "キャンセル",
-    applyChanges: "変更を適用",
-    saving: "保存中...",
-    saveError: "⚠ 保存に失敗しました: {error}",
-    loadingSource: "ソースを読み込み中…",
-    sourceError: "ソースの読み込みに失敗しました: {error}",
-  },
   pluginPresentSvg: {
     saveAsPng: "PNG としてダウンロード",
     png: "PNG",

@@ -12,6 +12,14 @@ export interface HtmlArgs {
 export interface PresentHtmlData {
   title?: string;
   filePath: string;
+  /** Host-served URL the View points its iframe at so relative asset refs
+   *  (`<img src="../../../images/…">`) resolve against the file's real URL.
+   *  The HOST injects this (it knows how it serves `artifacts/html/…` — e.g.
+   *  MulmoClaude's `/artifacts/html/…` static mount); the package never
+   *  hardcodes a host path. Absent ⇒ the View derives the default
+   *  `/artifacts/html/…` URL from `filePath` (`htmlArtifactPreviewUrl`), so
+   *  results stored before this field existed still render. */
+  previewUrl?: string;
 }
 
 /** Body of the in-place overwrite path (PUT /api/html/update). */

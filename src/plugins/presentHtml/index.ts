@@ -1,16 +1,19 @@
+import type { Component } from "vue";
 import type { PluginRegistration, ToolPlugin } from "../../tools/types";
 import type { ToolResult } from "gui-chat-protocol";
+import { View, Preview, type PresentHtmlData } from "@mulmoclaude/html-plugin/vue";
+// Lib mode doesn't auto-inject the package's compiled scoped styles; the
+// consumer must import them — same as @mulmoclaude/{markdown,form,chart}-plugin.
+import "@mulmoclaude/html-plugin/style.css";
 import toolDefinition, { TOOL_NAME, type HtmlEndpoints } from "./definition";
 import { pluginEndpoints } from "../api";
 import { wrapWithScope } from "../scope";
-import View from "./View.vue";
-import Preview from "./Preview.vue";
 import { apiCall } from "../../utils/api";
 import { makeUuid } from "../../utils/id";
-import type { PresentHtmlData } from "@mulmoclaude/html-plugin";
+import { htmlPreviewUrlFor } from "../../composables/useContentDisplay";
 
-// Re-exported from the shared package so the View / Preview keep importing the
-// result-data shape from "./index" while the type stays single-sourced.
+// Re-exported from the shared package so anything importing the result-data
+// shape from "./index" keeps working while the type stays single-sourced.
 export type { PresentHtmlData };
 
 const presentHtmlPlugin: ToolPlugin<PresentHtmlData> = {
@@ -27,8 +30,15 @@ const presentHtmlPlugin: ToolPlugin<PresentHtmlData> = {
         message: result.error,
       };
     }
+    const body = result.data;
+    // Inject the host-served preview URL so the host-agnostic package View can
+    // point its iframe at the file's real URL (relative asset refs resolve
+    // against it). This is host-specific — MulmoClaude serves `artifacts/html/…`
+    // via a static mount — so the host adds it rather than the package.
+    const data = body.data ? { ...body.data, previewUrl: htmlPreviewUrlFor(body.data.filePath) ?? undefined } : body.data;
     return {
-      ...result.data,
+      ...body,
+      data,
       toolName: TOOL_NAME,
       uuid: makeUuid(),
     };
@@ -36,8 +46,10 @@ const presentHtmlPlugin: ToolPlugin<PresentHtmlData> = {
 
   isEnabled: () => true,
   generatingMessage: "Presenting HTML page…",
-  viewComponent: wrapWithScope("html", View),
-  previewComponent: wrapWithScope("html", Preview),
+  // gui-chat-protocol's Component type is externalized but yarn-4's dual-@vue can
+  // make the package's nominal types distinct; coerce once here (same as chart).
+  viewComponent: wrapWithScope("html", View as unknown as Component),
+  previewComponent: wrapWithScope("html", Preview as unknown as Component),
 };
 
 export default presentHtmlPlugin;
