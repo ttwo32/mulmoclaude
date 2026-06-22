@@ -1,0 +1,31 @@
+name: Shared package version bump
+
+# Guards the @mulmoclaude/* packages shared with MulmoTerminal: any change to
+# one of them must come with a version bump, because both apps run published
+# versions against ONE shared workspace and a skew is a data bug. Deliberately
+# its own workflow (no `paths-ignore: **/*.md`) so a docs-only change to a
+# shared asset — e.g. workspace-setup's seeded help docs — is still caught.
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'packages/plugins/**'
+      - 'packages/services/**'
+
+permissions:
+  contents: read
+
+jobs:
+  version-bump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0          # full history so the base ref + merge-base resolve
+          persist-credentials: false
+      - name: Check shared @mulmoclaude/* packages are version-bumped
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/check-shared-pkg-bumps.mjs
