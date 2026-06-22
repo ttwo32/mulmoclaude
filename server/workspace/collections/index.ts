@@ -4,7 +4,7 @@ export {
   toSummary,
   toDetail,
   CollectionSchemaZ,
-  acceptParsedSchema,
+  resolveDataDir,
   type LoadedCollection,
 } from "@mulmoclaude/collection-plugin/server";
 export { validateCollectionRecords, validateRecordObject, COMPUTED_TYPES, type RecordIssue } from "@mulmoclaude/collection-plugin/server";

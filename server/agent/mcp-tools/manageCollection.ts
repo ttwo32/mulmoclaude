@@ -36,7 +36,7 @@ import path from "node:path";
 import {
   COMPUTED_TYPES,
   CollectionSchemaZ,
-  acceptParsedSchema,
+  resolveDataDir,
   enrichItems,
   listItems,
   loadCollection,
@@ -347,6 +347,22 @@ async function writeAndMirrorSchema(slug: string, schema: unknown, deps: ManageC
   }
 }
 
+/** The post-Zod acceptance gates discovery applies before a parsed schema
+ *  becomes a live collection. Mirrors collection-plugin's discovery checks
+ *  (`loadOneCollection`) but lives host-side and is built only on
+ *  already-published primitives (`resolveDataDir` + plain field access) — so
+ *  the standalone launcher boots against the published collection-plugin
+ *  rather than depending on a new cross-package export. putSchema only runs
+ *  for project-scope collections, so the feed-`ingest` gate doesn't apply.
+ *  Returns a one-line reason, or null when the schema would be accepted. */
+function schemaDiscoveryGate(schema: CollectionSchema, base: string): string | null {
+  const primaryField = schema.fields[schema.primaryKey];
+  if (!primaryField) return `primaryKey '${schema.primaryKey}' is not one of the declared fields`;
+  if (primaryField.primary !== true) return `the primaryKey field '${schema.primaryKey}' must be flagged \`primary: true\``;
+  if (resolveDataDir(schema.dataPath, base) === null) return `dataPath '${schema.dataPath}' escapes the workspace`;
+  return null;
+}
+
 /** Validate a schema against CollectionSchemaZ and, on success, persist it.
  *  Edit-only: a new collection is created by writing SKILL.md + schema.json
  *  under data/skills/<slug>/ (the normal create flow), not through here. */
@@ -364,9 +380,9 @@ async function handlePutSchema(slug: string, schemaArg: unknown, deps: ManageCol
   if (!parsed.success) return formatSchemaIssues(parsed.error.issues);
   // Run the SAME post-Zod gates discovery applies, so a write can't pass
   // here yet be silently skipped on the next load (hiding the collection).
-  const acceptance = acceptParsedSchema(parsed.data, { source: collection.source, workspaceRoot: resolveBase(deps) });
-  if (!acceptance.ok) {
-    return `manageCollection: schema rejected — ${acceptance.reason} (call schemaDocs for the field reference). It passes basic validation but discovery would skip it, hiding the collection.`;
+  const gate = schemaDiscoveryGate(parsed.data, resolveBase(deps));
+  if (gate) {
+    return `manageCollection: schema rejected — ${gate} (call schemaDocs for the field reference). It passes basic validation but discovery would skip it, hiding the collection.`;
   }
   // Path from the discovered (sanitized) slug, never the raw arg.
   await writeAndMirrorSchema(collection.slug, parsed.data, deps);
