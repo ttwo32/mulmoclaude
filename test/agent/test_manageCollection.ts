@@ -292,6 +292,31 @@ describe("manageCollection — putItems", () => {
   });
 });
 
+describe("manageCollection — dotted record ids", () => {
+  // A natural key with interior dots (Slack ts) must round-trip through every
+  // targeted op, not just the full-scan listing (issue #1735).
+  const tsId = "1718900000.123456";
+
+  it("create / get-by-id / merge all accept an interior-dot id", async () => {
+    const created = await runJson({ action: "putItems", slug: "stock-quotes", items: [{ symbol: tsId, price: 1 }], mode: "create" });
+    assert.deepEqual(created.written, [tsId]);
+    assert.ok(existsSync(path.join(workdir, `data/stock-quotes/items/${tsId}.json`)), "record file written under the dotted id");
+
+    const got = await runJson({ action: "getItems", slug: "stock-quotes", ids: [tsId] });
+    assert.equal(got.count, 1);
+    assert.equal((got.items as Record<string, unknown>[])[0]?.symbol, tsId);
+    assert.deepEqual(got.missing ?? [], []);
+
+    const merged = await runJson({ action: "putItems", slug: "stock-quotes", items: [{ symbol: tsId, price: 2 }], mode: "merge" });
+    assert.deepEqual(merged.written, [tsId]);
+  });
+
+  it("still rejects a `..` id", async () => {
+    const result = await runJson({ action: "putItems", slug: "stock-quotes", items: [{ symbol: "a..b", price: 1 }], mode: "create" });
+    assert.match((result.rejected as { problem: string }[])[0]?.problem ?? "", /not a valid record id/);
+  });
+});
+
 describe("manageCollection — schemaDocs", () => {
   it("returns the bundled authoring reference when the workspace has none", async () => {
     const docs = await run({ action: "schemaDocs" });

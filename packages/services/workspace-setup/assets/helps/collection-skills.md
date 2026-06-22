@@ -127,7 +127,7 @@ skipped, never crashes the host):
 | `title`                | Human name shown in the sidebar / header. Required.                                                                                                                                                                                                                                                                                                                                                                           |
 | `icon`                 | A **Material Symbols** name (`receipt_long`, `people`, `schedule`, `menu_book`). Required.                                                                                                                                                                                                                                                                                                                                    |
 | `dataPath`             | Workspace-relative records folder, e.g. `data/recipes/items`. Must stay under the workspace. Required.                                                                                                                                                                                                                                                                                                                        |
-| `primaryKey`           | The field name whose value is the filename. That field MUST set `primary: true`. Required.                                                                                                                                                                                                                                                                                                                                    |
+| `primaryKey`           | The field name whose value is the filename. That field MUST set `primary: true`. The value must be a valid record id (see the **Records** section's id-charset rule). Required.                                                                                                                                                                                                                                                |
 | `singleton`            | Optional. When set, at most one record exists, pinned to this exact id (e.g. `me`). Host pre-fills + locks the create form and hides Add once it exists.                                                                                                                                                                                                                                                                      |
 | `fields`               | Ordered map of field-name → field spec. **Insertion order = column order** in the table. Required.                                                                                                                                                                                                                                                                                                                            |
 | `actions`              | Optional array of per-record buttons (see below).                                                                                                                                                                                                                                                                                                                                                                             |
@@ -677,6 +677,17 @@ single source of truth and the "done" checkbox is a `toggle` field projecting it
 
 - Write each record to `<dataPath>/<id>.json` via the **Write** tool; the `id`
   field's value is the filename (no extension).
+- **Id charset** (enforced by `safeRecordId` in
+  `packages/plugins/collection-plugin/src/server/paths.ts` — the single source of
+  truth; `manageCollection` rejects ids that fail it): start and end with a
+  letter or digit; inside, also `-`, `_`, and `.` are allowed (so natural keys
+  like a Slack ts `1718900000.123456` or a SemVer `1.2.3` work). **No** path
+  separators, **no** leading/trailing dot, and **no** `..` substring. If your
+  natural key contains anything else (a space, `/`, `:`, a leading dot), sanitise
+  it first — e.g. replace each illegal run with `_`. Note `manageCollection`
+  enforces this on every targeted read/write, so an id that only *looks* fine in
+  a full `getItems` listing but violates the rule can't be updated or deleted by
+  id — fix the id, don't work around it with raw file I/O.
 - **The file MUST be valid JSON.** A malformed record is **silently skipped** at
   read time (logged server-side, but invisible in the UI) — so one bad file out
   of fifteen looks like "fourteen records vanished." The #1 cause is an

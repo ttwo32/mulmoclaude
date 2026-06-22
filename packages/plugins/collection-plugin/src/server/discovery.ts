@@ -10,7 +10,7 @@ import path from "node:path";
 import { z } from "zod";
 import { log, getWorkspaceRoot, userSkillsDir, projectSkillsDir, feedsRoot } from "./host";
 import { INGEST_KINDS, FEED_SCHEDULES } from "../core/schema";
-import { SCHEMA_FILE, resolveDataDir, safeSlugName } from "./paths";
+import { SCHEMA_FILE, resolveDataDir, safeRecordId, safeSlugName } from "./paths";
 import type { LoadedCollection } from "./discoveredCollection";
 import { isSafeActionTemplatePath, isSafeCustomViewPath } from "./templatePath";
 import type { CollectionDetail, CollectionSchema, CollectionSource, CollectionSummary } from "../core/schema";
@@ -396,12 +396,12 @@ export const CollectionSchemaZ = z
     ingest: IngestSchemaZ.optional(),
   })
   // The singleton value becomes a record id (and thus a `<id>.json`
-  // filename), so it must satisfy the SAME `safeSlugName` rule the
+  // filename), so it must satisfy the SAME `safeRecordId` rule the
   // write path enforces — otherwise the create form would lock the
   // primary key to a value the POST route then rejects as an invalid
   // item id, making the collection impossible to initialize (Codex P1).
-  .refine((schema) => schema.singleton === undefined || safeSlugName(schema.singleton) !== null, {
-    message: "schema `singleton` must be a valid item id (alphanumeric / hyphen / underscore, no path separators)",
+  .refine((schema) => schema.singleton === undefined || safeRecordId(schema.singleton) !== null, {
+    message: "schema `singleton` must be a valid item id (alphanumeric / hyphen / underscore / interior dot, no `..` or path separators)",
     path: ["singleton"],
   })
   // Action ids must be unique so the dispatch route resolves

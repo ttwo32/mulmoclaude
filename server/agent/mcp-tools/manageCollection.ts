@@ -237,7 +237,8 @@ async function putOneItem(
   if (invalid) return reject(itemId, invalid);
   const result = await writeItem(collection.dataDir, itemId, toWrite, { refuseOverwrite: mode === "create", workspaceRoot: deps.workspaceRoot });
   if (result.kind === "ok") return { written: result.itemId };
-  if (result.kind === "invalid-id") return reject(itemId, `'${itemId}' is not a valid record id (letters/digits with - or _ inside, no path characters)`);
+  if (result.kind === "invalid-id")
+    return reject(itemId, `'${itemId}' is not a valid record id (letters/digits at the ends; -, _, or . inside; no '..' or path characters)`);
   if (result.kind === "conflict") return reject(itemId, `'${itemId}' already exists — mode "create" refuses overwrite; use "upsert" to update it`);
   return reject(itemId, "write refused: the collection's data dir escapes the workspace");
 }
