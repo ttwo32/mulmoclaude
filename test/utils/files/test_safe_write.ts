@@ -89,4 +89,34 @@ describe("resolveWriteWithinRoot — symlink defense", () => {
     await rm(symlinkDirInRoot, { recursive: true, force: true });
     await rm(escapeTarget, { recursive: true, force: true });
   });
+
+  it("rejects writes whose intermediate ancestor escapes root via symlink — before mkdir runs", async () => {
+    // The intermediate component "linkmid" is a symlink to outside-root.
+    // A naive impl would mkdir -p `<root>/linkmid/inner` first (creating
+    // `escapeTarget/inner` outside root) and only THEN realpath-check
+    // and reject. Algorithm walks ancestors and realpath-checks each
+    // existing one BEFORE any mkdir, so no outside-root dir is created.
+    const symlinkMid = path.join(rootReal, "linkmid");
+    await rm(symlinkMid, { recursive: true, force: true });
+    await symlink(escapeReal, symlinkMid, "dir");
+    const got = await resolveWriteWithinRoot(rootReal, "linkmid/inner/file.txt");
+    assert.equal(got, null, "intermediate symlink ancestor escaping root must be rejected");
+    const innerOutsideRoot = await stat(path.join(escapeReal, "inner")).catch(() => null);
+    assert.equal(innerOutsideRoot, null, "no directory was created outside root");
+    await rm(symlinkMid, { recursive: true, force: true });
+    await rm(escapeTarget, { recursive: true, force: true });
+  });
+});
+
+describe("resolveWriteWithinRoot — Windows drive-qualified relative", () => {
+  // path.isAbsolute("C:foo") === false (drive-relative, not absolute),
+  // but path.resolve on Windows would resolve onto drive C:'s CWD.
+  // The string check has to reject these explicitly.
+  it("rejects `C:foo` (drive letter + relative)", async () => {
+    assert.equal(await resolveWriteWithinRoot(rootReal, "C:foo"), null);
+  });
+
+  it("rejects `c:relative/path.txt` (lowercase drive letter)", async () => {
+    assert.equal(await resolveWriteWithinRoot(rootReal, "c:relative/path.txt"), null);
+  });
 });

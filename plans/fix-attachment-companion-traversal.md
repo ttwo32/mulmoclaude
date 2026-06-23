@@ -42,6 +42,17 @@ await saveCompanion(original.relativePath, Buffer.from("%PDF-1.4\n%%EOF\n"), ".p
 // throws — bug reproduced
 ```
 
+Diagrammed:
+
+```text
+saveCompanion("data/attachments/YYYY/MM/<id>.pptx", buf, ".pdf")
+  → derives target "data/attachments/YYYY/MM/<id>.pdf"  (does not exist)
+  → safeResolve  → resolveWithinRoot  → realpathSync(target)
+                                       ↑ ENOENT (leaf missing)
+                                     → null
+  → "path traversal rejected: data/attachments/YYYY/MM/<id>.pdf"
+```
+
 ## Fix layers
 
 ### Layer 1 — `resolveWriteWithinRoot` in `safe.ts`
@@ -81,8 +92,10 @@ bug.
 
 ## Tests
 
-- `test/utils/files/test_safe.ts` (new) — `resolveWriteWithinRoot`: happy
-  path, traversal segment, absolute path, NUL, symlink-escape via parent.
+- `test/utils/files/test_safe_write.ts` (new) — `resolveWriteWithinRoot`:
+  happy path, traversal segment, absolute path, NUL, double slash, Windows
+  drive-relative, symlink-escape via parent, symlink-escape via intermediate
+  ancestor.
 - `test/utils/files/test_attachment_store.ts` (new) — `saveCompanion`:
   companion lands under original's id + partition; traversal-shaped paths
   rejected; absolute path rejected.
