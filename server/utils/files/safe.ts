@@ -111,10 +111,6 @@ export function resolveWithinRoot(rootReal: string, relPath: string): string | n
 // stage explicitly.
 const WINDOWS_DRIVE_RE = /^[a-zA-Z]:/;
 
-function isPathInsideRoot(candidate: string, rootReal: string): boolean {
-  return candidate === rootReal || candidate.startsWith(rootReal + path.sep);
-}
-
 function parseWriteSegments(relPath: string): { parentSegments: string[]; leaf: string } | null {
   if (!relPath || relPath.includes("\0") || path.isAbsolute(relPath) || WINDOWS_DRIVE_RE.test(relPath)) return null;
   const segments = relPath.split(/[/\\]/);
@@ -122,24 +118,32 @@ function parseWriteSegments(relPath: string): { parentSegments: string[]; leaf: 
   return { parentSegments: segments.slice(0, -1), leaf: segments[segments.length - 1] };
 }
 
+// `path.relative(root, candidate)` returns a string starting with
+// `..` if `candidate` escapes `root`. This is the canonical CodeQL
+// `js/path-injection` sanitizer pattern; using it (rather than the
+// equivalent `startsWith(root + sep)`) lets the data-flow analysis
+// recognize the lexical containment check as a sanitizer.
+function escapesRoot(rootReal: string, candidate: string): boolean {
+  const relative = path.relative(rootReal, candidate);
+  return relative.startsWith("..") || path.isAbsolute(relative);
+}
+
 // Walk rootReal → parent, realpath-checking every existing ancestor.
 // Returns false if any existing ancestor escapes root via symlink. The
 // first non-existing ancestor marks the boundary: every directory
 // below sits under verified-in-root soil and is safe to `mkdir -p`.
 //
-// The lexical `startsWith` check before `realpath` is redundant at
+// The lexical `escapesRoot` check before `realpath` is redundant at
 // runtime (parseWriteSegments rejects `..` / `.` / absolute /
 // Windows-drive inputs, so `path.resolve(rootReal, segment)` cannot
-// escape lexically) but is inlined so CodeQL's `js/path-injection`
-// data-flow analysis recognizes the standard root-prefix sanitizer
-// pattern. Two layers also catch the rare case of `rootReal`
-// containing unusual normalization edges.
+// escape lexically) but is required so CodeQL's data-flow analysis
+// recognizes the `path.relative` sanitizer pattern on every iteration
+// before the realpath sink.
 async function existingAncestorsStayInRoot(rootReal: string, parentSegments: string[]): Promise<boolean> {
-  const rootPrefix = rootReal + path.sep;
   let cursor = rootReal;
   for (const segment of parentSegments) {
     const candidate = path.resolve(cursor, segment);
-    if (candidate !== rootReal && !candidate.startsWith(rootPrefix)) return false;
+    if (escapesRoot(rootReal, candidate)) return false;
     let candidateReal: string;
     try {
       candidateReal = await promises.realpath(candidate);
@@ -147,7 +151,7 @@ async function existingAncestorsStayInRoot(rootReal: string, parentSegments: str
       if (isEnoent(err)) return true;
       throw err;
     }
-    if (candidateReal !== rootReal && !candidateReal.startsWith(rootPrefix)) return false;
+    if (escapesRoot(rootReal, candidateReal)) return false;
     cursor = candidateReal;
   }
   return true;
@@ -169,8 +173,9 @@ export async function resolveWriteWithinRoot(rootReal: string, relPath: string):
   if (!parsed) return null;
   if (!(await existingAncestorsStayInRoot(rootReal, parsed.parentSegments))) return null;
   const parentAbs = path.resolve(rootReal, parsed.parentSegments.join(path.sep));
+  if (escapesRoot(rootReal, parentAbs)) return null;
   await promises.mkdir(parentAbs, { recursive: true });
   const parentReal = await promises.realpath(parentAbs);
-  if (!isPathInsideRoot(parentReal, rootReal)) return null;
+  if (escapesRoot(rootReal, parentReal)) return null;
   return path.join(parentReal, parsed.leaf);
 }
