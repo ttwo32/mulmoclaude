@@ -53,14 +53,21 @@ const viewDeleteUrl = (slug: string, viewId: string): string =>
 
 // ── Deferred app bindings (need a component context; set by App.vue setup) ──
 type StartChat = (prompt: string, role: string) => void;
+type StartChatDraft = (prompt: string, role?: string) => void;
 type NotifiedSeverities = (slug: string) => Map<string, NotifierSeverity>;
 let startChatFn: StartChat | null = null;
+let startChatDraftFn: StartChatDraft | null = null;
 let notifiedSeveritiesFn: NotifiedSeverities | null = null;
 
 /** Called once from App.vue's setup, where `useAppApi()` / `useNotifications()`
- *  resolve. Wires the two capabilities that can't be set at module load. */
-export function installCollectionAppBindings(bindings: { startChat: StartChat; notifiedSeverities: NotifiedSeverities }): void {
+ *  resolve. Wires the capabilities that can't be set at module load. */
+export function installCollectionAppBindings(bindings: {
+  startChat: StartChat;
+  startNewChatDraft: StartChatDraft;
+  notifiedSeverities: NotifiedSeverities;
+}): void {
   startChatFn = bindings.startChat;
+  startChatDraftFn = bindings.startNewChatDraft;
   notifiedSeveritiesFn = bindings.notifiedSeverities;
 }
 
@@ -132,6 +139,7 @@ configureCollectionUi({
   // (the host runs vue-i18n in composition mode); `unref` returns the tag either way.
   localeTag: () => unref(hostI18n.global.locale),
   startChat: (prompt, role) => startChatFn?.(prompt, role),
+  startNewChatDraft: (prompt, role) => startChatDraftFn?.(prompt, role),
   generalRoleId: BUILTIN_ROLE_IDS.general,
   personalRoleId: BUILTIN_ROLE_IDS.personal,
   unpin: (kind, slug) => useShortcuts().unpin(kind, slug),

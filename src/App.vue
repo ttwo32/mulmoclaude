@@ -1091,6 +1091,20 @@ function startNewChat(message: string, roleId?: string): void {
   void sendMessage(message);
 }
 
+// Like startNewChat, but prefills the composer with `message` as an editable
+// DRAFT instead of sending it — the user reviews / edits / sends (or clears) it.
+// Used by custom collection views (`__MC_VIEW.startChat`) so a view button can
+// propose a chat without the view's code triggering an agent run on its own.
+// `roleId` is validated against the known roles and falls back to General
+// (createNewSession does not validate the id it is handed).
+function startNewChatDraft(message: string, roleId?: string): void {
+  const rId = roleId && roles.value.some((role) => role.id === roleId) ? roleId : BUILTIN_ROLE_IDS.general;
+  createNewSession(rId);
+  userInput.value = message;
+  chatInputRef.value?.collapseSuggestions();
+  nextTick(() => focusChatInput());
+}
+
 function handleAskGemini(): void {
   startNewChat(t("settingsModal.geminiAskMessage"), BUILTIN_ROLE_IDS.general);
 }
@@ -1111,6 +1125,7 @@ provideAppApi({
 const { entries: notifierEntries } = useNotifications();
 installCollectionAppBindings({
   startChat: (prompt: string, role: string) => startNewChat(prompt, role),
+  startNewChatDraft: (prompt: string, role?: string) => startNewChatDraft(prompt, role),
   notifiedSeverities: (slug: string) => collectionNotifiedSeverities(notifierEntries.value, slug),
 });
 // Plugin Views that need to tag background work with the current

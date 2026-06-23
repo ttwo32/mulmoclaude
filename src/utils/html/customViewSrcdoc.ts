@@ -7,11 +7,13 @@
 // view's own scripts:
 //   1. a CSP <meta> with connect-src = the server origin (the view may fetch
 //      its data endpoint but no third party), and
-//   2. `window.__MC_VIEW = { slug, token, dataUrl, origin, onChange, openItem }`
-//      — the scoped capability token + the absolute data URL the view reads,
-//      plus an `onChange(cb)` live-refresh subscription and an
+//   2. `window.__MC_VIEW = { slug, token, dataUrl, origin, onChange, openItem,
+//      startChat }` — the scoped capability token + the absolute data URL the
+//      view reads, plus an `onChange(cb)` live-refresh subscription, an
 //      `openItem(id, mode)` helper that asks the host to open a record in its
-//      shared modal (see below).
+//      shared modal, and a `startChat(prompt, role)` helper that asks the host
+//      to open a new chat with `prompt` prefilled for the user to approve (see
+//      below).
 
 import { buildCustomViewCsp } from "./previewCsp";
 
@@ -34,6 +36,12 @@ const ONCHANGE_DEBOUNCE_MS = 150;
  *    is sent to the known parent origin (`v.origin`). Opening the host's own
  *    modal is a user action through trusted UI, so it needs no `write`
  *    capability even for `mode: "edit"` — the save still goes through the host.
+ *  - `startChat(prompt, role)`: posts a `{ type: "mc-start-chat", slug, prompt,
+ *    role }` ping up to the parent, which opens a NEW chat session with `prompt`
+ *    prefilled in the composer as an editable draft — it does NOT auto-send. The
+ *    user reviews / edits / sends (or clears) it, so the view's code can only
+ *    propose text; no capability is required. `role` is optional and validated
+ *    host-side (falls back to the general role). Sent to `v.origin`, no secret.
  *
  *  Self-contained string (no `</script>` sequence, no `<`, no `${`). */
 function viewBridgeBootstrap(): string {
@@ -42,7 +50,7 @@ function viewBridgeBootstrap(): string {
   // intact inside the template literal and inside the script element.
   // `cbs.slice()` snapshots the listeners before dispatch so a callback that
   // unsubscribes itself can't shift the array and skip the next one.
-  return `(function(){var v=window.__MC_VIEW,cbs=[],t;function fire(){t=undefined;cbs.slice().forEach(function(cb){try{cb()}catch(e){}});}window.addEventListener('message',function(e){if(e.source!==window.parent)return;var d=e.data;if(!d||d.type!=='mc-collection-changed'||d.slug!==v.slug)return;if(t)clearTimeout(t);t=setTimeout(fire,${ONCHANGE_DEBOUNCE_MS});});v.onChange=function(cb){if(typeof cb!=='function')return function(){};cbs.push(cb);return function(){var i=cbs.indexOf(cb);if(i>=0)cbs.splice(i,1);};};v.openItem=function(id,mode){window.parent.postMessage({type:'mc-open-item',slug:v.slug,id:String(id),mode:mode==='edit'?'edit':'view'},v.origin);};})();`;
+  return `(function(){var v=window.__MC_VIEW,cbs=[],t;function fire(){t=undefined;cbs.slice().forEach(function(cb){try{cb()}catch(e){}});}window.addEventListener('message',function(e){if(e.source!==window.parent)return;var d=e.data;if(!d||d.type!=='mc-collection-changed'||d.slug!==v.slug)return;if(t)clearTimeout(t);t=setTimeout(fire,${ONCHANGE_DEBOUNCE_MS});});v.onChange=function(cb){if(typeof cb!=='function')return function(){};cbs.push(cb);return function(){var i=cbs.indexOf(cb);if(i>=0)cbs.splice(i,1);};};v.openItem=function(id,mode){window.parent.postMessage({type:'mc-open-item',slug:v.slug,id:String(id),mode:mode==='edit'?'edit':'view'},v.origin);};v.startChat=function(prompt,role){window.parent.postMessage({type:'mc-start-chat',slug:v.slug,prompt:String(prompt),role:typeof role==='string'?role:undefined},v.origin);};})();`;
 }
 
 export interface CustomViewBootstrap {

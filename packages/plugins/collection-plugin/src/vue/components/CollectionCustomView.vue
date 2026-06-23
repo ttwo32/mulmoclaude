@@ -45,6 +45,9 @@ const emit = defineEmits<{
   /** The view called `__MC_VIEW.openItem(id, mode)` — open the record in the
    *  host's shared modal. */
   openItem: [payload: { id: string; mode: "view" | "edit" }];
+  /** The view called `__MC_VIEW.startChat(prompt, role)` — open a new chat with
+   *  `prompt` prefilled as an editable draft (host validates `role`). */
+  startChat: [payload: { prompt: string; role?: string }];
 }>();
 
 const loading = ref(true);
@@ -148,18 +151,29 @@ watch(
   { immediate: true },
 );
 
-// ── Open-item bridge ──
-// The view calls `__MC_VIEW.openItem(id, mode)`, which posts an `mc-open-item`
-// message up to here. Verify it came from THIS view's iframe and is for THIS
-// collection, then hand the host the record to open in its shared modal. The
-// message carries no secret; the capability token is unaffected.
+// ── View → host action bridge ──
+// The view calls `__MC_VIEW.openItem(id, mode)` / `.startChat(prompt, role)`,
+// which post an `mc-open-item` / `mc-start-chat` message up to here. Verify it
+// came from THIS view's iframe and is for THIS collection, then hand the action
+// to the host. The messages carry no secret; the capability token is unaffected.
+function handleOpenItem(body: { id?: unknown; mode?: unknown }): void {
+  const itemId = typeof body.id === "string" ? body.id : String(body.id ?? "");
+  if (!itemId) return;
+  emit("openItem", { id: itemId, mode: body.mode === "edit" ? "edit" : "view" });
+}
+
+function handleStartChat(body: { prompt?: unknown; role?: unknown }): void {
+  const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+  if (!prompt) return;
+  emit("startChat", { prompt, role: typeof body.role === "string" ? body.role : undefined });
+}
+
 function onWindowMessage(event: MessageEvent): void {
   if (event.source !== iframeEl.value?.contentWindow) return;
-  const msg = event.data as { type?: string; slug?: string; id?: unknown; mode?: unknown };
-  if (!msg || msg.type !== "mc-open-item" || msg.slug !== props.slug) return;
-  const itemId = typeof msg.id === "string" ? msg.id : String(msg.id ?? "");
-  if (!itemId) return;
-  emit("openItem", { id: itemId, mode: msg.mode === "edit" ? "edit" : "view" });
+  const msg = event.data as { type?: string; slug?: string; id?: unknown; mode?: unknown; prompt?: unknown; role?: unknown };
+  if (!msg || msg.slug !== props.slug) return;
+  if (msg.type === "mc-open-item") handleOpenItem(msg);
+  else if (msg.type === "mc-start-chat") handleStartChat(msg);
 }
 
 onMounted(() => window.addEventListener("message", onWindowMessage));

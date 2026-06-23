@@ -396,7 +396,7 @@
            the collection's records. Placed before the empty states so it shows
            even for an empty collection (e.g. a still-empty year grid). -->
       <div v-else-if="activeCustomView" class="h-full" data-testid="collection-custom-view-body">
-        <CollectionCustomView :slug="collection.slug" :view="activeCustomView" @open-item="onCustomViewOpenItem" />
+        <CollectionCustomView :slug="collection.slug" :view="activeCustomView" @open-item="onCustomViewOpenItem" @start-chat="onCustomViewStartChat" />
       </div>
 
       <div v-else-if="items.length === 0 && editing?.mode !== 'create'" class="flex flex-col items-center justify-center py-20 text-sm text-slate-400 gap-2">
@@ -2011,6 +2011,16 @@ function onCustomViewOpenItem(payload: { id: string; mode: "view" | "edit" }): v
   }
   showDetail(item);
   writeSelectedToUrl(payload.id);
+}
+
+/** The custom view called `__MC_VIEW.startChat(prompt, role)` — open a new chat
+ *  with the prompt prefilled as an editable draft. The host validates `role`
+ *  (falls back to General). The view's code only proposes text; the user
+ *  approves / edits / sends, so no capability is required. */
+function onCustomViewStartChat(payload: { prompt: string; role?: string }): void {
+  const prompt = payload.prompt.trim();
+  if (!prompt) return;
+  cui.startNewChatDraft(prompt, payload.role);
 }
 
 /** A calendar day cell was activated → open its popup on a clean slate

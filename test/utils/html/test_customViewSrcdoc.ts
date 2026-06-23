@@ -81,6 +81,16 @@ describe("buildCustomViewSrcdoc", () => {
     assert.ok(out.includes("},v.origin)"), "openItem must post to the parent origin, not '*'");
   });
 
+  it("injects the startChat bridge so the view can draft a new chat", () => {
+    const out = buildCustomViewSrcdoc("<head></head>", boot);
+    // startChat posts an mc-start-chat message up to the parent.
+    assert.match(out, /v\.startChat=function/);
+    assert.match(out, /mc-start-chat/);
+    // Carries the prompt (+ optional role); targets the known parent origin, never '*'.
+    assert.match(out, /type:'mc-start-chat'/);
+    assert.ok(out.includes("},v.origin)"), "startChat must post to the parent origin, not '*'");
+  });
+
   it("keeps the onChange bootstrap free of a </script> breakout sequence", () => {
     const out = buildCustomViewSrcdoc("<head></head>", boot);
     // The bootstrap is inlined in a <script>; a literal </script> inside it would

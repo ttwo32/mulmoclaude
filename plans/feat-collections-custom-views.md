@@ -266,6 +266,14 @@ correctly is dead weight. Must cover, terse and operational:
   capability** even for `"edit"` — the host owns the save, so it's a user action
   through trusted UI, not a view-code write. Pair with `onChange` to repaint
   after the user saves.
+- **How to start a chat**: `window.__MC_VIEW.startChat(prompt, role?)` posts an
+  `mc-start-chat` ping to the host, which opens a new chat with `prompt`
+  prefilled in the composer as an editable **draft** (NOT auto-sent — the user
+  approves / edits / sends). `role` is optional and validated host-side (falls
+  back to General). Needs **no capability**: the view's code only proposes text;
+  the agent run happens only once the user sends. This is how a view button
+  triggers backend work (file an issue, fetch a link, start from a record) while
+  keeping the user in the loop. See `plans/feat-collections-custom-view-chat.md`.
 - **The sandbox rules**: inline `<script>`/`<style>` only; external resources
   limited to the CDN allowlist (`HTML_PREVIEW_CSP_ALLOWED_CDNS` — jsdelivr /
   unpkg / cdnjs / Google Fonts / plotly); **`fetch` is allowed only to

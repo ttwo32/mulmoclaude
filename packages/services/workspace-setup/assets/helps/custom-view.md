@@ -63,6 +63,7 @@ window.__MC_VIEW = {
   dataUrl: "http://localhost:3001/api/collections/annual-plan/view-data",
   onChange: (cb) => unsubscribe, // live refresh — see "Staying live" below
   openItem: (id, mode) => void, // open a record in the host's panel — see "Opening a record"
+  startChat: (prompt, role) => void, // draft a new chat for the user — see "Starting a chat"
 };
 ```
 
@@ -136,7 +137,7 @@ What you need to know:
 
 ### Opening a record — `openItem`
 
-Your view owns the *layout* (a grid, a chart, a board); it doesn't have to
+Your view owns the _layout_ (a grid, a chart, a board); it doesn't have to
 rebuild a form to view or edit one record. Call `openItem` to hand a record to
 the host's own panel — the same detail/edit modal the user gets clicking a row
 in the table view — centred over your view:
@@ -151,10 +152,10 @@ window.__MC_VIEW.openItem("task-3", "edit"); // jump straight into the editor
 - **`mode`** — `"view"` (default) opens read-only detail with the panel's own
   Edit button; `"edit"` opens the editor directly.
 - **No `write` capability required — even for `"edit"`.** Opening the host's
-  panel is a *user* action in the host's trusted UI: the user still has to press
+  panel is a _user_ action in the host's trusted UI: the user still has to press
   Save, and the write goes through the host, not your scoped token. So a
   `["read"]` view can offer a full "edit this record" affordance without
-  widening its own capabilities. (Capabilities gate what your view's *code* may
+  widening its own capabilities. (Capabilities gate what your view's _code_ may
   do to the data; they don't restrict what the user may do through the host.)
 - **Pair it with `onChange`.** After the user saves in the panel, your
   `onChange` callback fires (the data changed), so a live view repaints itself —
@@ -163,6 +164,37 @@ window.__MC_VIEW.openItem("task-3", "edit"); // jump straight into the editor
 This is the right tool whenever a record's full detail is richer than your
 view's summary, or whenever the user wants to edit but you don't want a
 `write`-capable view doing its own PUTs.
+
+### Starting a chat — `startChat`
+
+Your view can't reach external services or run a skill on its own (the sandbox
+blocks it). Instead, hand the work to a chat: `startChat` opens a **new chat
+session with your prompt prefilled in the composer** — as an editable draft. It
+does **not** send. The user reads it, edits if they want, and presses Send (or
+clears it). The agent in that approved chat does the real work — file a GitHub
+issue and write the URL back, fetch a link's title/image and save them, or just
+start from a task record.
+
+```js
+const task = items.find((r) => r.id === id);
+window.__MC_VIEW.startChat(`Create a GitHub issue for this task and write the URL back to record ${id}:\n\n` + `Title: ${task.title}\n${task.body}`);
+```
+
+- **`prompt`** — the seed text. Empty / whitespace-only is ignored (no empty
+  chat). Build it from your records — that's the whole point.
+- **`role`** _(optional second argument)_ — a built-in role id to preselect for
+  the new session (e.g. `"office"`, `"investor"`); validated by the host. Omit it
+  and the chat opens in **General** — which is what you usually want.
+- **No capability required.** Your view's code only _proposes text into an input
+  field_ — nothing is created, fetched, or written until the **user** presses
+  Send, at which point it's an ordinary agent run they authored. So a `["read"]`
+  view can offer "start work on this" buttons freely.
+- **Pair it with `onChange`.** When the chat's agent later writes back to a
+  record, your `onChange` callback fires and a live view repaints.
+
+Use this — not a hidden flag the user has to reconcile later — whenever a button
+should _start backend work_: the user stays in the loop through trusted first-
+party UI, and the action runs as a normal, visible, cancellable agent turn.
 
 ## Sandbox rules (what the view may and may not do)
 
@@ -185,12 +217,15 @@ The view runs in a `sandbox="allow-scripts"` iframe with a strict CSP:
   phone-home, no third-party analytics, no fetching weather / prices / etc.
   directly from the view. If the user needs external data, put it in a (feed)
   collection and read it through `dataUrl`. (This is the channel that actually
-  matters for keeping the scoped token and records from leaking off-box.)
+  matters for keeping the scoped token and records from leaking off-box.) When a
+  button should _do_ outside work — file an issue, fetch a link's metadata, run a
+  skill — don't try to reach out from view code; use **`startChat`** (above) to
+  hand the task to a user-approved chat.
 - No access to cookies, `localStorage`, or the parent page — the iframe has an
   opaque origin. The token is the only credential, and it is scoped to this one
   collection.
 - **Opening external links is allowed** — use `<a href="…" target="_blank"
-  rel="noopener">` (or `window.open(url, "_blank")`) to open a record's URL in a
+rel="noopener">` (or `window.open(url, "_blank")`) to open a record's URL in a
   new browser tab, e.g. a feed card linking to its article. The link opens as a
   normal tab. (A plain same-tab `<a href>` would try to navigate the sandboxed
   frame itself and is blocked, so always use `target="_blank"` for outbound
