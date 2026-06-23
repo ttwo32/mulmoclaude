@@ -10,40 +10,15 @@
 //   data/attachments/YYYY/MM/<id>.<ext>            (original, always)
 //   data/attachments/YYYY/MM/<id>.pdf              (companion, PPTX only — same <id>)
 
-import { mkdir, readFile, realpath, writeFile } from "fs/promises";
+import { readFile } from "fs/promises";
 import path from "path";
 import { WORKSPACE_DIRS, WORKSPACE_PATHS } from "../../workspace/paths.js";
 import { shortId } from "../id.js";
 import { writeFileAtomic } from "./atomic.js";
 import { yearMonthUtc } from "./naming.js";
-import { resolveWithinRoot } from "./safe.js";
+import { makeStoreResolvers } from "./store-resolvers.js";
 
-// Cache the real-path resolution per workspace root so test setups
-// that override `WORKSPACE_PATHS.attachments` mid-run still work —
-// reading the path at call time (instead of capturing it at module
-// load) means a test that points the workspace at a tmp dir
-// recomputes everything from there.
-const attachmentsDirRealByRoot = new Map<string, string>();
-
-async function ensureAttachmentsDir(): Promise<string> {
-  const root = WORKSPACE_PATHS.attachments;
-  const cached = attachmentsDirRealByRoot.get(root);
-  if (cached) return cached;
-  await mkdir(root, { recursive: true });
-  const real = await realpath(root);
-  attachmentsDirRealByRoot.set(root, real);
-  return real;
-}
-
-async function safeResolve(relativePath: string): Promise<string> {
-  const root = await ensureAttachmentsDir();
-  const name = relativePath.replace(new RegExp(`^${WORKSPACE_DIRS.attachments}/`), "");
-  const result = resolveWithinRoot(root, name);
-  if (!result) {
-    throw new Error(`path traversal rejected: ${relativePath}`);
-  }
-  return result;
-}
+const resolvers = makeStoreResolvers(() => WORKSPACE_PATHS.attachments, WORKSPACE_DIRS.attachments);
 
 // MIME ↔ extension mapping. Kept narrow on purpose — anything not
 // in this table falls back to `.bin` so we don't have to guess.
@@ -167,7 +142,6 @@ async function runSaveAttachmentHooks(absPath: string, relativePath: string, mim
  *  caller picks the ID; companions (e.g. PPTX → PDF) reuse it via
  *  `saveCompanion()` so they share the same numeric prefix. */
 export async function saveAttachment(base64Data: string, mimeType: string): Promise<SavedAttachment> {
-  await ensureAttachmentsDir();
   const partition = yearMonthUtc();
   const ext = extensionForMime(mimeType);
   const filename = `${shortId()}${ext}`;
@@ -189,26 +163,22 @@ export async function saveAttachment(base64Data: string, mimeType: string): Prom
  *  raw Buffer — the converter already has bytes in hand and base64
  *  re-encoding would be wasted work. */
 export async function saveCompanion(originalRelativePath: string, buf: Buffer, ext: string): Promise<string> {
-  await ensureAttachmentsDir();
   const dir = path.posix.dirname(originalRelativePath);
   const base = path.posix.basename(originalRelativePath, path.posix.extname(originalRelativePath));
-  const filename = `${base}${ext}`;
-  const relativePath = path.posix.join(dir, filename);
-  const absPath = await safeResolve(relativePath);
-  // mkdir-p inside safeResolve's confined root.
-  await mkdir(path.dirname(absPath), { recursive: true });
-  await writeFile(absPath, buf);
+  const relativePath = path.posix.join(dir, `${base}${ext}`);
+  const absPath = await resolvers.forWrite(relativePath);
+  await writeFileAtomic(absPath, buf);
   return relativePath;
 }
 
 export async function loadAttachmentBase64(relativePath: string): Promise<string> {
-  const absPath = await safeResolve(relativePath);
+  const absPath = await resolvers.forRead(relativePath);
   const buf = await readFile(absPath);
   return buf.toString("base64");
 }
 
 export async function loadAttachmentBytes(relativePath: string): Promise<Buffer> {
-  const absPath = await safeResolve(relativePath);
+  const absPath = await resolvers.forRead(relativePath);
   return readFile(absPath);
 }
 

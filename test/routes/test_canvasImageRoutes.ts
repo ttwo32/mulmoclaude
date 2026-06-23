@@ -253,11 +253,13 @@ describe("PUT /api/images/update — overwrite pre-allocated file", () => {
     assert.match((state.body as ErrorBody).error ?? "", /invalid image relativepath/i);
   });
 
-  it("returns 500 when the target file does not exist (safeResolve requires realpath)", async () => {
-    // We never allocated this path, so overwriteImage's safeResolve
-    // will fail — surfaced as a 500 with the descriptive message.
+  it("creates the file when the target partition does not exist yet", async () => {
+    // overwriteImage uses the write-time confinement helper: it
+    // mkdir-p's the parent inside the images root and realpath-checks
+    // that parent (not the leaf). A target whose partition was never
+    // allocated still writes correctly inside root.
     const { state, res } = mockRes();
     await putImageHandler(req({ relativePath: "artifacts/images/2026/04/does-not-exist.png", imageData: `data:image/png;base64,${TEST_PNG_BASE64}` }), res);
-    assert.equal(state.status, 500);
+    assert.equal(state.status, 200);
   });
 });

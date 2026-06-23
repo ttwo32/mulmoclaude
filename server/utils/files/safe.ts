@@ -102,3 +102,36 @@ export function resolveWithinRoot(rootReal: string, relPath: string): string | n
   }
   return resolvedReal;
 }
+
+// Write-time sibling of `resolveWithinRoot`. `resolveWithinRoot`
+// runs `realpathSync` on the full path which throws `ENOENT` for a
+// leaf that does not exist yet — fine for reads, but the swallowed
+// ENOENT is indistinguishable from a traversal escape, so callers
+// pre-validating a not-yet-written path get a false "rejected".
+//
+// This variant string-validates `relPath` first, mkdir-p's the
+// parent inside `rootReal`, then realpath-checks the parent (the
+// existing dir) instead of the leaf. Returns the absolute write
+// path or null on any unsafe input. Caller still does the actual
+// write (typically `writeFileAtomic`).
+export async function resolveWriteWithinRoot(rootReal: string, relPath: string): Promise<string | null> {
+  if (!relPath || relPath.includes("\0") || path.isAbsolute(relPath)) return null;
+  const segments = relPath.split(/[/\\]/);
+  if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) return null;
+  const leaf = segments[segments.length - 1];
+  const parentRel = segments.slice(0, -1).join(path.sep);
+  const parentAbs = path.resolve(rootReal, parentRel);
+  try {
+    await promises.mkdir(parentAbs, { recursive: true });
+  } catch {
+    return null;
+  }
+  let parentReal: string;
+  try {
+    parentReal = await promises.realpath(parentAbs);
+  } catch {
+    return null;
+  }
+  if (parentReal !== rootReal && !parentReal.startsWith(rootReal + path.sep)) return null;
+  return path.join(parentReal, leaf);
+}
