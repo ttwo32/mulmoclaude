@@ -126,6 +126,7 @@ import { applyCellHighlights, clearCellHighlights } from "./cellHighlights";
 import { getArrowKeyOffset, isWithinSheetBounds } from "./keyboardNav";
 import { handleExternalLinkClick } from "../../utils/dom/externalLink";
 import { errorMessage as formatErrorMessage } from "../../utils/errors";
+import { escapeHtml } from "../../utils/markdown/wikiEmbeds";
 
 // Import all spreadsheet functions to populate the function registry
 import "./engine/functions";
@@ -362,7 +363,12 @@ const renderedHtml = computed(() => {
     return html;
   } catch (error) {
     console.error("Failed to render spreadsheet:", error);
-    return `<div class="error">Failed to render spreadsheet: ${formatErrorMessage(error, "Unknown error")}</div>`;
+    // Result is fed into v-html (see :data-testid="table"). The
+    // message comes from a caught throw, which can include attacker-
+    // controlled object shapes (e.g. `{ details: "<script>..." }`)
+    // surfaced by formatErrorMessage's gRPC-style unwrap. Escape
+    // before interpolation. (Codex review on #1767.)
+    return `<div class="error">Failed to render spreadsheet: ${escapeHtml(formatErrorMessage(error, "Unknown error"))}</div>`;
   }
 });
 
