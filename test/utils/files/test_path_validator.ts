@@ -60,6 +60,15 @@ describe("makePathValidator — canonical-form gate", () => {
   it("rejects `..` after a backslash separator (Windows / encoded `%5C`)", () => {
     assert.equal(validator("data/things\\..\\escape.bin"), false);
   });
+
+  it("rejects `..` substring inside a single segment (#1764 regression)", () => {
+    // Pre-refactor markdown/html/spreadsheet/svg rejected these via
+    // `normalized.includes("..")`. The factory must inherit that
+    // guard; otherwise legitimate-looking filenames like `foo..bin`
+    // / `v1..2.json` slip through.
+    assert.equal(validator("data/things/foo..bin"), false);
+    assert.equal(validator("data/things/prefix..suffix.bin"), false);
+  });
 });
 
 describe("per-store validators — smoke", () => {
@@ -84,6 +93,7 @@ describe("per-store validators — smoke", () => {
     assert.equal(isMarkdownPath("artifacts/documents/2026/06/abc.md"), true);
     assert.equal(isMarkdownPath("artifacts/documents/abc.txt"), false);
     assert.equal(isMarkdownPath("artifacts/documents/../etc/x.md"), false);
+    assert.equal(isMarkdownPath("artifacts/documents/foo..md"), false);
   });
 
   it("isHtmlPath (requires .html)", () => {
@@ -96,6 +106,7 @@ describe("per-store validators — smoke", () => {
     assert.equal(isSpreadsheetPath("artifacts/spreadsheets/2026/06/abc.json"), true);
     assert.equal(isSpreadsheetPath("artifacts/spreadsheets/abc.csv"), false);
     assert.equal(isSpreadsheetPath("artifacts/spreadsheets/../etc/x.json"), false);
+    assert.equal(isSpreadsheetPath("artifacts/spreadsheets/v1..2.json"), false);
   });
 
   it("isSvgPath (requires .svg)", () => {

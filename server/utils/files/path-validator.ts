@@ -6,7 +6,7 @@
 // in the other four. Both are individually sound; having two for the
 // same intent is the smell (#1761).
 //
-// `makePathValidator` applies BOTH defenses:
+// `makePathValidator` applies all four defenses:
 //
 //   1. Prefix gate — value must start with `dirPrefix + "/"`.
 //   2. Optional extension gate — value must end with the configured
@@ -14,8 +14,16 @@
 //      cover many MIME types).
 //   3. Canonical-form gate — `path.posix.normalize(value) === value`
 //      (rejects empty / `.` / non-canonical segments).
-//   4. Traversal gate — `hasTraversalSegment(value)` (defense-in-depth
-//      against `..` / `.` that survived a malformed normalize).
+//   4. No `..` substring anywhere — even inside a single segment
+//      (`foo..md`, `v1..2.json`). The pre-refactor markdown / html /
+//      spreadsheet / svg validators had this guard; it was lost when
+//      the factory only inherited `hasTraversalSegment` (which checks
+//      segments-equal-`..` only). Re-added so legitimate filenames in
+//      our domain (server-generated shortIds + standard extensions)
+//      stay accepted while pathological `..`-bearing names are not.
+//      See #1764.
+//   5. Traversal gate — `hasTraversalSegment(value)` (defense-in-depth
+//      against literal `.` / `..` segments).
 
 import path from "path";
 import { hasTraversalSegment } from "./safe.js";
@@ -34,6 +42,7 @@ export function makePathValidator({ prefix, ext }: PathValidatorOptions): (value
     if (!value.startsWith(prefixWithSlash)) return false;
     if (ext && !value.endsWith(ext)) return false;
     if (path.posix.normalize(value) !== value) return false;
+    if (value.includes("..")) return false;
     if (hasTraversalSegment(value)) return false;
     return true;
   };
