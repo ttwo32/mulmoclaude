@@ -19,6 +19,7 @@ import { createMcpFailureMonitor } from "../mcpFailureMonitor.js";
 import { log } from "../../system/logger/index.js";
 import { EVENT_TYPES } from "../../../src/types/events.js";
 import { env } from "../../system/env.js";
+import { claudeBinPath } from "../../utils/claudeBin.js";
 import type { AgentInput, LLMBackend } from "./types.js";
 
 type ClaudeProc = ChildProcessByStdio<Writable, Readable, Readable>;
@@ -29,7 +30,7 @@ function spawnClaude(useDocker: boolean, workspacePath: string, cliArgs: string[
     // PostToolUse hook needs to publish a `page-edit` toolResult back to
     // the right session (#963). Claude CLI's own hook payload carries
     // its internal session_id, which doesn't match our session store.
-    return spawn("claude", cliArgs, {
+    return spawn(claudeBinPath(), cliArgs, {
       cwd: workspacePath,
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, MULMOCLAUDE_CHAT_SESSION_ID: chatSessionId },
