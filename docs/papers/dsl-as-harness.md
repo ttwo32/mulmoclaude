@@ -134,6 +134,39 @@ democratization of harness engineering. The principle that "engineers design
 environments rather than write code" becomes "*anyone* can design an environment,
 declaratively, and let the agent execute within it."
 
+### Vibe crafting
+
+There is a good name for what this feels like from the user's chair: **vibe
+crafting**. Where "vibe coding" lets a *developer* conjure software by describing
+intent and letting a capable model fill in the code, vibe crafting lets an
+*end user* conjure a working data app — a collection and, when the built-in views
+run short, a custom view to see it through — the same way. "Add a priority field."
+"Track this as a kanban." "Make the rent recur monthly." "Give me a year-at-a-glance
+view." The user never sees a schema or a line of HTML; they describe what they want
+and the thing appears, live.
+
+It is tempting to credit this entirely to the model: code-capable LLMs are what
+make it *possible*. But possible is not the same as *safe to hand to someone who
+cannot read the output*. A developer vibe-coding still reviews the diff, runs the
+tests, owns the failure when it breaks. An end user has none of that — they cannot
+audit a schema they didn't know existed, and they shouldn't have to. What closes
+that gap is not a better model; it is the **harness**. The collection DSL constrains
+what can be expressed to what the host can safely render; the schema validator
+rejects an incoherent app *before* it ever loads, with a message the agent can act
+on unattended; the custom view runs as sandboxed, capability-scoped HTML that can
+touch nothing but this one collection's data. Each guardrail is the reason a
+non-developer can be handed the LLM's coding power without also being handed its
+failure modes. Vibe crafting is what you get when strong model capability is run
+through a well-designed harness — the model supplies the expressiveness, and the
+DSL plus its validators and sandbox supply the safety the user can no longer supply
+for themselves. Take the harness away and you don't have vibe crafting; you have an
+untrained user holding a loaded code generator.
+
+This is the same boundary the whole essay is about, drawn at the point of maximum
+leverage: the more capable the model, the *more* the value comes from the harness
+that makes its output safe to delegate — here, to delegate all the way out to the
+person who just wanted a place to track their recipes.
+
 ## The one hazard: design the escape hatch
 
 The same rigidity that makes a DSL a good harness is also its failure mode. When
