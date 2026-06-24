@@ -19,10 +19,17 @@ export async function loadMarkdown(relativePath: string): Promise<string> {
   return readFile(absPath, "utf-8");
 }
 
+// Strict — overwriteMarkdown's path.join doesn't normalize traversal, so this gate is the primary defence.
+export const isMarkdownPath = makePathValidator({ prefix: WORKSPACE_DIRS.markdowns, ext: ".md" });
+
+// Defense in depth (matches `overwriteSvg`): if a caller forgets to
+// pre-check via `isMarkdownPath`, `path.join(workspacePath, relativePath)`
+// would silently produce a traversal escape. The re-check inside the
+// write closes that trust chain.
 export async function overwriteMarkdown(relativePath: string, content: string): Promise<void> {
+  if (!isMarkdownPath(relativePath)) {
+    throw new Error(`invalid markdown path: ${relativePath}`);
+  }
   const absPath = path.join(workspacePath, relativePath);
   await writeFileAtomic(absPath, content);
 }
-
-// Strict — overwriteMarkdown's path.join doesn't normalize traversal, so this gate is the primary defence.
-export const isMarkdownPath = makePathValidator({ prefix: WORKSPACE_DIRS.markdowns, ext: ".md" });
