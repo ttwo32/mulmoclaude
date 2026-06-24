@@ -2,6 +2,7 @@ import { basename, dirname, join } from "path";
 import { homedir, tmpdir } from "os";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import type { Role } from "../../src/config/roles.js";
 import { mcpTools, isMcpToolEnabled } from "./mcp-tools/index.js";
 import { getActiveToolDescriptors } from "./activeTools.js";
@@ -234,6 +235,20 @@ function resolveProjectRoot(): string {
   } catch {
     return process.cwd();
   }
+}
+
+// The mulmoclaude package source root — the directory that contains
+// `server/`, `src/`, and (in dev only) `packages/`. Different from
+// `resolveProjectRoot()` only in the npx layout:
+//
+//   dev (yarn dev):   packageRoot === projectRoot === <repo>
+//   npx packaged:     packageRoot = <consumer>/node_modules/mulmoclaude/
+//                     projectRoot = <consumer>/  (where node_modules lives)
+//
+// Anchored at `import.meta.url ↑3` because this file is
+// `<packageRoot>/server/agent/config.ts`.
+function resolvePackageRoot(): string {
+  return dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 }
 
 // The MCP broker source (`server/agent/mcp-server.ts`) is a SIBLING of
@@ -548,6 +563,12 @@ export interface DockerSpawnArgsParams {
    *  store would never find a match (#963). */
   chatSessionId: string;
   projectRoot?: string;
+  /** Source root of the mulmoclaude package itself (the dir that holds
+   *  `server/` + `src/` and, in dev, `packages/`). In dev this equals
+   *  `projectRoot`; in npx packaged installs it's
+   *  `<consumer>/node_modules/mulmoclaude/`. Defaults to
+   *  `resolvePackageRoot()`. Overridable for tests. */
+  packageRoot?: string;
   homeDir?: string;
   /** Extra `-v` / `-e` tokens for opt-in host credentials (#259).
    *  Built by `resolveSandboxAuth` in `sandboxMounts.ts`. Default []. */
@@ -571,12 +592,22 @@ export function buildDockerSpawnArgs(params: DockerSpawnArgsParams): string[] {
     gid,
     platform,
     projectRoot = resolveProjectRoot(),
+    packageRoot = resolvePackageRoot(),
     homeDir = homedir(),
     sandboxAuthArgs = [],
     sshAgentForward = false,
   } = params;
   const toDockerPath = (hostPath: string): string => hostPath.replace(/\\/g, "/");
   const extraHosts: string[] = platform === "linux" ? ["--add-host", "host.docker.internal:host-gateway"] : [];
+  // `packages/` ships in the dev monorepo but NOT in the published
+  // mulmoclaude package (the `files` whitelist in
+  // `packages/mulmoclaude/package.json` excludes it — internal
+  // `@mulmoclaude/*` workspaces are installed as `node_modules/
+  // @mulmoclaude/*` after publish). Skip the bind mount when the dir
+  // is absent so `docker run` doesn't error on a missing source path
+  // in packaged installs (#1770 Docker-side gap @ystknsh flagged).
+  const packagesDir = join(packageRoot, "packages");
+  const packagesMount: string[] = existsSync(packagesDir) ? ["-v", `${toDockerPath(packagesDir)}:/app/packages:ro`] : [];
 
   return [
     "run",
@@ -630,13 +661,17 @@ export function buildDockerSpawnArgs(params: DockerSpawnArgsParams): string[] {
     "-e",
     `MULMOCLAUDE_CHAT_SESSION_ID=${params.chatSessionId}`,
     "-v",
+    // node_modules stays on projectRoot because hoisted deps live next
+    // to the consumer's package.json, not inside mulmoclaude's package
+    // dir (#1770).
     `${toDockerPath(projectRoot)}/node_modules:/app/node_modules:ro`,
     "-v",
-    `${toDockerPath(projectRoot)}/server:/app/server:ro`,
+    // server/src come from packageRoot — in dev that's the repo root,
+    // in npx it's `<consumer>/node_modules/mulmoclaude/`.
+    `${toDockerPath(packageRoot)}/server:/app/server:ro`,
     "-v",
-    `${toDockerPath(projectRoot)}/src:/app/src:ro`,
-    "-v",
-    `${toDockerPath(projectRoot)}/packages:/app/packages:ro`,
+    `${toDockerPath(packageRoot)}/src:/app/src:ro`,
+    ...packagesMount,
     "-v",
     `${toDockerPath(workspacePath)}:${CONTAINER_WORKSPACE_PATH}`,
     "-v",
