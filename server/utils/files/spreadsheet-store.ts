@@ -3,6 +3,7 @@ import { WORKSPACE_DIRS, WORKSPACE_PATHS } from "../../workspace/paths.js";
 import { shortId } from "../id.js";
 import { writeFileAtomic } from "./atomic.js";
 import { yearMonthUtc } from "./naming.js";
+import { makePathValidator } from "./path-validator.js";
 import { makeStoreResolvers } from "./store-resolvers.js";
 
 const resolvers = makeStoreResolvers(() => WORKSPACE_PATHS.spreadsheets, WORKSPACE_DIRS.spreadsheets);
@@ -22,11 +23,4 @@ export async function overwriteSpreadsheet(relativePath: string, sheets: unknown
 }
 
 // Reject "spreadsheets/../outside.json" early; realpath check still runs server-side, but catch obvious cases here.
-export function isSpreadsheetPath(value: string): boolean {
-  if (!value.startsWith(`${WORKSPACE_DIRS.spreadsheets}/`)) return false;
-  if (!value.endsWith(".json")) return false;
-  const normalized = path.posix.normalize(value);
-  if (normalized !== value) return false;
-  if (normalized.includes("..")) return false;
-  return true;
-}
+export const isSpreadsheetPath = makePathValidator({ prefix: WORKSPACE_DIRS.spreadsheets, ext: ".json" });

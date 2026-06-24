@@ -16,7 +16,7 @@ import { WORKSPACE_DIRS, WORKSPACE_PATHS } from "../../workspace/paths.js";
 import { shortId } from "../id.js";
 import { writeFileAtomic } from "./atomic.js";
 import { yearMonthUtc } from "./naming.js";
-import { hasTraversalSegment } from "./safe.js";
+import { makePathValidator } from "./path-validator.js";
 import { makeStoreResolvers } from "./store-resolvers.js";
 
 const resolvers = makeStoreResolvers(() => WORKSPACE_PATHS.attachments, WORKSPACE_DIRS.attachments);
@@ -183,11 +183,7 @@ export async function loadAttachmentBytes(relativePath: string): Promise<Buffer>
   return readFile(absPath);
 }
 
-export function isAttachmentPath(value: string): boolean {
-  if (!value.startsWith(`${WORKSPACE_DIRS.attachments}/`)) return false;
-  if (hasTraversalSegment(value)) return false;
-  return true;
-}
+export const isAttachmentPath = makePathValidator({ prefix: WORKSPACE_DIRS.attachments });
 
 export function stripDataUri(dataUri: string): { mimeType: string; base64: string } | undefined {
   const match = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(dataUri);

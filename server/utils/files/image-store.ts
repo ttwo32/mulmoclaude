@@ -4,7 +4,7 @@ import { WORKSPACE_DIRS, WORKSPACE_PATHS } from "../../workspace/paths.js";
 import { shortId } from "../id.js";
 import { writeFileAtomic } from "./atomic.js";
 import { yearMonthUtc } from "./naming.js";
-import { hasTraversalSegment } from "./safe.js";
+import { makePathValidator } from "./path-validator.js";
 import { makeStoreResolvers } from "./store-resolvers.js";
 
 const resolvers = makeStoreResolvers(() => WORKSPACE_PATHS.images, WORKSPACE_DIRS.images);
@@ -34,9 +34,4 @@ export function stripDataUri(dataUri: string): string {
 }
 
 // Accepts arbitrary depth so saveImage's images/YYYY/MM/abc.png still validates.
-export function isImagePath(value: string): boolean {
-  if (!value.startsWith(`${WORKSPACE_DIRS.images}/`)) return false;
-  if (!value.endsWith(".png")) return false;
-  if (hasTraversalSegment(value)) return false;
-  return true;
-}
+export const isImagePath = makePathValidator({ prefix: WORKSPACE_DIRS.images, ext: ".png" });

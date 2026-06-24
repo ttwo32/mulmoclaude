@@ -4,6 +4,7 @@ import { workspacePath } from "../../workspace/workspace.js";
 import { WORKSPACE_DIRS } from "../../workspace/paths.js";
 import { writeFileAtomic } from "./atomic.js";
 import { buildArtifactPathRandom } from "./naming.js";
+import { makePathValidator } from "./path-validator.js";
 
 // Random-id suffix prevents collisions between concurrent writers sharing a prefix; #764 sharded under YYYY/MM.
 export async function saveMarkdown(content: string, prefix: string): Promise<string> {
@@ -18,17 +19,17 @@ export async function loadMarkdown(relativePath: string): Promise<string> {
   return readFile(absPath, "utf-8");
 }
 
+// Strict — overwriteMarkdown's path.join doesn't normalize traversal, so this gate is the primary defence.
+export const isMarkdownPath = makePathValidator({ prefix: WORKSPACE_DIRS.markdowns, ext: ".md" });
+
+// Defense in depth (matches `overwriteSvg`): if a caller forgets to
+// pre-check via `isMarkdownPath`, `path.join(workspacePath, relativePath)`
+// would silently produce a traversal escape. The re-check inside the
+// write closes that trust chain.
 export async function overwriteMarkdown(relativePath: string, content: string): Promise<void> {
+  if (!isMarkdownPath(relativePath)) {
+    throw new Error(`invalid markdown path: ${relativePath}`);
+  }
   const absPath = path.join(workspacePath, relativePath);
   await writeFileAtomic(absPath, content);
-}
-
-// Strict — overwriteMarkdown's path.join doesn't normalize traversal, so this gate is the primary defence.
-export function isMarkdownPath(value: string): boolean {
-  if (!value.startsWith(`${WORKSPACE_DIRS.markdowns}/`)) return false;
-  if (!value.endsWith(".md")) return false;
-  const normalized = path.posix.normalize(value);
-  if (normalized !== value) return false;
-  if (normalized.includes("..")) return false;
-  return true;
 }
