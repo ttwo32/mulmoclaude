@@ -118,6 +118,10 @@ export function useVoiceInput(opts: UseVoiceInputOptions): UseVoiceInput {
   // next session (the chat input disarms voice on session change).
   let generation = 0;
   let segmentGeneration = 0;
+  // Single-flight guard for start(): true between entry and the moment
+  // capture is set up (or the attempt aborts), so a second start can't
+  // race the first while it awaits mic permission.
+  let startInFlight = false;
 
   function stopAvailabilityPoll(): void {
     if (availabilityPollHandle !== null) {
@@ -239,27 +243,49 @@ export function useVoiceInput(opts: UseVoiceInputOptions): UseVoiceInput {
   }
 
   async function start(): Promise<boolean> {
-    error.value = null;
-    mimeType = pickRecorderMime() ?? "";
-    if (!mimeType || !navigator.mediaDevices?.getUserMedia) {
-      error.value = "unsupported";
-      return false;
-    }
+    // Single-flight: `listening` only flips true AFTER getUserMedia
+    // resolves, so the caller's `!listening` guard can't prevent a second
+    // entry while we're awaiting permission. Reject re-entry here so two
+    // starts never race to overwrite stream/recorder/monitorHandle. A
+    // benign skip returns true (a start is already active / in progress)
+    // so the caller doesn't mistake it for a failure and drop its intent.
+    if (startInFlight || listening.value) return true;
+    startInFlight = true;
+    const startGen = generation;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      error.value = "permission-denied";
-      return false;
+      error.value = null;
+      mimeType = pickRecorderMime() ?? "";
+      if (!mimeType || !navigator.mediaDevices?.getUserMedia) {
+        error.value = "unsupported";
+        return false;
+      }
+      let acquired: MediaStream;
+      try {
+        acquired = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        error.value = "permission-denied";
+        return false;
+      }
+      // stop() bumps the generation; if it fired while we awaited
+      // permission, this start is stale — release the mic and abort
+      // rather than begin recording into a session the user left.
+      if (startGen !== generation) {
+        acquired.getTracks().forEach((track) => track.stop());
+        return false;
+      }
+      stream = acquired;
+      audioCtx = new AudioContext();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      vadBuffer = new Float32Array(analyser.fftSize);
+      audioCtx.createMediaStreamSource(stream).connect(analyser);
+      listening.value = true;
+      startRecorder();
+      monitorHandle = window.setInterval(monitorTick, MONITOR_INTERVAL_MS);
+      return true;
+    } finally {
+      startInFlight = false;
     }
-    audioCtx = new AudioContext();
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 2048;
-    vadBuffer = new Float32Array(analyser.fftSize);
-    audioCtx.createMediaStreamSource(stream).connect(analyser);
-    listening.value = true;
-    startRecorder();
-    monitorHandle = window.setInterval(monitorTick, MONITOR_INTERVAL_MS);
-    return true;
   }
 
   function stop(): void {
