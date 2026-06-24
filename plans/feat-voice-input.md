@@ -1,11 +1,19 @@
 # MulmoClaude — Local Voice Input via whisper.cpp sidecar
 
-**Feature:** Push-to-talk voice input in the chat screen. Audio is captured in the
+**Feature:** Voice input in the chat screen. Audio is captured in the
 browser, sent to the local Express server, and transcribed by a **whisper.cpp
 binary run as a separate process** (Mac, Metal-accelerated). The transcript is
 inserted into the chat input box for review before sending.
 
-**Status:** Implemented (pending review) — v1 landed on a local branch; see §11 for what each phase shipped.
+> **Implementation note (supersedes the push-to-talk wording below):** v1 shipped
+> as a **toggle**, not push-to-talk — click to start listening, click to stop.
+> While listening, a Web Audio VAD finalizes a segment on each pause (or a 20s
+> cap) and transcribes it. The mic is **sticky for the session**: it pauses while
+> the agent runs and auto-resumes on the user's turn, until toggled off (state is
+> in-memory only, reset on session change). The §8 push-to-talk discussion is
+> retained for historical context.
+
+**Status:** Implemented (pending review) — landed on `feat/local-voice-input` (PR #1773). See §11 for what each phase shipped.
 **Owner:** _TBD_
 **Last updated:** 2026-06-24
 
@@ -40,7 +48,7 @@ localhost** (`server/index.ts`, port 3001; Vite proxy 5173 in dev), distributed 
 `npx mulmoclaude` / `npm i -g mulmoclaude`. The Node side that runs inference *is*
 that Express server, running on the user's Mac by default.
 
-```
+```text
 ┌──────────────────────────────┐        ┌────────────────────────────────────────┐
 │  Renderer (ChatInput.vue)    │        │  Express server (localhost, user's Mac)  │
 │                              │        │                                          │

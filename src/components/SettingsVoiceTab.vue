@@ -3,12 +3,18 @@
     <p class="text-sm text-gray-700">{{ t("settingsModal.voiceTab.description") }}</p>
     <p class="text-xs text-gray-500" data-testid="settings-voice-requirements">{{ t("settingsModal.voiceTab.requirements") }}</p>
 
-    <!-- Not a Mac / whisper binary missing: feature can't be enabled. -->
-    <div v-if="loaded && !status.capable" class="rounded border border-gray-300 bg-gray-50 p-3 text-sm text-gray-600" data-testid="settings-voice-unsupported">
+    <!-- Not a Mac / whisper binary missing: feature can't be enabled.
+         Only shown once a status fetch succeeded (statusOk), so a fetch
+         failure surfaces the load error below instead of this. -->
+    <div
+      v-if="statusOk && !status.capable"
+      class="rounded border border-gray-300 bg-gray-50 p-3 text-sm text-gray-600"
+      data-testid="settings-voice-unsupported"
+    >
       {{ t("settingsModal.voiceTab.unsupported") }}
     </div>
 
-    <template v-else-if="loaded">
+    <template v-else-if="statusOk">
       <div class="flex items-start gap-3">
         <input
           id="settings-voice-enabled"
@@ -79,7 +85,9 @@ const EMPTY_STATUS: VoiceInputStatusResponse = { capable: false, enabled: false,
 const status = ref<VoiceInputStatusResponse>(EMPTY_STATUS);
 const enabled = ref(false);
 const model = ref<string>("large-v3-turbo");
-const loaded = ref(false);
+// True only once a status fetch SUCCEEDS — so a failed fetch shows the
+// load error, not a misleading "unsupported on this machine".
+const statusOk = ref(false);
 const saving = ref(false);
 const errorMessage = ref("");
 let pollHandle: number | null = null;
@@ -96,9 +104,11 @@ function stopPolling(): void {
 async function refreshStatus(): Promise<void> {
   const response = await apiGet<VoiceInputStatusResponse>(API_ROUTES.transcribe.model);
   if (!response.ok) {
+    statusOk.value = false;
     errorMessage.value = response.error || t("settingsModal.voiceTab.loadError");
     return;
   }
+  statusOk.value = true;
   status.value = response.data;
   if (response.data.model.state !== "downloading") stopPolling();
 }
@@ -120,7 +130,6 @@ async function load(): Promise<void> {
   enabled.value = configResponse.data.settings.voiceInput?.enabled ?? false;
   model.value = configResponse.data.settings.voiceInput?.model ?? "large-v3-turbo";
   await refreshStatus();
-  loaded.value = true;
   if (status.value.model.state === "downloading") startPolling();
 }
 
@@ -140,10 +149,12 @@ async function persist(): Promise<boolean> {
 
 async function startDownload(): Promise<void> {
   const response = await apiPost<VoiceInputStatusResponse>(API_ROUTES.transcribe.modelDownload);
-  if (response.ok) {
-    status.value = response.data;
-    if (response.data.model.state === "downloading") startPolling();
+  if (!response.ok) {
+    errorMessage.value = response.error || t("settingsModal.voiceTab.downloadError");
+    return;
   }
+  status.value = response.data;
+  if (response.data.model.state === "downloading") startPolling();
 }
 
 async function onToggle(): Promise<void> {

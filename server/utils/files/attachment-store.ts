@@ -203,7 +203,13 @@ export function stripDataUri(dataUri: string): { mimeType: string; base64: strin
   if (!mimeType) return undefined;
   if (!params.includes("base64")) {
     // URL-encoded inline form — convert to base64 for storage.
-    return { mimeType, base64: Buffer.from(decodeURIComponent(payload), "utf-8").toString("base64") };
+    // `decodeURIComponent` throws on malformed escapes (e.g. a lone `%`);
+    // treat that as invalid input rather than letting it bubble up.
+    try {
+      return { mimeType, base64: Buffer.from(decodeURIComponent(payload), "utf-8").toString("base64") };
+    } catch {
+      return undefined;
+    }
   }
   return { mimeType, base64: payload };
 }

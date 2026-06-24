@@ -113,6 +113,11 @@ export function useVoiceInput(opts: UseVoiceInputOptions): UseVoiceInput {
   let pending = 0;
   let queue: Promise<void> = Promise.resolve();
   let availabilityPollHandle: number | null = null;
+  // Bumped on stop(). Segments captured / sends resolved under an older
+  // generation are dropped, so a late transcript never leaks into the
+  // next session (the chat input disarms voice on session change).
+  let generation = 0;
+  let segmentGeneration = 0;
 
   function stopAvailabilityPoll(): void {
     if (availabilityPollHandle !== null) {
@@ -150,13 +155,15 @@ export function useVoiceInput(opts: UseVoiceInputOptions): UseVoiceInput {
     transcribing.value = pending > 0;
   }
 
-  async function sendSegment(blob: Blob): Promise<void> {
+  async function sendSegment(blob: Blob, gen: number): Promise<void> {
+    if (gen !== generation) return;
     try {
       const dataUrl = await blobToDataUrl(blob);
       const result = await apiPost<{ text: string }>(API_ROUTES.transcribe.run, {
         dataUrl,
         language: localeToWhisperLanguage(opts.locale()),
       });
+      if (gen !== generation) return;
       if (!result.ok) {
         error.value = result.error || "transcription failed";
         return;
@@ -172,10 +179,10 @@ export function useVoiceInput(opts: UseVoiceInputOptions): UseVoiceInput {
   // Serialize sends so transcripts append in capture order even though
   // requests are async. `pending` keeps `transcribing` true from enqueue
   // until the send resolves, covering time spent queued.
-  function enqueue(blob: Blob): void {
+  function enqueue(blob: Blob, gen: number): void {
     setPending(1);
     queue = queue
-      .then(() => sendSegment(blob))
+      .then(() => sendSegment(blob, gen))
       .catch(() => undefined)
       .finally(() => setPending(-1));
   }
@@ -186,11 +193,14 @@ export function useVoiceInput(opts: UseVoiceInputOptions): UseVoiceInput {
 
   function onSegmentStop(): void {
     const hadSpeech = segmentHasSpeech;
+    const gen = segmentGeneration;
     const blob = new Blob(chunks, { type: containerType() });
     // Begin the next segment immediately if still listening; the stop
     // was a pause boundary, not the user toggling off.
     if (listening.value) startRecorder();
-    if (hadSpeech && blob.size > 0) enqueue(blob);
+    // Skip if stop() bumped the generation (toggle-off / session change) —
+    // its transcript would belong to a session the user already left.
+    if (hadSpeech && blob.size > 0 && gen === generation) enqueue(blob, gen);
   }
 
   function startRecorder(): void {
@@ -199,6 +209,7 @@ export function useVoiceInput(opts: UseVoiceInputOptions): UseVoiceInput {
     segmentHasSpeech = false;
     silenceStart = null;
     segmentStart = Date.now();
+    segmentGeneration = generation;
     recorder = new MediaRecorder(stream, { mimeType });
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) chunks.push(event.data);
@@ -252,8 +263,10 @@ export function useVoiceInput(opts: UseVoiceInputOptions): UseVoiceInput {
   }
 
   function stop(): void {
-    // Clearing `listening` first means onSegmentStop won't restart — the
-    // final flush below sends the last segment if it contained speech.
+    // Bump the generation so any in-flight/queued segment is dropped
+    // rather than appended after the user stops or switches sessions.
+    generation += 1;
+    // Clearing `listening` first means onSegmentStop won't restart.
     listening.value = false;
     if (monitorHandle !== null) {
       window.clearInterval(monitorHandle);

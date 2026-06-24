@@ -9,7 +9,11 @@ import { once } from "events";
 import path from "path";
 import { WORKSPACE_PATHS } from "../../workspace/paths.js";
 import { errorMessage } from "../../utils/errors.js";
+import { ONE_MINUTE_MS } from "../../utils/time.js";
 import { log } from "../logger/index.js";
+
+// Abort a download if no bytes arrive for this long (stalled connection).
+const DOWNLOAD_STALL_TIMEOUT_MS = ONE_MINUTE_MS;
 
 export interface WhisperModelSpec {
   /** GGML filename — identical on disk and in the Hugging Face repo. */
@@ -83,7 +87,13 @@ export function getModelStatus(name: WhisperModelName): ModelStatus {
   return live ?? { state: "idle" };
 }
 
-async function streamToFile(body: ReadableStream<Uint8Array>, partialPath: string, total: number, name: WhisperModelName): Promise<void> {
+async function streamToFile(
+  body: ReadableStream<Uint8Array>,
+  partialPath: string,
+  total: number,
+  name: WhisperModelName,
+  onProgress: () => void,
+): Promise<void> {
   const reader = body.getReader();
   const fileStream = createWriteStream(partialPath);
   let received = 0;
@@ -91,6 +101,7 @@ async function streamToFile(body: ReadableStream<Uint8Array>, partialPath: strin
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
+      onProgress();
       received += value.byteLength;
       if (!fileStream.write(value)) await once(fileStream, "drain");
       if (total > 0) downloadStatus.set(name, { state: "downloading", progress: received / total });
@@ -108,17 +119,31 @@ async function downloadModel(name: WhisperModelName): Promise<void> {
   mkdirSync(WORKSPACE_PATHS.models, { recursive: true });
   const dest = modelFilePath(name);
   const partial = `${dest}.partial`;
-  const response = await fetch(spec.url);
-  if (!response.ok || !response.body) {
-    throw new Error(`download failed: HTTP ${response.status}`);
+  // Abort on a stalled connection (no bytes for STALL_TIMEOUT) without
+  // capping the total time — a 1–3 GB download is legitimately slow. The
+  // watchdog is reset on every chunk; an abort surfaces as the error state.
+  const controller = new AbortController();
+  let stallTimer: ReturnType<typeof setTimeout> | null = null;
+  const resetStall = () => {
+    if (stallTimer) clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => controller.abort(), DOWNLOAD_STALL_TIMEOUT_MS);
+  };
+  try {
+    const response = await fetch(spec.url, { signal: controller.signal });
+    if (!response.ok || !response.body) {
+      throw new Error(`download failed: HTTP ${response.status}`);
+    }
+    const total = Number(response.headers.get("content-length")) || 0;
+    resetStall();
+    await streamToFile(response.body, partial, total, name, resetStall);
+    if (statSync(partial).size < spec.minBytes) {
+      unlinkSync(partial);
+      throw new Error("downloaded file is smaller than expected — likely truncated");
+    }
+    renameSync(partial, dest);
+  } finally {
+    if (stallTimer) clearTimeout(stallTimer);
   }
-  const total = Number(response.headers.get("content-length")) || 0;
-  await streamToFile(response.body, partial, total, name);
-  if (statSync(partial).size < spec.minBytes) {
-    unlinkSync(partial);
-    throw new Error("downloaded file is smaller than expected — likely truncated");
-  }
-  renameSync(partial, dest);
 }
 
 /** Kick off (or no-op) a model download. Fire-and-forget: errors are

@@ -9,7 +9,7 @@ import { spawn, type ChildProcess } from "child_process";
 import { createServer } from "net";
 import { readFile } from "fs/promises";
 import { setTimeout as delay } from "timers/promises";
-import { ONE_SECOND_MS } from "../../utils/time.js";
+import { ONE_MINUTE_MS, ONE_SECOND_MS } from "../../utils/time.js";
 import { log } from "../logger/index.js";
 import { errorMessage } from "../../utils/errors.js";
 import { modelFilePath, type WhisperModelName } from "./models.js";
@@ -19,6 +19,9 @@ const HOST = "127.0.0.1";
 // giving up on a freshly-spawned server.
 const READY_TIMEOUT_MS = 60 * ONE_SECOND_MS;
 const READY_POLL_INTERVAL_MS = 500;
+// A single clip is ≤60s and the model is warm, so inference is quick;
+// this cap just stops a hung /inference from blocking the request box.
+const INFERENCE_TIMEOUT_MS = 2 * ONE_MINUTE_MS;
 
 interface Sidecar {
   readonly port: number;
@@ -75,6 +78,43 @@ function drainStderr(proc: ChildProcess, tail: { text: string }): void {
   });
 }
 
+// Resolve when the server answers, or reject if the process fails to
+// spawn (e.g. ENOENT) or exits before becoming ready. The `error`/`exit`
+// listeners are one-shot and removed once the race settles; a permanent
+// error logger lives in startSidecar so a post-start error is never an
+// uncaught throw.
+function waitForReadyOrFailure(proc: ChildProcess, port: number): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    // Forward-declared so `cleanup` can reference them and they can
+    // reference `cleanup` without a use-before-define cycle.
+    let onError: (err: Error) => void = () => undefined;
+    let onExit: (code: number | null) => void = () => undefined;
+    const cleanup = () => {
+      proc.removeListener("error", onError);
+      proc.removeListener("exit", onExit);
+    };
+    onError = (err: Error) => {
+      cleanup();
+      reject(new Error(`spawn failed: ${errorMessage(err)}`));
+    };
+    onExit = (code: number | null) => {
+      cleanup();
+      reject(new Error(`exited early (code ${code})`));
+    };
+    proc.once("error", onError);
+    proc.once("exit", onExit);
+    waitUntilReady(port)
+      .then(() => {
+        cleanup();
+        resolve();
+      })
+      .catch((err: unknown) => {
+        cleanup();
+        reject(err instanceof Error ? err : new Error(String(err)));
+      });
+  });
+}
+
 async function startSidecar(model: WhisperModelName): Promise<Sidecar> {
   const port = await findFreePort();
   const args = ["--model", modelFilePath(model), "--host", HOST, "--port", String(port)];
@@ -82,12 +122,15 @@ async function startSidecar(model: WhisperModelName): Promise<Sidecar> {
   const proc = spawn("whisper-server", args, { stdio: ["ignore", "ignore", "pipe"] });
   const stderrTail = { text: "" };
   drainStderr(proc, stderrTail);
+  // Permanent error listener — a missing one would let a process 'error'
+  // (e.g. ENOENT) throw uncaught and crash the server.
+  proc.on("error", (err) => log.warn("whisper", "sidecar: process error", { model, error: errorMessage(err) }));
   proc.on("exit", (code) => {
     log.warn("whisper", "sidecar: exited", { model, code, stderrTail: stderrTail.text.slice(-500) });
     if (sidecar?.proc === proc) sidecar = null;
   });
   try {
-    await waitUntilReady(port);
+    await waitForReadyOrFailure(proc, port);
   } catch (err) {
     proc.kill();
     throw new Error(`whisper-server failed to start: ${errorMessage(err)} — stderr: ${stderrTail.text.slice(-500)}`);
@@ -145,7 +188,12 @@ export async function transcribeWav(wavPath: string, language: string, model: Wh
   form.append("file", new Blob([buf], { type: "audio/wav" }), "audio.wav");
   form.append("response_format", "json");
   form.append("language", language || "auto");
-  const res = await fetch(`http://${HOST}:${active.port}/inference`, { method: "POST", body: form });
+  let res: Response;
+  try {
+    res = await fetch(`http://${HOST}:${active.port}/inference`, { method: "POST", body: form, signal: AbortSignal.timeout(INFERENCE_TIMEOUT_MS) });
+  } catch (err) {
+    throw new Error(`whisper-server request failed: ${errorMessage(err)}`);
+  }
   if (!res.ok) throw new Error(`whisper-server returned HTTP ${res.status}`);
   return parseInferenceText(await res.json());
 }

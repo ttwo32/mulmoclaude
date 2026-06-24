@@ -21,6 +21,10 @@ const router = Router();
 // 60 s of opus at a generous bitrate is comfortably under this; the cap
 // just bounds resource use against a bypassed/abusive client.
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+// Raw data-URL cap, applied before decoding. Generous vs MAX_AUDIO_BYTES
+// (base64 ~+33%, URL-encoding up to ~3x) but bounded so an oversized
+// payload is rejected without first allocating the decoded buffer.
+const MAX_DATAURL_CHARS = MAX_AUDIO_BYTES * 3;
 
 interface TranscribeBody {
   dataUrl?: string;
@@ -47,6 +51,12 @@ router.post(API_ROUTES.transcribe.run, async (req: Request<object, unknown, Tran
   const { dataUrl, language } = req.body;
   if (!dataUrl) {
     badRequest(res, "dataUrl is required");
+    return;
+  }
+  // Bound the raw payload BEFORE decoding so a giant (e.g. URL-encoded)
+  // data URL can't be expanded into memory ahead of the post-decode cap.
+  if (dataUrl.length > MAX_DATAURL_CHARS) {
+    payloadTooLarge(res, "audio clip exceeds the size limit");
     return;
   }
   const parsed = stripDataUri(dataUrl);

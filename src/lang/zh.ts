@@ -255,7 +255,7 @@ const zhMessages = {
       saveError: "保存失败",
     },
     voiceTab: {
-      description: "用语音口述聊天消息。音频在运行 MulmoClaude 的机器上本地转录,不会发送到任何外部服务。",
+      description: "用语音口述聊天消息。音频在运行 MulmoClaude 的机器上本地转录，不会发送到任何外部服务。",
       requirements: "仅在 macOS 上可用。需要 whisper.cpp 服务器，请使用 yarn build:whisper 进行构建（参见 README 的 Local Voice Input 部分）。",
       unsupported: "语音输入需要已安装 whisper.cpp 服务器的 macOS。本机不支持此功能。",
       enableLabel: "启用语音输入",

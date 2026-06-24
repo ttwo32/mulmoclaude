@@ -416,7 +416,7 @@ Once configured, you can paste any `x.com` or `twitter.com` URL into the chat an
 
 ## Optional: Local Voice Input (macOS)
 
-Dictate chat messages instead of typing them. Hold the mic button in the chat input, speak, release — the speech is transcribed and inserted into the input for review before you send it. Transcription runs **entirely on the machine running MulmoClaude** via [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with Metal acceleration: no audio leaves the device, no per-minute API cost.
+Dictate chat messages instead of typing them. Click the mic button to start listening; as you pause, each spoken segment is transcribed and appended to the input for review before you send it. Click again to stop. Once turned on, the mic stays armed for the session — it pauses while the agent is responding and resumes automatically on your next turn. Transcription runs **entirely on the machine running MulmoClaude** via [whisper.cpp](https://github.com/ggml-org/whisper.cpp) with Metal acceleration: no audio leaves the device, no per-minute API cost. The transcribed text is never auto-sent — you review and send it yourself.
 
 This is **disabled by default** and **macOS-only** (Apple Silicon recommended). The mic button stays hidden until the feature is set up and enabled.
 
