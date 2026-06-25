@@ -1,9 +1,9 @@
-// @mulmoclaude/collection-watchers — the collection-completion bell
+// @mulmoclaude/core/collection-watchers — the collection-completion bell
 // subsystem shared by MulmoClaude and MulmoTerminal. fs.watch plumbing
 // (watcher.ts) + the convergent reconciler (reconciler.ts) live here; the
 // host injects its notification taxonomy + in-app routing via a
 // CollectionNotificationAdapter (config.ts). Depends directly on the
-// shared @mulmoclaude/core/notifier singleton and @mulmoclaude/core/collection.
+// shared ../notifier singleton and ../collection.
 export {
   configureCollectionWatchers,
   resetCollectionWatchersConfig,

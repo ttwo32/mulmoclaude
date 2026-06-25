@@ -18,8 +18,8 @@
 
 import { watch, type FSWatcher } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { discoverCollections, loadCollection, type DiscoveryOptions, type LoadedCollection } from "@mulmoclaude/core/collection/server";
-import type { CollectionSchema } from "@mulmoclaude/core/collection";
+import { discoverCollections, loadCollection, type DiscoveryOptions, type LoadedCollection } from "../collection/server";
+import type { CollectionSchema } from "../collection";
 import { errMsg, log } from "./config.js";
 import { reconcileAllItems, reconcileItem, sweepStaleActiveEntries } from "./reconciler.js";
 

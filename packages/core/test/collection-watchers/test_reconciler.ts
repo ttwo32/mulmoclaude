@@ -1,5 +1,5 @@
 // Focused coverage of the package's host-injection seam: a custom
-// CollectionNotificationAdapter + the shared @mulmoclaude/core/notifier
+// CollectionNotificationAdapter + the shared ../../src/notifier/index.ts
 // singleton drive reconcileItem through publish / severity-update / clear,
 // proving the adapter wiring without MulmoClaude's legacy machinery. (The
 // full convergent-reconcile + watcher behaviour is exercised by the host's
@@ -10,9 +10,15 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { configureCollectionHost } from "@mulmoclaude/core/collection/server";
-import { configureNotifier, setNotifierFilePaths, listAll, type NotifierEvent } from "@mulmoclaude/core/notifier";
-import { configureCollectionWatchers, reconcileItem, itemIsDone, resolveDisplayLabel, type CollectionNotificationAdapter } from "../src/index.ts";
+import { configureCollectionHost } from "../../src/collection/server/index.ts";
+import { configureNotifier, setNotifierFilePaths, listAll, type NotifierEvent } from "../../src/notifier/index.ts";
+import {
+  configureCollectionWatchers,
+  reconcileItem,
+  itemIsDone,
+  resolveDisplayLabel,
+  type CollectionNotificationAdapter,
+} from "../../src/collection-watchers/index.ts";
 
 const root = mkdtempSync(path.join(tmpdir(), "cw-root-"));
 const noopLog = { error: () => {}, warn: () => {}, info: () => {}, debug: () => {} };

@@ -1,4 +1,4 @@
-// @mulmoclaude/skill-bridge — the skill staging→active mirror RULE, shared by
+// @mulmoclaude/core/skill-bridge — the skill staging→active mirror RULE, shared by
 // MulmoClaude and MulmoTerminal so the two hosts can't drift on what crosses the
 // `.claude/` permission gate.
 //
@@ -20,7 +20,7 @@
 // PostToolUse path and triggers its own config refresh afterward.
 import path from "node:path";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { isSafeActionTemplatePath } from "@mulmoclaude/core/collection/paths";
+import { isSafeActionTemplatePath } from "../collection/server/templatePath";
 
 const DATA_SKILLS_DIR = path.join("data", "skills");
 const CLAUDE_SKILLS_DIR = path.join(".claude", "skills");

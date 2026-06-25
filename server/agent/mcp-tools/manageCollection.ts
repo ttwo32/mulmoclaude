@@ -49,7 +49,7 @@ import {
 import type { CollectionItem, CollectionSchema, LoadedCollection } from "../../workspace/collections/index.js";
 import type { DiscoveryOptions } from "@mulmoclaude/core/collection/server";
 import { defangForPrompt } from "@mulmoclaude/core/collection";
-import { dataSkillDir, mirrorSkillWrite } from "@mulmoclaude/skill-bridge";
+import { dataSkillDir, mirrorSkillWrite } from "@mulmoclaude/core/skill-bridge";
 import { helpsAssetDir, isPresetSlug } from "@mulmoclaude/core/workspace-setup";
 import { writeFileAtomic } from "../../utils/files/atomic.js";
 import { WORKSPACE_DIRS, workspacePath } from "../../workspace/paths.js";

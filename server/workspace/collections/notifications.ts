@@ -1,5 +1,5 @@
 // Collection-completion bell reconciler — thin host binding over
-// @mulmoclaude/collection-watchers. The convergent reconcile logic lives
+// @mulmoclaude/core/collection-watchers. The convergent reconcile logic lives
 // in the shared package; this file supplies MulmoClaude's notification
 // taxonomy (publish under "todo", priority→severity mapping) and in-app
 // routing (the `/collections/<slug>?selected=<itemId>` deep-link) via a
@@ -21,7 +21,7 @@ import {
   type LegacyNotifierPluginData,
 } from "../../events/notifications.js";
 import { log } from "../../system/logger/index.js";
-import { configureCollectionWatchers, type CollectionNotificationAdapter, type CompletionPriority } from "@mulmoclaude/collection-watchers";
+import { configureCollectionWatchers, type CollectionNotificationAdapter, type CompletionPriority } from "@mulmoclaude/core/collection-watchers";
 
 // Re-export the reconciler surface verbatim from the package.
 export {
@@ -31,7 +31,7 @@ export {
   clearItemNotification,
   resolveDisplayLabel,
   itemIsDone,
-} from "@mulmoclaude/collection-watchers";
+} from "@mulmoclaude/core/collection-watchers";
 
 const COLLECTION_PLUGIN_PKG = legacyKindToPluginPkg(NOTIFICATION_KINDS.todo);
 
