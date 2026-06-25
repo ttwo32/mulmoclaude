@@ -242,6 +242,13 @@ describe("buildDockerSpawnArgs", () => {
       gid: 1000,
       platform: "darwin" as Platform,
       projectRoot: "/proj",
+      // In dev (which this test fixture mirrors) packageRoot equals
+      // projectRoot — both are the repo root. The distinction only
+      // matters in npx packaged installs (#1770 Docker-side gap):
+      // there packageRoot=<consumer>/node_modules/mulmoclaude/ while
+      // projectRoot=<consumer>/. The dedicated "packageRoot in npx
+      // layout" test below covers that case.
+      packageRoot: "/proj",
       homeDir: "/home/user",
       chatSessionId: "chat-test-session",
     };
@@ -297,6 +304,44 @@ describe("buildDockerSpawnArgs", () => {
     assert.ok(args.includes("/proj/node_modules:/app/node_modules:ro"));
     assert.ok(args.includes("/proj/server:/app/server:ro"));
     assert.ok(args.includes("/proj/src:/app/src:ro"));
+  });
+
+  // Regression for the Docker-side gap in #1770 (@ystknsh's manual
+  // smoke caught this). In packaged installs npm hoists deps to
+  // <consumer>/node_modules/ while the mulmoclaude package itself
+  // lives at <consumer>/node_modules/mulmoclaude/ — `node_modules`
+  // mount stays on projectRoot but `server`/`src` MUST come from
+  // packageRoot or the container ends up with an empty /app/server
+  // and the broker fails to spawn.
+  it("uses packageRoot for server/src mounts when it differs from projectRoot (npx layout)", async () => {
+    const args = buildDockerSpawnArgs({
+      ...baseParams(),
+      projectRoot: "/consumer",
+      packageRoot: "/consumer/node_modules/mulmoclaude",
+    });
+    // node_modules: hoisted next to consumer's package.json
+    assert.ok(args.includes("/consumer/node_modules:/app/node_modules:ro"));
+    // server + src: inside the mulmoclaude package directory
+    assert.ok(args.includes("/consumer/node_modules/mulmoclaude/server:/app/server:ro"));
+    assert.ok(args.includes("/consumer/node_modules/mulmoclaude/src:/app/src:ro"));
+    // Old (broken) shape must NOT appear
+    assert.ok(!args.includes("/consumer/server:/app/server:ro"));
+    assert.ok(!args.includes("/consumer/src:/app/src:ro"));
+  });
+
+  it("skips the /app/packages mount when packageRoot has no `packages/` dir (npx published shape)", async () => {
+    // The published mulmoclaude package's `files` whitelist excludes
+    // `packages/` — internal @mulmoclaude/* workspaces are installed
+    // as `node_modules/@mulmoclaude/*` after publish. Use a packageRoot
+    // pointing at a dir that genuinely has no `packages/` subdir so
+    // the existsSync gate fires.
+    const args = buildDockerSpawnArgs({
+      ...baseParams(),
+      projectRoot: "/consumer",
+      packageRoot: "/consumer/node_modules/mulmoclaude",
+    });
+    // No mount line referring to /app/packages should appear.
+    assert.ok(!args.some((token) => token.includes(":/app/packages:")));
   });
 
   // The package bin script (`npx mulmoclaude` / `node packages/mulmoclaude/bin/...`)
