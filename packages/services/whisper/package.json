@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/whisper",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Local voice-input core (whisper.cpp sidecar) shared by MulmoClaude and MulmoTerminal. Server entry manages the whisper-server sidecar, GGML model download, and ffmpeg→WAV transcription (host injects the models dir + logger). The ./client entry is a framework-neutral browser capture controller (MediaRecorder + VAD pause-segmentation). The whisper-server binary + ffmpeg are provided by the host.",
   "type": "module",
   "main": "./dist/index.js",

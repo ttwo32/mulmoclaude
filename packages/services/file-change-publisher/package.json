@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/file-change-publisher",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Shared workspace file-change broadcaster for MulmoClaude and MulmoTerminal — publishFileChange(relPath) forwards a write to the host's primary channel + the plugin-scoped live-refresh channels (plugin:<scope>:file:<path>). Server-only; all host specifics injected.",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/notifier",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Host-agnostic notification engine (active + history persistence, write coordinator, lifecycle validation, pub-sub + in-process fan-out) shared by MulmoClaude and MulmoTerminal. File paths, atomic writer, event sink, and logger are injected.",
   "type": "module",
   "main": "./dist/index.js",
