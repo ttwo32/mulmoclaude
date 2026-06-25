@@ -21,6 +21,8 @@ export default defineConfig({
         "collection/index": "src/collection/index.ts",
         "collection/server/index": "src/collection/server/index.ts",
         "collection/paths": "src/collection/server/templatePath.ts",
+        "collection-watchers/index": "src/collection-watchers/index.ts",
+        "skill-bridge/index": "src/skill-bridge/index.ts",
         "file-change/index": "src/file-change/index.ts",
         "notifier/index": "src/notifier/index.ts",
         "scheduler/index": "src/scheduler/index.ts",

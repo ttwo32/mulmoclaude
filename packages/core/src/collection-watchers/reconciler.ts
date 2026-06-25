@@ -21,17 +21,9 @@
 // adapter, so the clear path and the dedup check both find the entry
 // without a side state file.
 
-import { clear as notifierClear, listAll, publish as notifierPublish, updateForPlugin as notifierUpdate, type NotifierEntry } from "@mulmoclaude/core/notifier";
-import { whenMatches, type CollectionItem, type CollectionSchema } from "@mulmoclaude/core/collection";
-import {
-  type DiscoveryOptions,
-  listItems,
-  readItem,
-  type IoOptions,
-  isTriggerDue,
-  maybeSpawnSuccessor,
-  loadCollection,
-} from "@mulmoclaude/core/collection/server";
+import { clear as notifierClear, listAll, publish as notifierPublish, updateForPlugin as notifierUpdate, type NotifierEntry } from "../notifier";
+import { whenMatches, type CollectionItem, type CollectionSchema } from "../collection";
+import { type DiscoveryOptions, listItems, readItem, type IoOptions, isTriggerDue, maybeSpawnSuccessor, loadCollection } from "../collection/server";
 import { type CompletionPriority, errMsg, log, requireAdapter } from "./config.js";
 
 /** The internal-id prefix every collection-completion bell entry carries.

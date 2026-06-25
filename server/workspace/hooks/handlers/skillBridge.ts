@@ -1,4 +1,4 @@
-// Skill-bridge HOST adapter — thin wiring over @mulmoclaude/skill-bridge.
+// Skill-bridge HOST adapter — thin wiring over @mulmoclaude/core/skill-bridge.
 //
 // The agent writes skill drafts under `data/skills/<slug>/` (a plain data dir, no
 // `.claude/` permission special-case); the shared package decides which writes are
@@ -26,7 +26,7 @@ import {
   mirrorSkillWrite,
   mirrorSkillDelete,
   type BridgeTarget,
-} from "@mulmoclaude/skill-bridge";
+} from "@mulmoclaude/core/skill-bridge";
 import { buildAuthPost, safePost, serverLog } from "../shared/sidecar.js";
 import type { HookPayload } from "../shared/stdin.js";
 import { extractCommand, extractFilePath, extractToolName } from "../shared/stdin.js";

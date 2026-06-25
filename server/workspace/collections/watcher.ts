@@ -1,5 +1,5 @@
 // Collection watchers — thin host binding over
-// @mulmoclaude/collection-watchers. The fs.watch plumbing lives in the
+// @mulmoclaude/core/collection-watchers. The fs.watch plumbing lives in the
 // shared package; this file just ensures the host's notification adapter
 // is configured (the `./notifications.js` side-effect import) and
 // re-exports the watcher surface existing callers + tests import from
@@ -16,4 +16,4 @@ export {
   _tickTimeTriggersForTesting,
   _scheduleItemReconcileForTesting,
   type CollectionWatcherOptions,
-} from "@mulmoclaude/collection-watchers";
+} from "@mulmoclaude/core/collection-watchers";

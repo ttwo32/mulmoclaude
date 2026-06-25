@@ -6,7 +6,7 @@
 // adapter. MulmoClaude wires its legacy notification machinery; a future
 // MulmoTerminal wires its own routes + pluginData shape.
 
-import type { NotifierSeverity } from "@mulmoclaude/core/notifier";
+import type { NotifierSeverity } from "../notifier";
 
 /** Two-level urgency a pending record can carry, derived from the
  *  schema's `notifyWhen` spec. The host maps this onto its own severity

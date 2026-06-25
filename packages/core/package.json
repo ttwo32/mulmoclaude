@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared server-side core for MulmoClaude and MulmoTerminal — the always-shipped-together subsystems consolidated behind subpath exports so the two hosts can't drift. Server-only except the browser-safe ./whisper/client and ./workspace-setup/slug entries. All host specifics are injected.",
   "type": "module",
   "exports": {
@@ -21,6 +21,18 @@
       "import": "./dist/collection/paths.js",
       "require": "./dist/collection/paths.cjs",
       "default": "./dist/collection/paths.js"
+    },
+    "./collection-watchers": {
+      "types": "./dist/collection-watchers/index.d.ts",
+      "import": "./dist/collection-watchers/index.js",
+      "require": "./dist/collection-watchers/index.cjs",
+      "default": "./dist/collection-watchers/index.js"
+    },
+    "./skill-bridge": {
+      "types": "./dist/skill-bridge/index.d.ts",
+      "import": "./dist/skill-bridge/index.js",
+      "require": "./dist/skill-bridge/index.cjs",
+      "default": "./dist/skill-bridge/index.js"
     },
     "./file-change": {
       "types": "./dist/file-change/index.d.ts",

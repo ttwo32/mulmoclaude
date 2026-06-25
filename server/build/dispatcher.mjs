@@ -126,10 +126,6 @@ async function handleConfigRefresh(payload) {
   await safePost(req);
 }
 
-// packages/services/skill-bridge/dist/index.js
-import path3 from "node:path";
-import { mkdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
-
 // packages/core/dist/collection/paths.js
 var TEMPLATES_PREFIX = "templates/";
 function isSafeTemplatePath(value) {
@@ -140,7 +136,9 @@ function isSafeActionTemplatePath(value) {
   return value.startsWith(TEMPLATES_PREFIX) && isSafeTemplatePath(value);
 }
 
-// packages/services/skill-bridge/dist/index.js
+// packages/core/dist/skill-bridge/index.js
+import path3 from "node:path";
+import { mkdirSync, readFileSync as readFileSync2, renameSync, rmSync, writeFileSync } from "node:fs";
 var DATA_SKILLS_DIR = path3.join("data", "skills");
 var CLAUDE_SKILLS_DIR = path3.join(".claude", "skills");
 var SKILL_FILENAME = "SKILL.md";

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { bridgeTargetFromDataPath, slugFromRmCommand, mirrorSkillWrite, mirrorSkillDelete } from "../src/index.ts";
+import { bridgeTargetFromDataPath, slugFromRmCommand, mirrorSkillWrite, mirrorSkillDelete } from "../../src/skill-bridge/index.ts";
 
 const wsRoot = "/wsRoot"; // a notional workspace root for the pure path tests
 const atPath = (rel: string) => path.join(wsRoot, rel);
