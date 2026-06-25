@@ -31,7 +31,7 @@ export default defineConfig({
       fileName: (format, entryName) => `${entryName}.${format === "es" ? "js" : "cjs"}`,
     },
     rollupOptions: {
-      external: [/^node:/, /^@receptron\//, "zod"],
+      external: [/^node:/, /^@receptron\//, "zod", "gui-chat-protocol"],
       output: { exports: "named" },
     },
     minify: false,

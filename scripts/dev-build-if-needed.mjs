@@ -34,7 +34,7 @@ const REPO_ROOT = dirname(__dirname);
 // `packages/scheduler/` publishes as `@receptron/task-scheduler`)
 // and because `build:packages:dev` enumerates exactly these — drift
 // from that script is a bug, not a feature.
-export const DEV_FOUNDATIONAL_DIRS = ["packages/protocol", "packages/scheduler", "packages/client", "packages/chat-service"];
+export const DEV_FOUNDATIONAL_DIRS = ["packages/protocol", "packages/scheduler", "packages/client", "packages/chat-service", "packages/core"];
 
 // Plugin tier — discovered to keep parity with
 // `node scripts/build-workspaces.mjs packages/plugins @mulmoclaude --name-suffix=-plugin`,
