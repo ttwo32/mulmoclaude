@@ -9,9 +9,13 @@ on:
   pull_request:
     branches:
       - main
+    # MUST mirror the script's scope (SHARED_DIRS + SHARED_PACKAGE_DIRS in
+    # scripts/check-shared-pkg-bumps.mjs) — a path missing here means a PR
+    # touching only that subtree never runs the guard.
     paths:
       - 'packages/plugins/**'
       - 'packages/services/**'
+      - 'packages/core/**'
 
 permissions:
   contents: read

@@ -31,6 +31,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SHARED_DIRS = ["packages/plugins", "packages/services"];
+// Cross-host `@mulmoclaude/*` packages that live DIRECTLY under `packages/`
+// (a single package dir, not a container of packages like the SHARED_DIRS
+// roots). `@mulmoclaude/core` is consumed by both apps and shares workspace
+// data, so it needs the same bump requirement — but `packages/core` isn't a
+// container, so it's checked here rather than walked under a SHARED_DIRS root.
+const SHARED_PACKAGE_DIRS = ["packages/core"];
 const SCOPE = "@mulmoclaude/";
 
 const base = process.env.BASE_SHA || process.argv[2] || "origin/main";
@@ -138,28 +144,33 @@ function runCli() {
 const failures = [];
 const packageDirs = []; // every subdir holding a package.json, for orphan exclusion
 
-for (const root of SHARED_DIRS) {
-  if (!existsSync(root)) continue;
-  for (const name of readdirSync(root)) {
-    const pkgDir = path.join(root, name);
-    const pkgJsonRel = path.join(pkgDir, "package.json");
-    if (!existsSync(pkgJsonRel)) continue;
-    packageDirs.push(pkgDir);
-    const pkg = JSON.parse(readFileSync(pkgJsonRel, "utf-8"));
-    if (!pkg.name?.startsWith(SCOPE) || pkg.private === true) continue;
-    if (changedUnder(pkgDir).length === 0) continue;
-    const baseVersion = versionAtBase(pkgJsonRel);
-    if (baseVersion === null) continue; // new package — nothing published to skew
-    // Cross-workspace devDep / script sweeps (e.g. `@types/node` patch bump
-    // touching every package.json) don't change what consumers install — skip
-    // the bump requirement so the author doesn't have to publish-bump every
-    // package for a change that ships nothing.
-    if (isNonShippingChange(pkgDir, pkgJsonRel)) continue;
-    if (!isHigher(pkg.version, baseVersion)) {
-      failures.push(`${pkg.name} — changed, but version ${pkg.version} is not greater than base ${baseVersion}`);
-    }
+// Per-package bump check: a changed, published, shared @mulmoclaude/* package
+// must have a version strictly greater than its base version. Pushes onto
+// `failures` when the rule is violated.
+function checkPackageDir(pkgDir) {
+  const pkgJsonRel = path.join(pkgDir, "package.json");
+  if (!existsSync(pkgJsonRel)) return;
+  packageDirs.push(pkgDir);
+  const pkg = JSON.parse(readFileSync(pkgJsonRel, "utf-8"));
+  if (!pkg.name?.startsWith(SCOPE) || pkg.private === true) return;
+  if (changedUnder(pkgDir).length === 0) return;
+  const baseVersion = versionAtBase(pkgJsonRel);
+  if (baseVersion === null) return; // new package — nothing published to skew
+  // Cross-workspace devDep / script sweeps (e.g. `@types/node` patch bump
+  // touching every package.json) don't change what consumers install — skip
+  // the bump requirement so the author doesn't have to publish-bump every
+  // package for a change that ships nothing.
+  if (isNonShippingChange(pkgDir, pkgJsonRel)) return;
+  if (!isHigher(pkg.version, baseVersion)) {
+    failures.push(`${pkg.name} — changed, but version ${pkg.version} is not greater than base ${baseVersion}`);
   }
 }
+
+for (const root of SHARED_DIRS) {
+  if (!existsSync(root)) continue;
+  for (const name of readdirSync(root)) checkPackageDir(path.join(root, name));
+}
+for (const pkgDir of SHARED_PACKAGE_DIRS) checkPackageDir(pkgDir);
 
 // Rule 2: changes in a non-package subtree (its first path segment under a
 // shared root has no package.json) — bundled into published packages but
