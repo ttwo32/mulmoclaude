@@ -956,12 +956,12 @@
     protobufjs "^7.5.3"
     yargs "^17.7.2"
 
-"@gui-chat-plugin/browse@^0.4.0":
-  version "0.4.0"
-  resolved "https://registry.yarnpkg.com/@gui-chat-plugin/browse/-/browse-0.4.0.tgz#b10e3f99c560ef9f4ac8fd2c9296bab3d31ef320"
-  integrity sha512-UN69/iHHbjvr+H7jCxP3LbgvDQRIlmtzUp3OYy5/kAYzhcwE73SczhBOQ+UH30xP0Q5qCc5g+eMzXirodqHDPg==
+"@gui-chat-plugin/browse@^0.5.0":
+  version "0.5.0"
+  resolved "https://npm.flatt.tech/@gui-chat-plugin/browse/-/browse-0.5.0.tgz#c9f272705c481b4c2766ba62f03454e9fa300988"
+  integrity sha512-VeHQKqkW4skmLQJHOlsyzBnsQuaHtSjx6hpQZvUpRq1xQHN8lmCVfxrEiBxwYM5lSvv/MP9177nHRfjp/rWA5A==
   dependencies:
-    gui-chat-protocol "^0.3.3"
+    gui-chat-protocol "^0.4.0"
 
 "@gui-chat-plugin/camera@^0.4.1":
   version "0.4.1"
