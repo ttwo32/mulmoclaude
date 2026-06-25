@@ -968,12 +968,12 @@
   resolved "https://registry.yarnpkg.com/@gui-chat-plugin/camera/-/camera-0.4.1.tgz#f127547f19bd89d5135f32dcc179fadebe5562e4"
   integrity sha512-JgMeYubDfX2Ez49SoKGHpVgekNViDtUXUxDm9/F2fuzHD6KqxzmkLHYnmbgP4h8LJP8OB3sgELDItBpkRkeDHA==
 
-"@gui-chat-plugin/google-map@^0.5.0":
-  version "0.5.0"
-  resolved "https://npm.flatt.tech/@gui-chat-plugin/google-map/-/google-map-0.5.0.tgz#e9cf36180b30d7fd70e07bc9ea7b5f2465165da6"
-  integrity sha512-bNFM57kP61Nn7whpCriED/TtWNuacfQIi6Tj8rbTrryfy5HxFZJci/lrfnBdbFLLLMGvRkoWNcG3d6jAbJSuXA==
+"@gui-chat-plugin/google-map@^0.6.0":
+  version "0.6.0"
+  resolved "https://npm.flatt.tech/@gui-chat-plugin/google-map/-/google-map-0.6.0.tgz#49115e204fdc1d0f83afc83a7690e452084ccdb9"
+  integrity sha512-srSMCWkpCoCfWsAHQbcpnjduyXe9ksF6BVKkf6GjuAdaVyM5v6rxdn1TPN+D1j3lKM6SaQ5OGBOQLHQTbzFvJg==
   dependencies:
-    gui-chat-protocol "^0.3.3"
+    gui-chat-protocol "^0.4.0"
 
 "@gui-chat-plugin/mindmap@^0.4.1":
   version "0.4.1"
