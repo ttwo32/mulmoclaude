@@ -1,9 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { aggregateBalances, buildBalanceSheet, buildLedger, buildProfitLoss } from "../../server/accounting/report.js";
-import { makeEntry, makeVoidEntries } from "../../server/accounting/journal.js";
-import type { Account } from "../../server/accounting/types.js";
+import { aggregateBalances, buildBalanceSheet, buildLedger, buildProfitLoss } from "../../src/server/report.js";
+import { makeEntry, makeVoidEntries } from "../../src/server/journal.js";
+import type { Account } from "../../src/server/types.js";
 
 const ACCOUNTS: Account[] = [
   { code: "1000", name: "Cash", type: "asset" },

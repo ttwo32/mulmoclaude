@@ -7,10 +7,9 @@
 // `src/config/pubsubChannels.ts` so the publisher cannot drift from
 // the View-side subscribers.
 
-import { accountingBookChannel, PUBSUB_CHANNELS, type AccountingBookChannelPayload } from "../../src/config/pubsubChannels.js";
-import { log } from "../system/logger/index.js";
-import { errorMessage } from "../utils/errors.js";
-import type { IPubSub } from "../events/pub-sub/index.js";
+import { bookChannel as accountingBookChannel, ACCOUNTING_BOOKS_CHANNEL, type BookChannelPayload as AccountingBookChannelPayload } from "../shared";
+import { log, type IPubSub } from "./context.js";
+import { errorMessage } from "../shared";
 
 let pubsub: IPubSub | null = null;
 
@@ -43,7 +42,7 @@ export function publishBookChange(bookId: string, payload: AccountingBookChannel
  *  Payload is intentionally empty — subscribers refetch from
  *  /api/accounting. */
 export function publishBooksChanged(): void {
-  safePublish(PUBSUB_CHANNELS.accountingBooks, {});
+  safePublish(ACCOUNTING_BOOKS_CHANNEL, {});
 }
 
 /** Test-only — drop the module singleton so each test starts clean. */

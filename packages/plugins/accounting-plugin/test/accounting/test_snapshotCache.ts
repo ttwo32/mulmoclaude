@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { ensureBookDir, appendJournal, invalidateAllSnapshots, invalidateSnapshotsFrom, readSnapshot } from "../../server/utils/files/accounting-io.js";
+import { ensureBookDir, appendJournal, invalidateAllSnapshots, invalidateSnapshotsFrom, readSnapshot } from "../../src/server/io.js";
 import {
   _resetRebuildQueueForTesting,
   awaitRebuildIdle,
@@ -13,11 +13,11 @@ import {
   inspectRebuildQueue,
   rebuildAllSnapshots,
   scheduleRebuild,
-} from "../../server/accounting/snapshotCache.js";
-import { makeEntry } from "../../server/accounting/journal.js";
-import { _resetAccountingEventPublisherForTesting, initAccountingEventPublisher } from "../../server/accounting/eventPublisher.js";
-import { accountingBookChannel, type AccountingBookChannelPayload } from "../../src/config/pubsubChannels.js";
-import type { IPubSub } from "../../server/events/pub-sub/index.js";
+} from "../../src/server/snapshotCache.js";
+import { makeEntry } from "../../src/server/journal.js";
+import { _resetAccountingEventPublisherForTesting, initAccountingEventPublisher } from "../../src/server/eventPublisher.js";
+import { bookChannel as accountingBookChannel, type BookChannelPayload as AccountingBookChannelPayload } from "../../src/shared";
+import type { IPubSub } from "../../src/server/context.ts";
 
 const created: string[] = [];
 function makeTmp(): string {

@@ -1,9 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { findActiveOpening, validateOpening } from "../../server/accounting/openingBalances.js";
-import { makeEntry, makeVoidEntries } from "../../server/accounting/journal.js";
-import type { Account, JournalEntry, JournalLine } from "../../server/accounting/types.js";
+import { findActiveOpening, validateOpening } from "../../src/server/openingBalances.js";
+import { makeEntry, makeVoidEntries } from "../../src/server/journal.js";
+import type { Account, JournalEntry, JournalLine } from "../../src/server/types.js";
 
 const ACCOUNTS: Account[] = [
   { code: "1000", name: "Cash", type: "asset" },

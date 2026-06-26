@@ -9,8 +9,8 @@ import {
   netBalance,
   validateEntry,
   voidedIdSet,
-} from "../../server/accounting/journal.js";
-import type { Account, JournalEntry, JournalLine } from "../../server/accounting/types.js";
+} from "../../src/server/journal.js";
+import type { Account, JournalEntry, JournalLine } from "../../src/server/types.js";
 
 const ACCOUNTS: Account[] = [
   { code: "1000", name: "Cash", type: "asset" },

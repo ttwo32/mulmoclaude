@@ -32,7 +32,7 @@ import {
   removeBookDir,
   writeAccounts,
   writeConfig,
-} from "../utils/files/accounting-io.js";
+} from "./io.js";
 import { findActiveOpening, validateOpening } from "./openingBalances.js";
 import { normalizeStoredAccount } from "./accountNormalize.js";
 import { isValidCalendarDate, localDateString, makeEntry, makeVoidEntries, validateEntry, voidedIdSet } from "./journal.js";
@@ -49,8 +49,8 @@ import {
 import { awaitRebuildIdle, balancesAtEndOf, cancelRebuild, getOrBuildSnapshot, rebuildAllSnapshots, scheduleRebuild } from "./snapshotCache.js";
 import { publishBookChange, publishBooksChanged } from "./eventPublisher.js";
 import { DEFAULT_ACCOUNTS } from "./defaultAccounts.js";
-import { log } from "../system/logger/index.js";
-import { ACCOUNTING_BOOK_EVENT_KINDS } from "../../src/config/pubsubChannels.js";
+import { log } from "./context.js";
+import { BOOK_EVENT_KINDS as ACCOUNTING_BOOK_EVENT_KINDS } from "../shared";
 import {
   isSupportedCountryCode,
   SUPPORTED_COUNTRY_CODES,
@@ -59,7 +59,7 @@ import {
   FISCAL_YEAR_ENDS,
   isFiscalYearEnd,
   type FiscalYearEnd,
-} from "@mulmoclaude/accounting-plugin/shared";
+} from "../shared";
 import type { Account, AccountingConfig, BookSummary, JournalEntry, JournalLine, ReportPeriod } from "./types.js";
 
 export class AccountingError extends Error {

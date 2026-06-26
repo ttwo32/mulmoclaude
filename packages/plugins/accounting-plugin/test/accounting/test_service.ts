@@ -17,8 +17,8 @@ import {
   setOpeningBalances,
   updateBook,
   voidEntry,
-} from "../../server/accounting/service.js";
-import { _resetRebuildQueueForTesting, awaitRebuildIdle } from "../../server/accounting/snapshotCache.js";
+} from "../../src/server/service.js";
+import { _resetRebuildQueueForTesting, awaitRebuildIdle } from "../../src/server/snapshotCache.js";
 
 const created: string[] = [];
 function makeTmp(): string {
@@ -65,7 +65,7 @@ describe("upsertAccount synthetic-code guard", () => {
   it("rejects account codes starting with _ (reserved for synthetic rows)", async () => {
     const root = makeTmp();
     const book = await createBook({ name: "X" }, root);
-    const { upsertAccount } = await import("../../server/accounting/service.js");
+    const { upsertAccount } = await import("../../src/server/service.js");
     await assert.rejects(
       () => upsertAccount({ bookId: book.book.id, account: { code: "_currentEarnings", name: "Synthetic", type: "equity" } }, root),
       AccountingError,
@@ -82,7 +82,7 @@ describe("upsertAccount active-flag policy", () => {
     // entry/ledger dropdowns. Pin the inheritance so that path stays safe.
     const root = makeTmp();
     const book = await createBook({ name: "X" }, root);
-    const { upsertAccount } = await import("../../server/accounting/service.js");
+    const { upsertAccount } = await import("../../src/server/service.js");
     await upsertAccount({ bookId: book.book.id, account: { code: "1500", name: "Equipment", type: "asset", active: false } }, root);
     const updated = await upsertAccount({ bookId: book.book.id, account: { code: "1500", name: "Old Equipment", type: "asset" } }, root);
     const renamed = updated.accounts.find((entry) => entry.code === "1500");
@@ -94,7 +94,7 @@ describe("upsertAccount active-flag policy", () => {
   it("treats explicit active=true as a reactivate (omits the flag)", async () => {
     const root = makeTmp();
     const book = await createBook({ name: "X" }, root);
-    const { upsertAccount } = await import("../../server/accounting/service.js");
+    const { upsertAccount } = await import("../../src/server/service.js");
     await upsertAccount({ bookId: book.book.id, account: { code: "1500", name: "Equipment", type: "asset", active: false } }, root);
     const reactivated = await upsertAccount({ bookId: book.book.id, account: { code: "1500", name: "Equipment", type: "asset", active: true } }, root);
     const account = reactivated.accounts.find((entry) => entry.code === "1500");
@@ -105,7 +105,7 @@ describe("upsertAccount active-flag policy", () => {
   it("does not invent an active flag for accounts that never had one", async () => {
     const root = makeTmp();
     const book = await createBook({ name: "X" }, root);
-    const { upsertAccount } = await import("../../server/accounting/service.js");
+    const { upsertAccount } = await import("../../src/server/service.js");
     const result = await upsertAccount({ bookId: book.book.id, account: { code: "1500", name: "Equipment", type: "asset" } }, root);
     const account = result.accounts.find((entry) => entry.code === "1500");
     assert.ok(account);

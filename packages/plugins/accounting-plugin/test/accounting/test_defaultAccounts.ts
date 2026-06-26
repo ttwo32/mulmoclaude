@@ -10,7 +10,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_ACCOUNTS } from "../../server/accounting/defaultAccounts.js";
+import { DEFAULT_ACCOUNTS } from "../../src/server/defaultAccounts.js";
 
 describe("DEFAULT_ACCOUNTS", () => {
   it("seeds 1400 Input Tax Receivable as an active current asset", () => {

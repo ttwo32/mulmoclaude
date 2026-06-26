@@ -6,7 +6,7 @@ import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import agentRoutes, { startChat } from "./api/routes/agent.js";
-import accountingRoutes from "./api/routes/accounting.js";
+import { createAccountingRouter, initAccountingEventPublisher, configureAccountingServer } from "@mulmoclaude/accounting-plugin/server";
 import photoLocationsRoutes from "./api/routes/photo-locations.js";
 import schedulerRoutes from "./api/routes/scheduler.js";
 import sessionsRoutes, { loadAllSessions } from "./api/routes/sessions.js";
@@ -68,7 +68,6 @@ import { createChatService } from "@mulmobridge/chat-service";
 import { readSessionJsonl } from "./utils/files/session-io.js";
 import { onSessionEvent, initSessionStore } from "./events/session-store/index.js";
 import { initFileChangePublisher } from "./events/file-change.js";
-import { initAccountingEventPublisher } from "./accounting/eventPublisher.js";
 import { initCollectionChangePublisher } from "./events/collection-change.js";
 import { getRole, loadAllRoles } from "./workspace/roles.js";
 import { discoverSkills } from "./workspace/skills/index.js";
@@ -638,7 +637,7 @@ app.get(API_ROUTES.sandbox, (_req: Request, res: Response) => {
 // `app.use("/api", ...)` prefix was dropped when #289 part 1 moved
 // the `/api` literal into each `router.post(API_ROUTES.…)` call.
 app.use(agentRoutes);
-app.use(accountingRoutes);
+app.use(createAccountingRouter());
 app.use(photoLocationsRoutes);
 app.use(schedulerRoutes);
 app.use(sessionsRoutes);
@@ -1097,6 +1096,9 @@ async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, p
   // Wired here (not at first publish) so the very first save after
   // boot already sees a live publisher.
   initFileChangePublisher(pubsub);
+  // Inject the accounting backend's host seams (workspace root + logger)
+  // and its pub/sub instance before any request hits the router.
+  configureAccountingServer({ workspaceRoot: workspacePath, logger: log });
   initAccountingEventPublisher(pubsub);
   initCollectionChangePublisher(pubsub);
 

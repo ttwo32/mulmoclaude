@@ -20,8 +20,8 @@ import {
   writeAccounts,
   writeConfig,
   writeSnapshot,
-} from "../../server/utils/files/accounting-io.js";
-import type { JournalEntry } from "../../server/accounting/types.js";
+} from "../../src/server/io.js";
+import type { JournalEntry } from "../../src/server/types.js";
 
 const created: string[] = [];
 function makeTmp(): string {

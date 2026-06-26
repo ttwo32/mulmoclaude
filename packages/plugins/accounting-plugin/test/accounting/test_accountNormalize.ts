@@ -6,8 +6,8 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeStoredAccount } from "../../server/accounting/accountNormalize.ts";
-import type { Account } from "../../server/accounting/types.ts";
+import { normalizeStoredAccount } from "../../src/server/accountNormalize.ts";
+import type { Account } from "../../src/server/types.ts";
 
 const BASE: Account = { code: "1500", name: "Equipment", type: "asset" };
 

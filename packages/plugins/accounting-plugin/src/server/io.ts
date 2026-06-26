@@ -12,12 +12,11 @@
 import { promises as fsPromises } from "node:fs";
 import path from "node:path";
 
-import { workspacePath, WORKSPACE_DIRS } from "../../workspace/paths.js";
-import { writeJsonAtomic } from "./json.js";
-import { isEnoent } from "./safe.js";
-import type { AccountingConfig, Account, JournalEntry, MonthSnapshot } from "../../accounting/types.js";
+import { defaultWorkspaceRoot, ACCOUNTING_DIRS as WORKSPACE_DIRS } from "./context.js";
+import { writeJsonAtomic, isEnoent } from "./atomic.js";
+import type { AccountingConfig, Account, JournalEntry, MonthSnapshot } from "./types.js";
 
-const root = (workspaceRoot?: string): string => workspaceRoot ?? workspacePath;
+const root = (workspaceRoot?: string): string => workspaceRoot ?? defaultWorkspaceRoot();
 
 function accountingRoot(workspaceRoot?: string): string {
   return path.join(root(workspaceRoot), WORKSPACE_DIRS.accounting);

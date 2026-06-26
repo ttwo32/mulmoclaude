@@ -16,7 +16,7 @@ export default defineConfig({
   plugins: [vue(), tailwindcss()],
   build: {
     lib: {
-      entry: { shared: "src/shared/index.ts", vue: "src/vue/index.ts" },
+      entry: { shared: "src/shared/index.ts", vue: "src/vue/index.ts", server: "src/server/index.ts" },
       formats: ["es", "cjs"],
       fileName: (format, entryName) => `${entryName}.${format === "es" ? "js" : "cjs"}`,
     },

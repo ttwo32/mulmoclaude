@@ -21,7 +21,7 @@ import {
   TIME_SERIES_METRICS,
   type TimeSeriesGranularity,
   type TimeSeriesMetric,
-} from "@mulmoclaude/accounting-plugin/shared";
+} from "../shared";
 
 export { TIME_SERIES_GRANULARITIES, TIME_SERIES_METRICS };
 export type { TimeSeriesGranularity, TimeSeriesMetric };

@@ -4,11 +4,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { AccountingError, addEntries, createBook, getTimeSeriesReport, setOpeningBalances } from "../../server/accounting/service.js";
+import { AccountingError, addEntries, createBook, getTimeSeriesReport, setOpeningBalances } from "../../src/server/service.js";
 // Note: addEntries doesn't require an opening at the service layer
 // (the gate is in the UI). setOpeningBalances is only used in the
 // `accountBalance` test that needs a non-zero starting balance.
-import { _resetRebuildQueueForTesting } from "../../server/accounting/snapshotCache.js";
+import { _resetRebuildQueueForTesting } from "../../src/server/snapshotCache.js";
 
 const created: string[] = [];
 function makeTmp(): string {

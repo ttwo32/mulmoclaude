@@ -16,6 +16,12 @@
       "require": "./dist/vue.cjs",
       "default": "./dist/vue.js"
     },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server.js",
+      "require": "./dist/server.cjs",
+      "default": "./dist/server.js"
+    },
     "./style.css": "./dist/style.css"
   },
   "files": [
@@ -27,7 +33,7 @@
   "scripts": {
     "build": "vite build && vue-tsc -p tsconfig.build.json --emitDeclarationOnly",
     "typecheck": "vue-tsc --noEmit",
-    "test": "tsx --test test/test_*.ts"
+    "test": "tsx --test test/test_*.ts test/accounting/test_*.ts"
   },
   "peerDependencies": {
     "express": "^5.2.1",

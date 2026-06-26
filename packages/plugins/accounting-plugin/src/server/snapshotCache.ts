@@ -32,12 +32,11 @@ import {
   readJournalMonth,
   readSnapshot,
   writeSnapshot,
-} from "../utils/files/accounting-io.js";
+} from "./io.js";
 import { aggregateBalances } from "./report.js";
 import { publishBookChange } from "./eventPublisher.js";
-import { log } from "../system/logger/index.js";
-import { errorMessage } from "../utils/errors.js";
-import { ACCOUNTING_BOOK_EVENT_KINDS } from "../../src/config/pubsubChannels.js";
+import { log } from "./context.js";
+import { errorMessage, BOOK_EVENT_KINDS as ACCOUNTING_BOOK_EVENT_KINDS } from "../shared";
 import type { AccountBalance, JournalEntry, MonthSnapshot } from "./types.js";
 
 function previousPeriod(period: string): string {
