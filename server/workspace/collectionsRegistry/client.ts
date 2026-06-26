@@ -11,7 +11,11 @@ import { ONE_SECOND_MS } from "../../utils/time.js";
 import { parseRegistryIndex, type RegistryIndex } from "./registryIndex.js";
 
 const DEFAULT_REGISTRY_URL = "https://receptron.github.io/mulmoclaude-collections/index.json";
-const CACHE_TTL_MS = 5 * 60 * ONE_SECOND_MS;
+export const CACHE_TTL_MS = 5 * 60 * ONE_SECOND_MS;
+// During an outage (cache past TTL + failing upstream) don't re-hit the network
+// more than once per this window — serve stale immediately in between, so a down
+// upstream can't add its full timeout to every request.
+export const STALE_RETRY_BACKOFF_MS = 60 * ONE_SECOND_MS;
 const FETCH_TIMEOUT_MS = 10 * ONE_SECOND_MS;
 const STATUS_BAD_GATEWAY = 502;
 const STATUS_UNAVAILABLE = 503;
@@ -24,6 +28,7 @@ interface CacheEntry {
 }
 
 let cache: CacheEntry | null = null;
+let lastFailureMs: number | null = null;
 
 export function registryIndexUrl(): string {
   return process.env.COLLECTIONS_REGISTRY_URL ?? DEFAULT_REGISTRY_URL;
@@ -48,23 +53,35 @@ async function loadFromNetwork(): Promise<FetchIndexResult> {
   return { ok: true, index: parsed.index, stale: false };
 }
 
+export type IndexLoader = () => Promise<FetchIndexResult>;
+
 /** Fetch the registry index, served from cache within the TTL. On upstream
- *  failure, falls back to the last good index (marked `stale`) when available. */
-export async function fetchRegistryIndex(opts: { force?: boolean; nowMs?: number } = {}): Promise<FetchIndexResult> {
+ *  failure, falls back to the last good index (marked `stale`). After a failure
+ *  the network is not retried for `STALE_RETRY_BACKOFF_MS` while a stale cache can
+ *  be served, so a down upstream can't add its timeout to every request. `loader`
+ *  is injectable for tests; `force` bypasses both the TTL and the backoff. */
+export async function fetchRegistryIndex(opts: { force?: boolean; nowMs?: number; loader?: IndexLoader } = {}): Promise<FetchIndexResult> {
   const nowMs = opts.nowMs ?? Date.now();
+  const loader = opts.loader ?? loadFromNetwork;
   if (!opts.force && cache && nowMs - cache.atMs < CACHE_TTL_MS) {
     return { ok: true, index: cache.index, stale: false };
   }
-  const fresh = await loadFromNetwork();
+  if (!opts.force && cache && lastFailureMs !== null && nowMs - lastFailureMs < STALE_RETRY_BACKOFF_MS) {
+    return { ok: true, index: cache.index, stale: true };
+  }
+  const fresh = await loader();
   if (fresh.ok) {
     cache = { index: fresh.index, atMs: nowMs };
-    return fresh;
+    lastFailureMs = null;
+    return { ok: true, index: fresh.index, stale: false };
   }
+  lastFailureMs = nowMs;
   if (cache) return { ok: true, index: cache.index, stale: true };
   return fresh;
 }
 
-/** Test seam: reset the module cache. */
+/** Test seam: reset the module cache + failure backoff state. */
 export function resetRegistryCache(): void {
   cache = null;
+  lastFailureMs = null;
 }
