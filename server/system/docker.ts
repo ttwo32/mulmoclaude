@@ -2,11 +2,11 @@ import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 import { createHash } from "crypto";
 import { readFileSync, statSync } from "fs";
-import { homedir } from "os";
-import { join, resolve as resolvePath } from "path";
+import { resolve as resolvePath } from "path";
 import { log } from "./logger/index.js";
 import { env } from "./env.js";
 import { SUBPROCESS_PROBE_TIMEOUT_MS } from "../utils/time.js";
+import { claudeConfigDir, claudeConfigJson } from "../utils/claudeConfigPath.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -17,26 +17,27 @@ const LABEL_KEY = "mulmoclaude.dockerfile.sha256";
 let _dockerEnabled: boolean | null = null;
 
 function assertClaudeFiles(): void {
-  const claudeDir = join(homedir(), ".claude");
-  const claudeJson = join(homedir(), ".claude.json");
+  const claudeDir = claudeConfigDir();
+  const claudeJson = claudeConfigJson();
+  const overrideHint = "Set CLAUDE_CONFIG_DIR / CLAUDE_CONFIG_JSON to point at your install if it lives elsewhere.";
 
   try {
     if (!statSync(claudeDir).isDirectory()) {
-      log.error("sandbox", `${claudeDir} exists but is not a directory.`);
+      log.error("sandbox", `${claudeDir} exists but is not a directory. ${overrideHint}`);
       process.exit(1);
     }
   } catch {
-    log.error("sandbox", `${claudeDir} not found. Run 'claude' once to initialize.`);
+    log.error("sandbox", `${claudeDir} not found. Run 'claude' once to initialize. ${overrideHint}`);
     process.exit(1);
   }
 
   try {
     if (!statSync(claudeJson).isFile()) {
-      log.error("sandbox", `${claudeJson} exists but is not a file.`);
+      log.error("sandbox", `${claudeJson} exists but is not a file. ${overrideHint}`);
       process.exit(1);
     }
   } catch {
-    log.error("sandbox", `${claudeJson} not found. Run 'claude' once to initialize.`);
+    log.error("sandbox", `${claudeJson} not found. Run 'claude' once to initialize. ${overrideHint}`);
     process.exit(1);
   }
 }

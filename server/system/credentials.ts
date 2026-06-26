@@ -1,14 +1,13 @@
 import { execFile } from "child_process";
-import { homedir } from "os";
-import { join } from "path";
 import { promisify } from "util";
 import { log } from "./logger/index.js";
 import { ONE_SECOND_MS, ONE_MINUTE_MS } from "../utils/time.js";
 import { writeFileAtomic } from "../utils/files/atomic.js";
+import { claudeCredentialsPath } from "../utils/claudeConfigPath.js";
 
 const execFileAsync = promisify(execFile);
 
-const CREDENTIALS_PATH = join(homedir(), ".claude", ".credentials.json");
+const CREDENTIALS_PATH = claudeCredentialsPath();
 const KEYCHAIN_SERVICE = "Claude Code-credentials";
 
 /** Safety margin — treat tokens as expired 60s before actual expiry. */

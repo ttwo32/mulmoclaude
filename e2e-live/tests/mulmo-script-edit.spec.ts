@@ -88,7 +88,17 @@ test.describe("mulmoScript edit (real workspace)", () => {
       // even with the View-side refresh removed.
       await page.getByTestId("plugin-launcher-wiki").click();
       await page.waitForURL(/\/wiki/);
-      await page.getByTestId(`session-tab-${sessionId}`).click();
+      // Commit 70309a35 ("make chat-history chrome chat-only") made
+      // SessionTabBar / SessionHistoryPanel render only when
+      // `isChatPage === true`, so `session-tab-${id}` no longer exists
+      // off /chat. The round-trip back to the test session now goes
+      // through the always-visible `plugin-launcher-chat` button —
+      // `handleHomeClick` → `resumeOrCreateChatSession` activates
+      // `mergedSessions[0]`, which is the only session this test
+      // created. The SPA route is still pushed in-app (no full reload),
+      // so the #1074 repro intent (cached `ActiveSession` reuse + View
+      // re-reads disk on mount) is preserved.
+      await page.getByTestId("plugin-launcher-chat").click();
       await page.waitForURL(new RegExp(`/chat/${sessionId}$`));
       await expect(page.getByTestId("mulmo-script-generate-movie-button").first()).toBeVisible({ timeout: ONE_MINUTE_MS });
 

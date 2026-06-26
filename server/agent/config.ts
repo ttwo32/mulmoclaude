@@ -8,6 +8,7 @@ import { mcpTools, isMcpToolEnabled } from "./mcp-tools/index.js";
 import { getActiveToolDescriptors } from "./activeTools.js";
 import type { EffortLevel, McpServerSpec } from "../system/config.js";
 import { startStdioHttpShim, type ShimHandle } from "./stdioHttpShim.js";
+import { claudeConfigDir, claudeConfigJson } from "../utils/claudeConfigPath.js";
 import { getCurrentToken } from "../api/auth/token.js";
 import type { Attachment } from "@mulmobridge/protocol";
 import { isImageMime, isNativeAttachmentMime } from "@mulmobridge/client";
@@ -675,9 +676,9 @@ export function buildDockerSpawnArgs(params: DockerSpawnArgsParams): string[] {
     "-v",
     `${toDockerPath(workspacePath)}:${CONTAINER_WORKSPACE_PATH}`,
     "-v",
-    `${toDockerPath(homeDir)}/.claude:/home/node/.claude`,
+    `${toDockerPath(claudeConfigDir(homeDir))}:/home/node/.claude`,
     "-v",
-    `${toDockerPath(homeDir)}/.claude.json:/home/node/.claude.json`,
+    `${toDockerPath(claudeConfigJson(homeDir))}:/home/node/.claude.json`,
     ...sandboxAuthArgs,
     ...extraHosts,
     "mulmoclaude-sandbox",

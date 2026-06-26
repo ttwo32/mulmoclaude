@@ -49,6 +49,7 @@ import { loadPresetPlugins } from "./plugins/preset-loader.js";
 import { registerRuntimePlugins } from "./plugins/runtime-registry.js";
 import { makePluginRuntime } from "./plugins/runtime.js";
 import { MCP_PLUGIN_NAMES } from "./agent/plugin-names.js";
+import { claudeCredentialsPath } from "./utils/claudeConfigPath.js";
 import { setActiveBackend } from "./agent/backend/index.js";
 import { fakeEchoBackend } from "./agent/backend/fake-echo.js";
 import { startMacosReminderAdapter } from "./notifier/macosReminderAdapter.js";
@@ -87,7 +88,7 @@ import { buildSandboxStatus } from "./api/sandboxStatus.js";
 import { existsSync, readFileSync } from "fs";
 import { realpath as fsRealpath } from "fs/promises";
 import { containsDotfileSegment, resolveWithinRoot } from "./utils/files/safe.js";
-import { cpus, homedir, loadavg } from "os";
+import { cpus, loadavg } from "os";
 import { isDockerAvailable, ensureSandboxImage } from "./system/docker.js";
 import { maybeRunJournal } from "./workspace/journal/index.js";
 import { backfillAllSessions } from "./workspace/chat-index/index.js";
@@ -813,7 +814,7 @@ async function resolvePort(): Promise<number> {
 }
 
 async function ensureCredentialsAvailable(): Promise<void> {
-  const credentialsPath = path.join(homedir(), ".claude", ".credentials.json");
+  const credentialsPath = claudeCredentialsPath();
   if (existsSync(credentialsPath)) return;
 
   if (process.platform === "darwin") {
