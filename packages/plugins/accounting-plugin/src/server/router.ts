@@ -286,14 +286,21 @@ const MESSAGE_BUILDERS: Record<string, MessageBuilder> = {
 };
 
 function previewMessage(action: string, fields: Record<string, unknown>): string {
-  const head = MESSAGE_BUILDERS[action]?.(fields);
+  // `Object.hasOwn` guard so a user-controlled `action` (e.g.
+  // "constructor" / "toString") can't dispatch to an inherited
+  // prototype method — own-property check before the dynamic call.
+  const head = Object.hasOwn(MESSAGE_BUILDERS, action) ? MESSAGE_BUILDERS[action](fields) : undefined;
   return head ? `${head} ${VIEW_VISIBLE_TRAILER}` : VIEW_VISIBLE_TRAILER;
 }
 
 async function dispatch(body: AccountingActionBody): Promise<unknown> {
   const { action, ...rest } = body;
+  // Own-property check (not just truthiness) before the dynamic call:
+  // `ACTION_HANDLERS[action]` would otherwise resolve inherited
+  // prototype methods (`toString`, `constructor`, …) for a crafted
+  // `action`, dispatching to an unexpected target.
+  if (!Object.hasOwn(ACTION_HANDLERS, action)) throw new AccountingError(400, `unknown action ${JSON.stringify(action)}`);
   const handler = ACTION_HANDLERS[action];
-  if (!handler) throw new AccountingError(400, `unknown action ${JSON.stringify(action)}`);
   // Stamp the dispatch verb onto the response so the MCP bridge's
   // spread `{ toolName, uuid, ...result }` surfaces it as
   // `ToolResult.action`. The sidebar reads this to label cards as
