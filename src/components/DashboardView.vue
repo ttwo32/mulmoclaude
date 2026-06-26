@@ -54,7 +54,14 @@
         <!-- Live embedded view. `:key` remounts the view when the mode
              changes so the new initial view takes effect. -->
         <div class="h-80 overflow-auto">
-          <CollectionView :key="`${tile.slug}:${effectiveView(tile)}`" :slug="tile.slug" :initial-view="effectiveView(tile)" hide-view-toggle />
+          <CollectionView
+            :key="`${tile.slug}:${effectiveView(tile)}`"
+            :slug="tile.slug"
+            :initial-view="effectiveView(tile)"
+            hide-view-toggle
+            hide-header
+            hide-search
+          />
         </div>
       </section>
     </div>
