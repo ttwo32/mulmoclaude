@@ -5,13 +5,33 @@
 // own copy in the tool-result `viewState` (they read, never write — so a
 // stale card can't clobber the shared preference).
 
-import type { SortState } from "@mulmoclaude/core/collection";
+import type { SortState, CollectionSchema } from "@mulmoclaude/core/collection";
 
 /** The host's built-in, field-derived view modes. */
 export type BuiltInViewMode = "table" | "calendar" | "kanban";
 /** A custom (LLM-authored) view's selector key: `custom:<viewId>`. */
 export type CustomViewMode = `custom:${string}`;
 export type CollectionViewMode = BuiltInViewMode | CustomViewMode;
+
+/** Build the `custom:<id>` selector key for a custom view. */
+export function customViewKey(viewId: string): CustomViewMode {
+  return `custom:${viewId}`;
+}
+
+/** Every view mode a schema can render, in selector order: `table`
+ *  always, `calendar` when a `date`/`datetime` field exists, `kanban`
+ *  when an `enum` field exists, then each declared custom view. Mirrors
+ *  the field-derived gating inside `CollectionView` (hasCalendar /
+ *  hasKanban / customViews) so callers outside that component — e.g. the
+ *  dashboard's per-tile view picker — offer exactly the same choices. */
+export function applicableViewModes(schema: CollectionSchema): CollectionViewMode[] {
+  const modes: CollectionViewMode[] = ["table"];
+  const fields = Object.values(schema.fields);
+  if (fields.some((field) => field.type === "date" || field.type === "datetime")) modes.push("calendar");
+  if (fields.some((field) => field.type === "enum")) modes.push("kanban");
+  for (const view of schema.views ?? []) modes.push(customViewKey(view.id));
+  return modes;
+}
 
 const STORAGE_KEY = "collection_view_modes";
 const SORT_STORAGE_KEY = "collection_sorts";

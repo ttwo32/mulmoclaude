@@ -212,6 +212,11 @@
                variants; standalone routes are wrapped here against the
                same `pkg-name + endpoints` pair so the `useRuntime()`
                call resolves. -->
+          <!-- Dashboard — grid of favorite (pinned) collections, each a
+               live embedded view. Host component (no PluginScopedRoot):
+               CollectionView talks to /api/collections directly, same as
+               the collections index below. -->
+          <DashboardView v-else-if="currentPage === 'dashboard'" />
           <FilesView v-else-if="currentPage === 'files'" :refresh-token="filesRefreshToken" @load-session="handleSessionSelect" />
           <PluginScopedRoot v-else-if="currentPage === 'automations'" pkg-name="scheduler" :endpoints="API_ROUTES.scheduler">
             <AutomationsView />
@@ -325,6 +330,7 @@ import SessionHistoryPanel from "./components/SessionHistoryPanel.vue";
 import SessionSidebar from "./components/SessionSidebar.vue";
 import ThinkingIndicator from "./components/ThinkingIndicator.vue";
 import PluginLauncher from "./components/PluginLauncher.vue";
+import DashboardView from "./components/DashboardView.vue";
 import StackView from "./components/StackView.vue";
 import FilesView from "./components/FilesView.vue";
 import AutomationsView from "./plugins/scheduler/AutomationsView.vue";

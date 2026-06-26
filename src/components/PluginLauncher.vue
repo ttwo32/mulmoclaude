@@ -138,7 +138,7 @@ export type PluginLauncherKind = "view"; // Switch the canvas to a dedicated vie
 // out of this file avoids duplication across the 8 locales.
 export interface PluginLauncherTarget {
   /** Stable key for testid + dispatch in App.vue. */
-  key: "automations" | "wiki" | "collections" | "feeds" | "files" | "debug";
+  key: "dashboard" | "automations" | "wiki" | "collections" | "feeds" | "files" | "debug";
   kind: PluginLauncherKind;
   /** Material-icons glyph. */
   icon: string;
@@ -156,6 +156,9 @@ export interface PluginLauncherTarget {
 }
 
 const TARGETS: PluginLauncherTarget[] = [
+  // Dashboard — grid of favorite collections. Sits first (right after the
+  // Chat button) so it reads as the home surface beside the chat entry.
+  { key: "dashboard", kind: "view", icon: "dashboard" },
   { key: "wiki", kind: "view", icon: "menu_book" },
   // Schema-driven collections launcher — opens the collections
   // index, from which the user picks one. The index lists every

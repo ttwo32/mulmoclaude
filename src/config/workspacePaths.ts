@@ -30,6 +30,11 @@ export const WORKSPACE_FILES = {
    *  data — tied to specific content slugs — so it lives with the
    *  workspace, not in browser localStorage. Shape: `{ shortcuts: [] }`. */
   shortcuts: "config/shortcuts.json",
+  /** Dashboard layout — per-tile view mode + tile order for the grid of
+   *  favorite collections on the /dashboard page. Workspace data (tied
+   *  to content slugs), so it lives with the workspace, not in browser
+   *  localStorage. Shape: `{ tiles: [] }`. */
+  dashboard: "config/dashboard.json",
   /** Install ledger for runtime-loaded plugins (#1043 C-2). One row
    *  per installed plugin; the tgz files sit alongside in `plugins/`,
    *  extracted to `plugins/.cache/<name>/<version>/` on first boot. */

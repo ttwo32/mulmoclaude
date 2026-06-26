@@ -145,7 +145,7 @@
              the schema has a `date` field, kanban only with an `enum` field;
              local UI state, never persisted. -->
         <div
-          v-if="hasCalendar || hasKanban || hasCustomViews || canAddCustomView"
+          v-if="!hideViewToggle && (hasCalendar || hasKanban || hasCustomViews || canAddCustomView)"
           class="flex gap-0.5"
           role="group"
           :aria-label="t('collectionsView.viewToggle')"
@@ -737,6 +737,7 @@ import {
   writeCollectionViewMode,
   readCollectionSort,
   writeCollectionSort,
+  customViewKey,
   type CollectionViewMode,
   type BuiltInViewMode,
 } from "../collectionViewMode";
@@ -793,10 +794,17 @@ const props = defineProps<{
   /** Embedded mode only: initial view / anchor / group restored from the
    *  card's persisted `viewState` so a switch to calendar or kanban
    *  survives a remount. (The table sort is NOT a card prop — it's a shared
-   *  per-collection localStorage preference, read by both modes.) */
-  initialView?: BuiltInViewMode;
+   *  per-collection localStorage preference, read by both modes.) Accepts a
+   *  `custom:<id>` mode too so the dashboard can open a tile directly on a
+   *  custom view. */
+  initialView?: CollectionViewMode;
   initialAnchorField?: string;
   initialGroupField?: string;
+  /** Hide the header's view-mode toggle (table ↔ calendar ↔ kanban ↔
+   *  custom + "add view"). The dashboard sets this because each tile
+   *  carries its own view picker, persisting the choice to the dashboard
+   *  layout rather than the card/localStorage. Search stays available. */
+  hideViewToggle?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -1576,11 +1584,6 @@ function setView(next: CollectionViewMode): void {
 function setCustomView(viewId: string): void {
   const mode: CollectionViewMode = `custom:${viewId}`;
   view.value = mode;
-}
-
-/** Selector-key for a custom view, for active-state comparison in the template. */
-function customViewKey(viewId: string): CollectionViewMode {
-  return `custom:${viewId}`;
 }
 
 /** A short, slug-safe id not already used by a loaded record. Collisions
