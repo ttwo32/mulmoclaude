@@ -64,6 +64,22 @@ const pickBoolean = (rec: Record<string, unknown>, key: string): boolean | undef
 
 const asStringArray = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
 
+// id/path must agree with author/slug, so a lookup by author+slug can never fetch
+// files from a different directory than requested (defense against a poisoned index).
+function consistencyError(entryId: string, author: string, slug: string, dirPath: string, index: number): string | null {
+  if (entryId !== `${author}/${slug}`) return `collections[${index}].id must equal "${author}/${slug}"`;
+  if (dirPath !== `collections/${author}/${slug}`) return `collections[${index}].path must equal "collections/${author}/${slug}"`;
+  return null;
+}
+
+function validatedCounts(value: Record<string, unknown>, index: number): { fieldCount: number; seedCount: number } | string {
+  const fieldCount = validatedCount(value, "fieldCount");
+  const seedCount = validatedCount(value, "seedCount");
+  if (fieldCount === "invalid") return `collections[${index}].fieldCount must be a non-negative integer`;
+  if (seedCount === "invalid") return `collections[${index}].seedCount must be a non-negative integer`;
+  return { fieldCount, seedCount };
+}
+
 function parseEntry(value: unknown, index: number): RegistryCollectionEntry | string {
   if (!isRecord(value)) return `collections[${index}] is not an object`;
   const entryId = pickString(value, "id");
@@ -76,10 +92,10 @@ function parseEntry(value: unknown, index: number): RegistryCollectionEntry | st
   if (!entryId || !author || !slug || !title || !version || !path || !contentSha) {
     return `collections[${index}] is missing a required string field (id/author/slug/title/version/path/contentSha)`;
   }
-  const fieldCount = validatedCount(value, "fieldCount");
-  const seedCount = validatedCount(value, "seedCount");
-  if (fieldCount === "invalid") return `collections[${index}].fieldCount must be a non-negative integer`;
-  if (seedCount === "invalid") return `collections[${index}].seedCount must be a non-negative integer`;
+  const mismatch = consistencyError(entryId, author, slug, path, index);
+  if (mismatch) return mismatch;
+  const counts = validatedCounts(value, index);
+  if (typeof counts === "string") return counts;
   return {
     id: entryId,
     author,
@@ -93,8 +109,8 @@ function parseEntry(value: unknown, index: number): RegistryCollectionEntry | st
     license: pickString(value, "license") ?? "",
     tags: asStringArray(value.tags),
     views: asStringArray(value.views),
-    fieldCount,
-    seedCount,
+    fieldCount: counts.fieldCount,
+    seedCount: counts.seedCount,
     hasSeed: pickBoolean(value, "hasSeed") ?? false,
     screenshot: pickString(value, "screenshot"),
   };

@@ -109,6 +109,16 @@ describe("parseRegistryIndex", () => {
     }
   });
 
+  it("rejects entries whose id/path disagree with author/slug", () => {
+    const idMismatch = parseRegistryIndex({ ...validIndex(), collections: [{ ...validEntry(), id: "someone-else/movies" }] });
+    assert.equal(idMismatch.ok, false);
+    if (!idMismatch.ok) assert.match(idMismatch.error, /\.id must equal/);
+
+    const pathMismatch = parseRegistryIndex({ ...validIndex(), collections: [{ ...validEntry(), path: "collections/someone-else/movies" }] });
+    assert.equal(pathMismatch.ok, false);
+    if (!pathMismatch.ok) assert.match(pathMismatch.error, /\.path must equal/);
+  });
+
   it("accepts zero and positive integer counts", () => {
     const result = parseRegistryIndex({ ...validIndex(), collections: [{ ...validEntry(), fieldCount: 0, seedCount: 42 }] });
     assert.ok(result.ok);
