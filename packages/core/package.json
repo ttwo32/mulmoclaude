@@ -1,6 +1,6 @@
 {
   "name": "@mulmoclaude/core",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Shared server-side core for MulmoClaude and MulmoTerminal — the always-shipped-together subsystems consolidated behind subpath exports so the two hosts can't drift. Server-only except the browser-safe ./whisper/client and ./workspace-setup/slug entries. All host specifics are injected.",
   "type": "module",
   "exports": {
