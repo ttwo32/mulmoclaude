@@ -71,4 +71,4 @@ Calendar and Automations are two **separate** tools bundled in the `scheduler` p
 - `format` / `lint` / `typecheck` (server / vue all-8-locale / test) / `build` / unit tests green; update `test_paths_shape.ts` + `docs/ui-cheatsheet.md` for any removed dirs/surfaces.
 
 ## Follow-ups
-- Move `plans/feat-feeds.md`, `plans/refactor-feeds-skill-managed.md`, and this file to `plans/done/` once shipped.
+- Move `plans/refactor-feeds-skill-managed.md` and this file to `plans/done/` once shipped. (`plans/done/feat-feeds.md` is already archived.)

@@ -1,5 +1,5 @@
 // Unit tests for the custom-view srcdoc builder (see
-// plans/feat-collections-custom-views.md). Pure — the builder takes the
+// plans/done/feat-collections-custom-views.md). Pure — the builder takes the
 // origin explicitly, so no DOM/window is needed.
 
 import { describe, it } from "node:test";

@@ -172,7 +172,7 @@ const HOST_API_ROUTES = {
   // Local voice input (Mac-only, whisper.cpp). `run` transcribes one
   // audio clip; `model` reports capability + download status; `modelDownload`
   // is the opt-in trigger fired by the Settings → Voice enable toggle.
-  // See plans/feat-voice-input.md.
+  // See plans/done/feat-voice-input.md.
   transcribe: {
     run: "/api/transcribe",
     model: "/api/transcribe/model",

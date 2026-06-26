@@ -216,7 +216,7 @@ const HOST_WORKSPACE_DIRS = {
   // git) — since model files are large binaries that must stay out of
   // the git-tracked tree. Created lazily on first download, never
   // eagerly (most users never enable voice input). See
-  // plans/feat-voice-input.md.
+  // plans/done/feat-voice-input.md.
   models: "models",
   // Runtime-loaded plugins (#1043 C-2). The `plugins/` directory holds
   // user-installed npm-published plugin tarballs; `.cache/<name>/<ver>/`

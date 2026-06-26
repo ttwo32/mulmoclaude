@@ -5,7 +5,7 @@
 //   POST /api/transcribe/model/download   start the model download (opt-in)
 //
 // All transcription happens on the machine running this server; no
-// audio leaves it. See plans/feat-voice-input.md.
+// audio leaves it. See plans/done/feat-voice-input.md.
 
 import { Router, Request, Response } from "express";
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";

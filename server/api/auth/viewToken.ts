@@ -1,5 +1,5 @@
 // Capability tokens for custom collection views (see
-// plans/feat-collections-custom-views.md).
+// plans/done/feat-collections-custom-views.md).
 //
 // A custom view is LLM-authored HTML rendered in a sandboxed
 // (`allow-scripts`, opaque-origin) iframe. It must NOT receive the global

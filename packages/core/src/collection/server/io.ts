@@ -231,7 +231,7 @@ export function generateItemId(): string {
  *  The base dir is source-aware: a **project** collection authors views in the
  *  `data/skills/<slug>/` staging dir (custom-view HTML is staging-only — NOT
  *  mirrored to `.claude/skills`, because rendering is host-side; see
- *  plans/feat-collections-custom-views.md), whereas a **user** / **feed**
+ *  plans/done/feat-collections-custom-views.md), whereas a **user** / **feed**
  *  collection is authored directly in its own discovered `skillDir`. Reading
  *  relative to the wrong tree would 404 a perfectly valid view. */
 export async function readCustomViewHtml(

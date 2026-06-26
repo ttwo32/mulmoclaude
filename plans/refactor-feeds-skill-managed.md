@@ -51,5 +51,5 @@ Feeds can follow the same model. The agent's only job is to **author `feeds/<slu
 - `format` / `lint` / `typecheck` (server/vue all-8-locale/test) / `build` / feed tests green.
 
 ## Follow-ups
-- Once shipped, move `plans/feat-feeds.md` + this file to `plans/done/`.
+- Once shipped, move this file to `plans/done/`. (`plans/done/feat-feeds.md` is already archived.)
 - Retire the legacy `sources`/`news`/`NewsView` stack (still untouched).

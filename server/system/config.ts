@@ -58,7 +58,7 @@ export interface AppSettings {
   // what triggers the model download. `model` is the selected GGML
   // model name (validated against the registry at the route layer, kept
   // as a free string here to avoid a low-level → whisper dependency).
-  // See plans/feat-voice-input.md.
+  // See plans/done/feat-voice-input.md.
   voiceInput?: {
     enabled: boolean;
     model?: string;

@@ -24,7 +24,7 @@ the GUI chat protocol still works.
 We drive Claude Code through `-p --output-format stream-json --input-format
 stream-json` and parse the stream into `AgentEvent`s that render both the chat
 transcript and the GUI. That stream is a **semi-internal protocol** that shifts
-between CLI versions (cf. `plans/feat-drop-strict-mcp-config-1617.md`, the
+between CLI versions (cf. `plans/done/feat-drop-strict-mcp-config-1617.md`, the
 `#1043`/`#1617` MCP-merge saga). The interactive CLI is the real, full-fidelity
 product — slash commands, skills resolution, plan mode, native session
 management — and it owns conversation history itself (`~/.claude/projects/<cwd>/

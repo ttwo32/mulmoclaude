@@ -72,7 +72,7 @@ export function buildHtmlPreviewCsp(origin?: string, cdns: readonly string[] = H
 }
 
 /**
- * CSP for a custom collection view (see plans/feat-collections-custom-views.md).
+ * CSP for a custom collection view (see plans/done/feat-collections-custom-views.md).
  * Same policy as the preview header EXCEPT `connect-src` is the server origin
  * (not `'none'`): a custom view legitimately `fetch()`es its collection's data
  * endpoint.

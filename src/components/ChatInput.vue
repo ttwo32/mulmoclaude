@@ -161,7 +161,7 @@ const emit = defineEmits<{
 
 // Local voice input (Mac-only). The mic button is hidden unless the
 // backend reports voice input ready; transcripts are appended to the
-// input for review, never auto-sent. See plans/feat-voice-input.md.
+// input for review, never auto-sent. See plans/done/feat-voice-input.md.
 function insertTranscript(text: string): void {
   const current = props.modelValue;
   const next = current.trim().length > 0 ? `${current.trimEnd()} ${text}` : text;

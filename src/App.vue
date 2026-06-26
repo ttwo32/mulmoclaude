@@ -595,7 +595,7 @@ const showSettings = ref(false);
 // When the Settings modal closes, re-check voice-input availability: the
 // user may have just enabled it / started the model download, and the
 // mic button should appear without a reload (the composable then polls
-// until the download finishes). See plans/feat-voice-input.md.
+// until the download finishes). See plans/done/feat-voice-input.md.
 function onSettingsOpenChange(open: boolean): void {
   showSettings.value = open;
   if (!open) chatInputRef.value?.refreshVoiceAvailability()?.catch(() => undefined);

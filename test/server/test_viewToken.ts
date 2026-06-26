@@ -1,5 +1,5 @@
 // Unit tests for the custom-view capability token (see
-// plans/feat-collections-custom-views.md). Covers the pure codec
+// plans/done/feat-collections-custom-views.md). Covers the pure codec
 // (mint/verify round-trip, tamper, expiry), the capability clamp, the
 // path predicate, and the `requireViewToken` middleware. Token seeding
 // mirrors test_bearerAuth.ts: a tmp-file token sets the HMAC key.

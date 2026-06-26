@@ -1,5 +1,5 @@
 // Build the sandboxed-iframe `srcdoc` for a custom collection view (see
-// plans/feat-collections-custom-views.md). Pure (takes the server origin
+// plans/done/feat-collections-custom-views.md). Pure (takes the server origin
 // explicitly instead of reading `window`), so it's unit-testable and keeps
 // the script-tag string out of the .vue SFC source.
 //
