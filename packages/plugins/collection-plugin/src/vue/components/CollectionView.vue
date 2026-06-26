@@ -1,6 +1,6 @@
 <template>
   <div class="h-full flex flex-col bg-slate-50/30">
-    <header class="flex items-center gap-3 px-6 py-2 border-b border-slate-200 bg-white">
+    <header v-if="!hideHeader" class="flex items-center gap-3 px-6 py-2 border-b border-slate-200 bg-white">
       <button
         v-if="!embedded"
         type="button"
@@ -116,10 +116,10 @@
          collection (empty-day create) and a collection whose only views are
          custom ones (so its buttons + the "+" stay reachable). -->
     <div
-      v-if="collection && (items.length > 0 || hasCalendar || hasKanban || hasCustomViews || canAddCustomView)"
+      v-if="collection && ((!hideSearch && items.length > 0) || (!hideViewToggle && (hasCalendar || hasKanban || hasCustomViews || canAddCustomView)))"
       class="px-6 py-3 bg-white border-b border-slate-100 flex items-center justify-between gap-4"
     >
-      <div v-if="items.length > 0" class="relative flex-1 max-w-md">
+      <div v-if="!hideSearch && items.length > 0" class="relative flex-1 max-w-md">
         <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
           <span class="material-icons text-lg">search</span>
         </span>
@@ -145,7 +145,7 @@
              the schema has a `date` field, kanban only with an `enum` field;
              local UI state, never persisted. -->
         <div
-          v-if="hasCalendar || hasKanban || hasCustomViews || canAddCustomView"
+          v-if="!hideViewToggle && (hasCalendar || hasKanban || hasCustomViews || canAddCustomView)"
           class="flex gap-0.5"
           role="group"
           :aria-label="t('collectionsView.viewToggle')"
@@ -737,6 +737,7 @@ import {
   writeCollectionViewMode,
   readCollectionSort,
   writeCollectionSort,
+  customViewKey,
   type CollectionViewMode,
   type BuiltInViewMode,
 } from "../collectionViewMode";
@@ -793,10 +794,25 @@ const props = defineProps<{
   /** Embedded mode only: initial view / anchor / group restored from the
    *  card's persisted `viewState` so a switch to calendar or kanban
    *  survives a remount. (The table sort is NOT a card prop — it's a shared
-   *  per-collection localStorage preference, read by both modes.) */
-  initialView?: BuiltInViewMode;
+   *  per-collection localStorage preference, read by both modes.) Accepts a
+   *  `custom:<id>` mode too so the dashboard can open a tile directly on a
+   *  custom view. */
+  initialView?: CollectionViewMode;
   initialAnchorField?: string;
   initialGroupField?: string;
+  /** Hide the header's view-mode toggle (table ↔ calendar ↔ kanban ↔
+   *  custom + "add view"). The dashboard sets this because each tile
+   *  carries its own view picker, persisting the choice to the dashboard
+   *  layout rather than the card/localStorage. Search stays available. */
+  hideViewToggle?: boolean;
+  /** Hide the top header (icon / title / chat / add / delete). The
+   *  dashboard sets this because each tile renders its own header
+   *  (drag handle + icon + title + view picker), so the view's built-in
+   *  header would be a redundant second title bar. */
+  hideHeader?: boolean;
+  /** Hide the record search input. The dashboard sets this to keep tiles
+   *  compact; with the toggle also hidden the whole toolbar collapses. */
+  hideSearch?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -1576,11 +1592,6 @@ function setView(next: CollectionViewMode): void {
 function setCustomView(viewId: string): void {
   const mode: CollectionViewMode = `custom:${viewId}`;
   view.value = mode;
-}
-
-/** Selector-key for a custom view, for active-state comparison in the template. */
-function customViewKey(viewId: string): CollectionViewMode {
-  return `custom:${viewId}`;
 }
 
 /** A short, slug-safe id not already used by a loaded record. Collisions

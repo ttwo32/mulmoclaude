@@ -34,6 +34,10 @@ const Stub = defineComponent({ render: () => h("div") });
 const routes: RouteRecordRaw[] = [
   { path: "/", redirect: "/chat" },
   { path: "/chat/:sessionId?", name: PAGE_ROUTES.chat, component: Stub },
+  // Dashboard — a grid of the user's favorite (pinned) collections, each
+  // rendered as a live embedded view. Layout (order + per-tile view mode)
+  // is persisted in config/dashboard.json, independent of the URL.
+  { path: "/dashboard", name: PAGE_ROUTES.dashboard, component: Stub },
   // Files view uses a repeatable catch-all so `/files/a/b/c.md` maps
   // to `params.pathMatch = ["a", "b", "c.md"]`. Joining on `/` at read
   // time keeps each segment URL-encoded independently — passing a

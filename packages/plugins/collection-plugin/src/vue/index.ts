@@ -39,6 +39,8 @@ export {
   writeCollectionViewMode,
   readCollectionSort,
   writeCollectionSort,
+  customViewKey,
+  applicableViewModes,
   type CollectionViewMode,
   type BuiltInViewMode,
   type CustomViewMode,

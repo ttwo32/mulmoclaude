@@ -61,6 +61,11 @@ const HOST_API_ROUTES = {
   // order). Single replace-endpoint — no add/remove route sprawl.
   shortcuts: "/api/shortcuts",
 
+  // Dashboard layout (per-tile view mode + order for the favorites grid).
+  // GET reads the list; PUT replaces it wholesale (client owns order /
+  // view mode). Single replace-endpoint, mirroring `shortcuts`.
+  dashboard: "/api/dashboard",
+
   agent: {
     run: "/api/agent",
     cancel: "/api/agent/cancel",

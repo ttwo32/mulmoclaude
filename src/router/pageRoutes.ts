@@ -9,6 +9,7 @@
 
 export const PAGE_ROUTES = {
   chat: "chat",
+  dashboard: "dashboard",
   files: "files",
   automations: "automations",
   wiki: "wiki",
