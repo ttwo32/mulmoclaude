@@ -69,6 +69,14 @@ export const env = Object.freeze({
   nodeEnv: process.env.NODE_ENV ?? "development",
   isProduction: process.env.NODE_ENV === "production",
 
+  // Claude Code CLI config-location overrides (issue #87 §2). Default
+  // undefined → `server/utils/claudeConfigPath.ts` falls back to
+  // `homedir()/.claude` + `homedir()/.claude.json`. Set when your Claude
+  // install writes elsewhere (Windows corp redirect, sandboxed test fixture,
+  // future Anthropic location change).
+  claudeConfigDir: process.env.CLAUDE_CONFIG_DIR,
+  claudeConfigJson: process.env.CLAUDE_CONFIG_JSON,
+
   // Sandbox / Docker
   disableSandbox: flagOf("DISABLE_SANDBOX"),
   // Debug aid: also persist `tool_call` events to the session

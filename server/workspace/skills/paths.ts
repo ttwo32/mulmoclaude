@@ -10,13 +10,14 @@
 // chars. Same rule as `server/sources/paths.ts#isValidSlug` — keep
 // them in sync manually.
 
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { claudeSkillsDir } from "../../utils/claudeConfigPath.js";
 
 export const SKILL_FILE = "SKILL.md";
 
-/** `~/.claude/skills/` — user scope, read-only from MulmoClaude. */
-export const USER_SKILLS_DIR = join(homedir(), ".claude", "skills");
+/** `<claudeConfigDir>/skills/` — user scope, read-only from MulmoClaude.
+ *  Default `~/.claude/skills/`; override via `CLAUDE_CONFIG_DIR` (issue #87 §2). */
+export const USER_SKILLS_DIR = claudeSkillsDir();
 
 /** `<workspaceRoot>/.claude/skills/` — project scope, writable. */
 export function projectSkillsDir(workspaceRoot: string): string {
