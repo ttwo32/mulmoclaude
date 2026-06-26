@@ -246,14 +246,19 @@ function rowOf(index: number): number {
   return Math.floor(index / columns.value);
 }
 
-// Live height during a drag (smooth, not yet persisted), keyed by row.
-const liveRowHeights = ref<Record<number, number>>({});
+// Live height during a drag (smooth, not yet persisted), keyed by
+// `"<columns>:<row>"` so an in-flight value can't bleed across layouts.
+const liveRowHeights = ref<Record<string, number>>({});
+
+function liveKey(cols: number, row: number): string {
+  return `${cols}:${row}`;
+}
 
 function rowHeight(index: number): number {
   const row = rowOf(index);
-  const live = liveRowHeights.value[row];
+  const live = liveRowHeights.value[liveKey(columns.value, row)];
   if (live !== undefined) return live;
-  const stored = rowHeights.value[row];
+  const stored = rowHeights.value[String(columns.value)]?.[row];
   return stored && stored > 0 ? stored : DEFAULT_HEIGHT;
 }
 
@@ -262,6 +267,7 @@ function rowHeight(index: number): number {
 const isResizing = ref(false);
 
 interface ResizeState {
+  cols: number;
   row: number;
   startY: number;
   startHeight: number;
@@ -278,7 +284,7 @@ function applyResize(): void {
   rafId = 0;
   if (!resize || pendingY === null) return;
   const next = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, resize.startHeight + (pendingY - resize.startY)));
-  liveRowHeights.value = { ...liveRowHeights.value, [resize.row]: next };
+  liveRowHeights.value = { ...liveRowHeights.value, [liveKey(resize.cols, resize.row)]: next };
 }
 
 function onResizeMove(event: PointerEvent): void {
@@ -288,15 +294,16 @@ function onResizeMove(event: PointerEvent): void {
   if (!rafId) rafId = requestAnimationFrame(applyResize);
 }
 
-function clearLiveRow(row: number): void {
-  liveRowHeights.value = Object.fromEntries(Object.entries(liveRowHeights.value).filter(([key]) => Number(key) !== row));
+function clearLiveRow(cols: number, row: number): void {
+  const key = liveKey(cols, row);
+  liveRowHeights.value = Object.fromEntries(Object.entries(liveRowHeights.value).filter(([entry]) => entry !== key));
 }
 
 // Persist the final height, then drop the live override so the stored
 // value (now identical) takes over without a flash.
-async function persistRowHeight(row: number, height: number): Promise<void> {
-  await setRowHeight(row, Math.round(height));
-  clearLiveRow(row);
+async function persistRowHeight(cols: number, row: number, height: number): Promise<void> {
+  await setRowHeight(cols, row, Math.round(height));
+  clearLiveRow(cols, row);
 }
 
 function teardownResize(): void {
@@ -312,15 +319,15 @@ function teardownResize(): void {
 function onResizeEnd(): void {
   teardownResize();
   if (!resize) return;
-  const { row, handle, pointerId } = resize;
+  const { cols, row, handle, pointerId } = resize;
   resize = null;
   try {
     handle.releasePointerCapture(pointerId);
   } catch {
     // Capture may already be gone (pointercancel) — ignore.
   }
-  const height = liveRowHeights.value[row];
-  if (height !== undefined) void persistRowHeight(row, height);
+  const height = liveRowHeights.value[liveKey(cols, row)];
+  if (height !== undefined) void persistRowHeight(cols, row, height);
 }
 
 function onResizeStart(index: number, event: PointerEvent): void {
@@ -333,7 +340,7 @@ function onResizeStart(index: number, event: PointerEvent): void {
   } catch {
     // Pointer capture unsupported — fall back to plain window listeners.
   }
-  resize = { row: rowOf(index), startY: event.clientY, startHeight: rowHeight(index), handle, pointerId: event.pointerId };
+  resize = { cols: columns.value, row: rowOf(index), startY: event.clientY, startHeight: rowHeight(index), handle, pointerId: event.pointerId };
   isResizing.value = true;
   window.addEventListener("pointermove", onResizeMove);
   window.addEventListener("pointerup", onResizeEnd);

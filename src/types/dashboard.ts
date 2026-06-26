@@ -28,10 +28,13 @@ export interface DashboardTile {
  *  array) so the schema can grow without a migration. */
 export interface DashboardFile {
   tiles: DashboardTile[];
-  /** View-area height (px) per grid row, indexed by row (the grid packs
-   *  2 tiles per row). The height belongs to the SLOT, not the tiles in
-   *  it: two side-by-side tiles share their row's height, and the height
-   *  stays with the row position when tiles are reordered. A `0` (or a
-   *  missing index) means the row uses the default height. */
-  rowHeights?: number[];
+  /** View-area height (px) per grid row, keyed by the grid's column count
+   *  (`"1"` | `"2"`) and then indexed by row within that layout. The
+   *  height belongs to the SLOT, not the tiles in it: side-by-side tiles
+   *  share their row's height, and it stays with the row position when
+   *  tiles are reordered. Keying by column count keeps the narrow
+   *  (1-column) and wide (2-column) layouts independent, so resizing on
+   *  one doesn't shift heights on the other. `0` (or a missing index)
+   *  means that row uses the default height. */
+  rowHeights?: Record<string, number[]>;
 }

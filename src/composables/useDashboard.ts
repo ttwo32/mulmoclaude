@@ -21,7 +21,7 @@ import { apiGet, apiPut } from "../utils/api";
 import type { DashboardTile } from "../types/dashboard";
 
 const tiles = ref<DashboardTile[]>([]);
-const rowHeights = ref<number[]>([]);
+const rowHeights = ref<Record<string, number[]>>({});
 const loadError = ref<string | null>(null);
 /** True only after a GET has authoritatively populated the layout. Until
  *  then, mutations refuse to persist — a replace-all PUT built on the
@@ -31,13 +31,13 @@ let loadPromise: Promise<void> | null = null;
 
 interface DashboardResponse {
   tiles: DashboardTile[];
-  rowHeights?: number[];
+  rowHeights?: Record<string, number[]>;
 }
 
 /** Snapshot of the mutable layout, for optimistic rollback. */
 interface LayoutSnapshot {
   tiles: DashboardTile[];
-  rowHeights: number[];
+  rowHeights: Record<string, number[]>;
 }
 
 function snapshot(): LayoutSnapshot {
@@ -61,7 +61,7 @@ async function load(force = false): Promise<void> {
       return;
     }
     loadError.value = null;
-    apply({ tiles: result.data.tiles, rowHeights: result.data.rowHeights ?? [] });
+    apply({ tiles: result.data.tiles, rowHeights: result.data.rowHeights ?? {} });
     loaded.value = true;
   })();
   return loadPromise;
@@ -129,17 +129,21 @@ function setViewMode(slug: string, viewMode: string | null): Promise<boolean> {
   });
 }
 
-/** Set one grid row's view-area height (px), indexed by row. Pads with
- *  `0` (default) for any earlier untouched rows. */
-function setRowHeight(row: number, height: number): Promise<boolean> {
+/** Set one grid row's view-area height (px) for the given column-count
+ *  layout. Heights are kept per column count so the 1- and 2-column
+ *  layouts stay independent. Pads with `0` (default) for earlier
+ *  untouched rows. */
+function setRowHeight(columns: number, row: number, height: number): Promise<boolean> {
   return enqueue(async () => {
     await load();
     if (!loaded.value) return false;
-    if (row < 0) return true;
+    if (columns < 1 || row < 0) return true;
     const previous = snapshot();
-    const next = [...previous.rowHeights];
-    while (next.length <= row) next.push(0);
-    next[row] = height;
+    const key = String(columns);
+    const heights = [...(previous.rowHeights[key] ?? [])];
+    while (heights.length <= row) heights.push(0);
+    heights[row] = height;
+    const next = { ...previous.rowHeights, [key]: heights };
     return persist({ tiles: previous.tiles, rowHeights: next }, previous);
   });
 }
@@ -165,12 +169,12 @@ function reconcile(favoriteSlugs: string[]): Promise<void> {
 
 export function useDashboard(): {
   tiles: ComputedRef<DashboardTile[]>;
-  rowHeights: ComputedRef<number[]>;
+  rowHeights: ComputedRef<Record<string, number[]>>;
   loadError: ComputedRef<string | null>;
   load: (force?: boolean) => Promise<void>;
   setTiles: (next: DashboardTile[]) => Promise<boolean>;
   setViewMode: (slug: string, viewMode: string | null) => Promise<boolean>;
-  setRowHeight: (row: number, height: number) => Promise<boolean>;
+  setRowHeight: (columns: number, row: number, height: number) => Promise<boolean>;
   reconcile: (favoriteSlugs: string[]) => Promise<void>;
 } {
   void load();

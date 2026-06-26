@@ -33,10 +33,10 @@ export function normalizeDashboard(input: unknown): DashboardTile[] {
   return out;
 }
 
-/** Coerce arbitrary JSON into a clean per-row height array: each entry is
- *  a positive finite number or `0` (meaning "default"), and trailing
- *  zeros are trimmed so the stored array stays compact. Pure, no IO. */
-export function normalizeRowHeights(input: unknown): number[] {
+/** Coerce a per-row height array: each entry is a positive finite number
+ *  or `0` (meaning "default"), with trailing zeros trimmed so the stored
+ *  array stays compact. */
+function normalizeHeightArray(input: unknown): number[] {
   if (!Array.isArray(input)) return [];
   const coerced = input.map((value) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0));
   let end = coerced.length;
@@ -44,16 +44,33 @@ export function normalizeRowHeights(input: unknown): number[] {
   return coerced.slice(0, end);
 }
 
+/** Coerce arbitrary JSON into a clean per-column-mode row-height map:
+ *  `{ "<columns>": number[] }`. Keys must be positive integers (the grid
+ *  column count); empty arrays are dropped. Heights are kept per layout
+ *  so the 1- and 2-column views never share (and clobber) each other's
+ *  row heights. Pure, no IO. */
+export function normalizeRowHeights(input: unknown): Record<string, number[]> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const out: Record<string, number[]> = {};
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    const columns = Number(key);
+    if (!Number.isInteger(columns) || columns < 1) continue;
+    const heights = normalizeHeightArray(value);
+    if (heights.length > 0) out[String(columns)] = heights;
+  }
+  return out;
+}
+
 /** Read the dashboard layout. Missing / unreadable / malformed file
  *  → an empty layout (never throws on absent state). */
 export async function readDashboard(workspaceRoot?: string): Promise<DashboardFile> {
   const text = await readTextSafe(dashboardFilePath(workspaceRoot));
-  if (text === null) return { tiles: [], rowHeights: [] };
+  if (text === null) return { tiles: [], rowHeights: {} };
   try {
     const parsed = JSON.parse(text) as Partial<DashboardFile>;
     return { tiles: normalizeDashboard(parsed?.tiles), rowHeights: normalizeRowHeights(parsed?.rowHeights) };
   } catch {
-    return { tiles: [], rowHeights: [] };
+    return { tiles: [], rowHeights: {} };
   }
 }
 

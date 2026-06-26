@@ -30,18 +30,18 @@ describe("dashboard-io — read", () => {
   after(() => rmDir(root));
 
   it("returns an empty layout when the file is missing", async () => {
-    assert.deepEqual(await readDashboard(root), { tiles: [], rowHeights: [] });
+    assert.deepEqual(await readDashboard(root), { tiles: [], rowHeights: {} });
   });
 
   it("returns an empty layout on malformed JSON", async () => {
     mkdirSync(path.dirname(filePath(root)), { recursive: true });
     writeFileSync(filePath(root), "{ not json");
-    assert.deepEqual(await readDashboard(root), { tiles: [], rowHeights: [] });
+    assert.deepEqual(await readDashboard(root), { tiles: [], rowHeights: {} });
   });
 
   it("reads back what was written (tiles + rowHeights)", async () => {
-    await writeDashboard({ tiles: [sample], rowHeights: [400, 0, 250] }, root);
-    assert.deepEqual(await readDashboard(root), { tiles: [sample], rowHeights: [400, 0, 250] });
+    await writeDashboard({ tiles: [sample], rowHeights: { "2": [400, 0, 250], "1": [300] } }, root);
+    assert.deepEqual(await readDashboard(root), { tiles: [sample], rowHeights: { "2": [400, 0, 250], "1": [300] } });
   });
 });
 
@@ -53,15 +53,15 @@ describe("dashboard-io — write", () => {
   after(() => rmDir(root));
 
   it("persists the object-wrapped shape with a trailing newline", async () => {
-    await writeDashboard({ tiles: [sample], rowHeights: [400] }, root);
+    await writeDashboard({ tiles: [sample], rowHeights: { "2": [400] } }, root);
     const raw = readFileSync(filePath(root), "utf-8");
     assert.equal(raw.endsWith("\n"), true);
-    assert.deepEqual(JSON.parse(raw), { tiles: [sample], rowHeights: [400] });
+    assert.deepEqual(JSON.parse(raw), { tiles: [sample], rowHeights: { "2": [400] } });
   });
 
   it("dedupes tiles on slug, keeping the first occurrence", async () => {
     const written = await writeDashboard({ tiles: [sample, { slug: "invoices", viewMode: "table" }, { slug: "contacts" }] }, root);
-    assert.deepEqual(written, { tiles: [sample, { slug: "contacts" }], rowHeights: [] });
+    assert.deepEqual(written, { tiles: [sample, { slug: "contacts" }], rowHeights: {} });
   });
 });
 
@@ -93,17 +93,20 @@ describe("normalizeDashboard — tile validation", () => {
 });
 
 describe("normalizeRowHeights — validation", () => {
-  it("drops non-array input", () => {
-    assert.deepEqual(normalizeRowHeights(null), []);
-    assert.deepEqual(normalizeRowHeights({ foo: 1 }), []);
+  it("drops non-object / array input and bad column keys", () => {
+    assert.deepEqual(normalizeRowHeights(null), {});
+    assert.deepEqual(normalizeRowHeights([400, 250]), {}); // bare array no longer accepted
+    assert.deepEqual(normalizeRowHeights({ "0": [200], abc: [200], "-1": [200] }), {}); // non-positive-int keys
   });
 
-  it("coerces invalid / non-positive entries to 0 (default sentinel)", () => {
-    assert.deepEqual(normalizeRowHeights([420, 0, -5, "tall", Number.NaN, 300]), [420, 0, 0, 0, 0, 300]);
+  it("coerces invalid / non-positive entries to 0 and trims trailing zeros per layout", () => {
+    assert.deepEqual(normalizeRowHeights({ "2": [420, 0, -5, "tall", Number.NaN, 300], "1": [250, 0, 0] }), {
+      "2": [420, 0, 0, 0, 0, 300],
+      "1": [250],
+    });
   });
 
-  it("trims trailing zeros so the stored array stays compact", () => {
-    assert.deepEqual(normalizeRowHeights([400, 0, 250, 0, 0]), [400, 0, 250]);
-    assert.deepEqual(normalizeRowHeights([0, 0, 0]), []);
+  it("drops a column whose array is all-default (empty after trim)", () => {
+    assert.deepEqual(normalizeRowHeights({ "1": [0, 0], "2": [400] }), { "2": [400] });
   });
 });
