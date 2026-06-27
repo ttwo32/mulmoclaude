@@ -127,13 +127,13 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
+import { useAccountingI18n } from "../lang";
 import type { Account, AccountType } from "../api";
 import type { AccountDraft } from "./accountDraft";
 import { ACCOUNT_TYPE_PREFIX } from "./accountNumbering";
 import { validateCodeField, validateNameField, type AccountValidationError, type CodeValidationError, type NameValidationError } from "./accountValidation";
 
-const { t } = useI18n();
+const { t } = useAccountingI18n();
 
 const props = defineProps<{
   draft: AccountDraft;

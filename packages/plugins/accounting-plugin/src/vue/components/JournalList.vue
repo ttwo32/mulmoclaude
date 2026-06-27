@@ -199,7 +199,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
+import { useAccountingI18n } from "../lang";
 import { getJournalEntries, voidEntry, type Account, type JournalEntry, type JournalEntryKind, type JournalLine } from "../api";
 import { formatAmount, currentFiscalYearRange, resolveFiscalYearEnd, type DateRange, type FiscalYearEnd, type SupportedCountryCode } from "../../shared";
 import { useLatestRequest } from "./useLatestRequest";
@@ -207,7 +207,7 @@ import DateRangePicker from "./DateRangePicker.vue";
 import JournalEntryForm from "./JournalEntryForm.vue";
 import { errorMessage } from "../../shared/errors";
 
-const { t } = useI18n();
+const { t } = useAccountingI18n();
 
 const props = defineProps<{
   bookId: string;

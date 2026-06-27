@@ -48,6 +48,18 @@ function seedProject(slug: string, views: CollectionCustomView[]): LoadedCollect
   return { slug, source: "project", schema, dataDir: path.join(workdir, "data", slug, "items"), skillDir: active };
 }
 
+/** Imported project collection: rename-on-conflict via the discover panel.
+ *  Schema + view HTML live ONLY under the active dir (.claude/skills/<slug>/);
+ *  no staging mirror is ever created. */
+function seedImportedProject(slug: string, views: CollectionCustomView[]): LoadedCollection {
+  const schema = schemaWith(slug, views);
+  const active = path.join(workdir, ".claude", "skills", slug);
+  mkdirSync(path.join(active, "views"), { recursive: true });
+  writeFileSync(path.join(active, "schema.json"), JSON.stringify(schema, null, 2));
+  for (const view of views) writeFileSync(path.join(active, view.file), "<html></html>");
+  return { slug, source: "project", schema, dataDir: path.join(workdir, "data", slug, "items"), skillDir: active };
+}
+
 /** Feed (or user) collection: a single tree at skillDir holds schema.json and
  *  the view HTML. */
 function seedSingleTree(slug: string, source: CollectionSource, root: string, views: CollectionCustomView[]): LoadedCollection {
@@ -138,6 +150,25 @@ describe("deleteCustomView", () => {
 
     assert.equal(result.kind, "preset");
     assert.deepEqual(readViewIds(path.join(workdir, "data", "skills", "mc-invoice", "schema.json")), ["year"]);
+  });
+
+  it("deletes from skillDir when the project collection was imported (no staging mirror)", async () => {
+    // Repro of the layout that 404'd reads and ENOENT'd deletes before the
+    // source-aware fallback (movies-2 / Codex #1836).
+    const collection = seedImportedProject("events-imp", [YEAR_VIEW, MONTH_VIEW]);
+    const staging = path.join(workdir, "data", "skills", "events-imp");
+    const active = path.join(workdir, ".claude", "skills", "events-imp");
+
+    const result = await deleteCustomView(collection, "year", { workspaceRoot: workdir });
+
+    assert.equal(result.kind, "ok");
+    // Schema in the active dir reflects the removal.
+    assert.deepEqual(readViewIds(path.join(active, "schema.json")), ["month"]);
+    // HTML unlinked from the active dir; sibling survives.
+    assert.equal(existsSync(path.join(active, "views", "year.html")), false, "deleted view HTML must be unlinked from skillDir");
+    assert.equal(existsSync(path.join(active, "views", "month.html")), true, "sibling view HTML must remain in skillDir");
+    // Staging tree must NOT have been materialised as a side effect.
+    assert.equal(existsSync(staging), false, "imported layout must not be back-filled with a staging mirror by delete");
   });
 
   it("refuses a view whose file path escapes its base and deletes nothing", async () => {

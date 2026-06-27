@@ -74,7 +74,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
+import { useAccountingI18n } from "../lang";
 import { getBalanceSheet, type BalanceSheet } from "../api";
 import {
   formatAmount as formatAmountWithCurrency,
@@ -85,7 +85,7 @@ import {
 } from "../../shared";
 import { useLatestRequest } from "./useLatestRequest";
 
-const { t } = useI18n();
+const { t } = useAccountingI18n();
 
 const props = defineProps<{ bookId: string; currency: string; version: number }>();
 const emit = defineEmits<{ selectAccount: [code: string] }>();

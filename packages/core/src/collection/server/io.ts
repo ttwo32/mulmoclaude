@@ -228,12 +228,18 @@ export function generateItemId(): string {
  *  schema-validated `views/*.html` path, resolved with realpath containment.
  *  Returns the HTML, or null when the path is unsafe or the file is missing.
  *
- *  The base dir is source-aware: a **project** collection authors views in the
- *  `data/skills/<slug>/` staging dir (custom-view HTML is staging-only — NOT
- *  mirrored to `.claude/skills`, because rendering is host-side; see
- *  plans/done/feat-collections-custom-views.md), whereas a **user** / **feed**
- *  collection is authored directly in its own discovered `skillDir`. Reading
- *  relative to the wrong tree would 404 a perfectly valid view. */
+ *  The base dir is source-aware. A **project** collection AUTHORED in-place
+ *  keeps its views in the `data/skills/<slug>/` staging dir (host-side
+ *  rendering; see plans/done/feat-collections-custom-views.md). A **project**
+ *  collection that was IMPORTED via the discover panel (rename-on-conflict)
+ *  carries its views inside `.claude/skills/<slug>/views/` — the skill folder
+ *  itself — without a staging-dir mirror; reading only the staging path would
+ *  404 a perfectly valid imported view. We try staging first, then fall back
+ *  to the discovered `skillDir`, so both layouts read cleanly. A **user** /
+ *  **feed** collection is always authored in its own discovered `skillDir`,
+ *  so it only needs the single lookup. `resolveTemplatePath` does the
+ *  containment / `..` defense per base, so the fallback never broadens the
+ *  attack surface. */
 export async function readCustomViewHtml(
   collection: Pick<LoadedCollection, "slug" | "source" | "skillDir">,
   viewFile: string,
@@ -242,14 +248,22 @@ export async function readCustomViewHtml(
   const safeSlug = safeSlugName(collection.slug);
   if (safeSlug === null) return null;
   const workspaceRoot = opts.workspaceRoot ?? getWorkspaceRoot();
-  const base = collection.source === "project" ? path.join(skillsStagingDir(workspaceRoot), safeSlug) : collection.skillDir;
-  const resolved = resolveTemplatePath(base, viewFile);
-  if (resolved === null) return null;
-  try {
-    return await readFile(resolved, "utf-8");
-  } catch {
-    return null;
+  const bases = collection.source === "project" ? [path.join(skillsStagingDir(workspaceRoot), safeSlug), collection.skillDir] : [collection.skillDir];
+  for (const base of bases) {
+    const resolved = resolveTemplatePath(base, viewFile);
+    if (resolved === null) continue;
+    try {
+      return await readFile(resolved, "utf-8");
+    } catch (err) {
+      // Only the "file missing here" codes should trigger the fallback. A
+      // permission denial / disk error must propagate — silently falling back
+      // would mask a real failure as a stale-from-other-base success or a
+      // misleading 404 (CodeRabbit review on #1836).
+      const { code } = err as { code?: string };
+      if (code !== "ENOENT" && code !== "ENOTDIR") throw err;
+    }
   }
+  return null;
 }
 
 /** The item id a CREATE should use for `schema`, or null when the

@@ -81,13 +81,13 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
+import { useAccountingI18n } from "../lang";
 import { getProfitLoss, type ProfitLoss } from "../api";
 import { formatAmount as formatAmountWithCurrency, currentFiscalYearRange, resolveFiscalYearEnd, type DateRange, type FiscalYearEnd } from "../../shared";
 import { useLatestRequest } from "./useLatestRequest";
 import DateRangePicker from "./DateRangePicker.vue";
 
-const { t } = useI18n();
+const { t } = useAccountingI18n();
 
 const props = defineProps<{
   bookId: string;

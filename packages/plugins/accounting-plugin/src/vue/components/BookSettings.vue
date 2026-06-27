@@ -106,7 +106,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
+import { useAccountingI18n } from "../lang";
 import { deleteBook, rebuildSnapshots, updateBook } from "../api";
 import {
   SUPPORTED_COUNTRY_CODES,
@@ -119,7 +119,7 @@ import {
   type FiscalYearEnd,
 } from "../../shared";
 
-const { t, locale } = useI18n();
+const { t, locale } = useAccountingI18n();
 
 const props = defineProps<{
   bookId: string;

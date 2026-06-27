@@ -124,7 +124,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
+import { useAccountingI18n } from "./lang";
 import type { ToolResultComplete } from "gui-chat-protocol/vue";
 import BookSwitcher from "./components/BookSwitcher.vue";
 import NewBookForm from "./components/NewBookForm.vue";
@@ -140,7 +140,7 @@ import { ACCOUNTING_ACTIONS } from "../shared";
 import { useAccountingChannel, useAccountingBooksChannel } from "./useAccountingChannel";
 import { errorMessage } from "../shared/errors";
 
-const { t } = useI18n();
+const { t } = useAccountingI18n();
 
 interface AccountingAppPayload {
   kind?: string;

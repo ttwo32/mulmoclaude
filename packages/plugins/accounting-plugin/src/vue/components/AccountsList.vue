@@ -43,11 +43,11 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { useI18n } from "vue-i18n";
+import { useAccountingI18n } from "../lang";
 import type { Account, AccountType } from "../api";
 import AccountsModal from "./AccountsModal.vue";
 
-const { t } = useI18n();
+const { t } = useAccountingI18n();
 
 const props = defineProps<{ bookId: string; accounts: Account[] }>();
 const emit = defineEmits<{ selectAccount: [code: string]; changed: [] }>();

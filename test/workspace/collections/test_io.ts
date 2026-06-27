@@ -13,18 +13,40 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  configureCollectionHost,
   listItems,
   readItem,
   writeItem,
   deleteItem,
   resolveCreateItemId,
   readSkillTemplate,
+  readCustomViewHtml,
   buildActionSeedPrompt,
   buildCollectionActionSeedPrompt,
   setCollectionChangePublisher,
   type CollectionChangePayload,
 } from "@mulmoclaude/core/collection/server";
 import type { CollectionSchema } from "../../../server/workspace/collections/types.js";
+
+// `readCustomViewHtml` resolves its base path through the configured host
+// (`skillsStagingDir`), so this suite must wire a host stub once. Every test
+// passes `workspaceRoot: workdir` explicitly, so the host's `workspaceRoot`
+// field is only a placeholder — the staging-dir factory is what's exercised.
+// `configureCollectionHost` is a no-op if called again with the same object,
+// which keeps re-runs idempotent.
+const TEST_HOST_PATHS = {
+  userSkillsDir: "/dev/null/.claude/skills",
+  projectSkillsDir: (root: string) => path.join(root, ".claude", "skills"),
+  feedsRoot: (root: string) => path.join(root, "feeds"),
+  skillsStagingDir: (root: string) => path.join(root, "data", "skills"),
+  archiveDir: ".archive",
+};
+configureCollectionHost({
+  workspaceRoot: "/tmp/__test_io_placeholder__",
+  log: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+  paths: TEST_HOST_PATHS,
+  isPresetSlug: () => false,
+});
 
 let workdir: string;
 let dataDir: string;
@@ -128,6 +150,74 @@ describe("readSkillTemplate — path-safe template read", () => {
     const skillDir = path.join(workdir, ".claude", "skills", "mc-x");
     mkdirSync(skillDir, { recursive: true });
     assert.equal(await readSkillTemplate(skillDir, "templates/nope.md"), null);
+  });
+});
+
+describe("readCustomViewHtml — source-aware base + import fallback", () => {
+  // Mirrors the two real on-disk shapes a project collection can have:
+  //   - AUTHORED in-place: views live in <workspace>/data/skills/<slug>/views/
+  //     (the staging dir; host-side rendering),
+  //   - IMPORTED via the discover panel (rename-on-conflict): everything,
+  //     views included, lands in <workspace>/.claude/skills/<slug>/views/
+  //     with NO staging-dir mirror — this is what 404'd before the fallback.
+  const slug = "movies-2";
+  const viewFile = "views/cinema.html";
+  const html = "<!doctype html><body>cinema</body>";
+
+  function authoredProjectCollection() {
+    return { slug, source: "project" as const, skillDir: path.join(workdir, ".claude", "skills", slug) };
+  }
+
+  function userCollection() {
+    return { slug, source: "user" as const, skillDir: path.join(workdir, ".claude", "skills", slug) };
+  }
+
+  it("reads project views from the staging dir (authoring layout)", async () => {
+    const stagingViews = path.join(workdir, "data", "skills", slug, "views");
+    mkdirSync(stagingViews, { recursive: true });
+    writeFileSync(path.join(stagingViews, "cinema.html"), html);
+    const result = await readCustomViewHtml(authoredProjectCollection(), viewFile, { workspaceRoot: workdir });
+    assert.equal(result, html);
+  });
+
+  it("falls back to skillDir when a project view only exists there (imported layout)", async () => {
+    // No staging-dir copy at all — the import flow only wrote the skill folder.
+    const skillViews = path.join(workdir, ".claude", "skills", slug, "views");
+    mkdirSync(skillViews, { recursive: true });
+    writeFileSync(path.join(skillViews, "cinema.html"), html);
+    const result = await readCustomViewHtml(authoredProjectCollection(), viewFile, { workspaceRoot: workdir });
+    assert.equal(result, html, "imported project view must read from skillDir, not 404");
+  });
+
+  it("prefers the staging-dir copy over the skillDir copy when both exist", async () => {
+    const stagingViews = path.join(workdir, "data", "skills", slug, "views");
+    const skillViews = path.join(workdir, ".claude", "skills", slug, "views");
+    mkdirSync(stagingViews, { recursive: true });
+    mkdirSync(skillViews, { recursive: true });
+    writeFileSync(path.join(stagingViews, "cinema.html"), "STAGING");
+    writeFileSync(path.join(skillViews, "cinema.html"), "SKILL");
+    const result = await readCustomViewHtml(authoredProjectCollection(), viewFile, { workspaceRoot: workdir });
+    assert.equal(result, "STAGING", "staging dir (the authoring path) wins when present");
+  });
+
+  it("returns null when the view is absent from both bases", async () => {
+    const result = await readCustomViewHtml(authoredProjectCollection(), viewFile, { workspaceRoot: workdir });
+    assert.equal(result, null);
+  });
+
+  it("reads user-collection views from the discovered skillDir", async () => {
+    const skillViews = path.join(workdir, ".claude", "skills", slug, "views");
+    mkdirSync(skillViews, { recursive: true });
+    writeFileSync(path.join(skillViews, "cinema.html"), html);
+    const result = await readCustomViewHtml(userCollection(), viewFile, { workspaceRoot: workdir });
+    assert.equal(result, html);
+  });
+
+  it("refuses path traversal even with the fallback active", async () => {
+    // A staging-dir-relative `..`-escape must not be permitted, and the
+    // fallback must not retry with the same unsafe path against skillDir.
+    const result = await readCustomViewHtml(authoredProjectCollection(), "../../../etc/passwd", { workspaceRoot: workdir });
+    assert.equal(result, null);
   });
 });
 

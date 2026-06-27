@@ -8,9 +8,17 @@
 
 import "@mulmoclaude/accounting-plugin/style.css";
 import { configureAccountingHost } from "@mulmoclaude/accounting-plugin/vue";
+import { unref } from "vue";
 import { apiCall } from "../utils/api";
 import { usePubSub } from "./usePubSub";
+import hostI18n from "../lib/vue-i18n";
 
 const { subscribe } = usePubSub();
 
-configureAccountingHost({ apiCall, subscribe });
+configureAccountingHost({
+  apiCall,
+  subscribe,
+  // `i18n.global.locale` is typed as a string but is actually a Ref at runtime
+  // (the host runs vue-i18n in composition mode); `unref` returns the tag either way.
+  localeTag: () => unref(hostI18n.global.locale),
+});

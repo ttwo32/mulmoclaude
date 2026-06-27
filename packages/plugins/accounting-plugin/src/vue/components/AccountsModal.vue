@@ -66,7 +66,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
-import { useI18n } from "vue-i18n";
+import { useAccountingI18n } from "../lang";
 import { upsertAccount, type Account, type AccountType } from "../api";
 import AccountRow from "./AccountRow.vue";
 import AccountEditor from "./AccountEditor.vue";
@@ -75,7 +75,7 @@ import { validateAccountDraft, type AccountValidationError } from "./accountVali
 import { suggestNextCode } from "./accountNumbering";
 import { errorMessage } from "../../shared/errors";
 
-const { t } = useI18n();
+const { t } = useAccountingI18n();
 
 const props = defineProps<{ bookId: string; accounts: Account[] }>();
 const emit = defineEmits<{ close: []; changed: [] }>();
