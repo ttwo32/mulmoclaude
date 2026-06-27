@@ -1,10 +1,11 @@
-// Pluggable retriever registry. Each `ingest.kind` maps to one
+// Pluggable retriever registry. Each declarative `ingest.kind` maps to one
 // RetrieveFn that fetches the endpoint and returns projected records.
 // Side-effect registration keeps the engine decoupled from the kinds.
-// New kinds (`code`, `prompt`) register here without touching the engine.
+// The `agent` kind is NOT a retriever (it dispatches a hidden worker before
+// the engine consults this registry); a future `code` kind would register here.
 
 import type { CollectionItem, CollectionSchema } from "../../collections/index.js";
-import type { IngestSpec } from "../ingestTypes.js";
+import type { DeclarativeIngestSpec } from "../ingestTypes.js";
 import type { FeedState } from "../state.js";
 
 export interface RetrieveResult {
@@ -14,7 +15,10 @@ export interface RetrieveResult {
   cursor: Record<string, string>;
 }
 
-export type RetrieveFn = (ingest: IngestSpec, schema: CollectionSchema, state: FeedState) => Promise<RetrieveResult>;
+// Declarative-only: the engine branches `agent` ingest off BEFORE looking up a
+// retriever, so a RetrieveFn never sees a non-fetch spec (and rss/http-json can
+// read `ingest.url`/`map` without union narrowing).
+export type RetrieveFn = (ingest: DeclarativeIngestSpec, schema: CollectionSchema, state: FeedState) => Promise<RetrieveResult>;
 
 const registry = new Map<string, RetrieveFn>();
 

@@ -12,7 +12,7 @@
 import { createHash } from "node:crypto";
 import { getByPath } from "./pathResolver.js";
 import type { CollectionItem, CollectionSchema } from "../collections/index.js";
-import type { IngestSpec } from "./ingestTypes.js";
+import type { DeclarativeIngestSpec } from "./ingestTypes.js";
 
 function asKeyString(value: unknown): string | null {
   if (typeof value === "string" && value.trim().length > 0) return value.trim();
@@ -66,7 +66,7 @@ function toSafeId(natural: string): string {
   return slug.length > 80 ? `${slug.slice(0, 60)}-${hash}` : `feed-${hash}`;
 }
 
-function naturalKey(record: CollectionItem, rawItem: unknown, ingest: IngestSpec, schema: CollectionSchema): string {
+function naturalKey(record: CollectionItem, rawItem: unknown, ingest: DeclarativeIngestSpec, schema: CollectionSchema): string {
   const fromMapped = asKeyString(record[schema.primaryKey]);
   if (fromMapped) return fromMapped;
   if (ingest.idFrom) {
@@ -81,7 +81,7 @@ function naturalKey(record: CollectionItem, rawItem: unknown, ingest: IngestSpec
  *  the raw item and normalized per the target field's declared type. The
  *  returned record's primaryKey is set to the derived safe id (so it
  *  doubles as the filename). */
-export function projectRecord(rawItem: unknown, ingest: IngestSpec, schema: CollectionSchema): CollectionItem {
+export function projectRecord(rawItem: unknown, ingest: DeclarativeIngestSpec, schema: CollectionSchema): CollectionItem {
   const record: CollectionItem = {};
   for (const [targetField, sourcePath] of Object.entries(ingest.map)) {
     const value = normalizeValue(getByPath(rawItem, sourcePath), schema.fields?.[targetField]?.type);

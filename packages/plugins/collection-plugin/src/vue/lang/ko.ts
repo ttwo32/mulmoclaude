@@ -45,6 +45,7 @@ const koMessages: CollectionMessages = {
     chat: "채팅",
     refreshFeed: "새로고침",
     refreshFailed: "새로고침 실패: {error}",
+    refreshDispatched: "백그라운드에서 새로고침을 시작했습니다.",
     feedChatSeed:
       "“{slug}” 피드는 스키마 `feeds/{slug}/schema.json`로 정의되며, 레코드는 `{dataPath}/`(레코드당 `<id>.json` 파일 하나)에 저장됩니다. 이 스키마와 데이터를 사용하여 다음 요청에 응답하세요: {message}",
     feedsTitle: "데이터 소스 피드",

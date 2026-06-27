@@ -33,7 +33,7 @@ router.get(API_ROUTES.feeds.list, async (_req: Request, res: Response<FeedsListR
     const feeds = await listFeeds(workspacePath);
     const summaries: FeedSummary[] = [];
     for (const feed of feeds) {
-      const state = await readFeedState(workspacePath, feed.slug);
+      const state = await readFeedState(workspacePath, feed);
       const { ingest } = feed.schema;
       summaries.push({
         slug: feed.slug,

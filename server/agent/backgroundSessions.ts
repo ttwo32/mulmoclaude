@@ -42,4 +42,32 @@ export function releaseBackgroundSession(chatSessionId: string): void {
   inFlight.delete(chatSessionId);
 }
 
+// ── Completion hooks ────────────────────────────────────────────────
+//
+// A generic, one-shot callback fired when a hidden worker session finishes
+// (success or error). Any host spawner of hidden workers can register one to
+// learn the outcome without polling — the agent-ingest dispatcher uses it to
+// track consecutive failures and raise/clear a failure bell. Best-effort: a
+// server restart mid-run drops the Map, but the next scheduled tick
+// re-dispatches anyway, so nothing is permanently lost.
+
+/** Outcome handed to a completion hook. */
+export type CompletionHook = (outcome: { didError: boolean }) => void | Promise<void>;
+
+const completionHooks = new Map<string, CompletionHook>();
+
+/** Register a one-shot completion hook for a hidden worker session. Replaces
+ *  any existing hook for the same id (last writer wins). */
+export function registerCompletionHook(chatSessionId: string, hook: CompletionHook): void {
+  completionHooks.set(chatSessionId, hook);
+}
+
+/** Remove and return the completion hook for a session, if any. One-shot:
+ *  the entry is deleted so the hook can't fire twice. */
+export function takeCompletionHook(chatSessionId: string): CompletionHook | undefined {
+  const hook = completionHooks.get(chatSessionId);
+  if (hook) completionHooks.delete(chatSessionId);
+  return hook;
+}
+
 export { MAX_BACKGROUND_SESSIONS };

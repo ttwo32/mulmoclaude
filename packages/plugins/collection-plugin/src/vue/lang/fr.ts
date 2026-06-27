@@ -46,6 +46,7 @@ const frMessages: CollectionMessages = {
     chat: "Discussion",
     refreshFeed: "Actualiser",
     refreshFailed: "Échec de l'actualisation : {error}",
+    refreshDispatched: "Actualisation lancée en arrière-plan.",
     feedChatSeed:
       "Le flux « {slug} » est défini par le schéma `feeds/{slug}/schema.json` et ses enregistrements se trouvent dans `{dataPath}/` (un fichier `<id>.json` par enregistrement). Utilise ce schéma et ces données pour répondre à cette demande : {message}",
     feedsTitle: "Flux de données",

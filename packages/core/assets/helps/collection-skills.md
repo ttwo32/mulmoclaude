@@ -49,7 +49,7 @@ data/<name>/items/             ← the records (separate from the skill dir)
   discovery enforces and reports the exact problem, where a hand-edit can
   silently fail validation and make the collection vanish from the UI. It writes
   the canonical `data/skills/<slug>/schema.json` and mirrors it for you — same
-  destination as authoring, just validated. (Creating a *new* collection still
+  destination as authoring, just validated. (Creating a _new_ collection still
   means writing `SKILL.md` + `schema.json` under `data/skills/<slug>/`, since
   there's nothing to `getSchema` yet.)
 - **Do NOT use the `mc-` prefix** for skills you create. `mc-*` is reserved for
@@ -127,7 +127,7 @@ skipped, never crashes the host):
 | `title`                | Human name shown in the sidebar / header. Required.                                                                                                                                                                                                                                                                                                                                                                           |
 | `icon`                 | A **Material Symbols** name (`receipt_long`, `people`, `schedule`, `menu_book`). Required.                                                                                                                                                                                                                                                                                                                                    |
 | `dataPath`             | Workspace-relative records folder, e.g. `data/recipes/items`. Must stay under the workspace. Required.                                                                                                                                                                                                                                                                                                                        |
-| `primaryKey`           | The field name whose value is the filename. That field MUST set `primary: true`. The value must be a valid record id (see the **Records** section's id-charset rule). Required.                                                                                                                                                                                                                                                |
+| `primaryKey`           | The field name whose value is the filename. That field MUST set `primary: true`. The value must be a valid record id (see the **Records** section's id-charset rule). Required.                                                                                                                                                                                                                                               |
 | `singleton`            | Optional. When set, at most one record exists, pinned to this exact id (e.g. `me`). Host pre-fills + locks the create form and hides Add once it exists.                                                                                                                                                                                                                                                                      |
 | `fields`               | Ordered map of field-name → field spec. **Insertion order = column order** in the table. Required.                                                                                                                                                                                                                                                                                                                            |
 | `actions`              | Optional array of per-record buttons (see below).                                                                                                                                                                                                                                                                                                                                                                             |
@@ -492,7 +492,7 @@ month's rent `paid`, and next month's pending record appears on its own.
   - **Field-driven interval** (one list, mixed cadences): instead of a single
     `{ unit, interval }`, `every` may select the interval **per record** from
     an `enum` field. Use `{ "fromField": "<enum field>", "map": { <value>:
-    { unit, interval, … } } }` — the host reads the record's value and
+{ unit, interval, … } } }` — the host reads the record's value and
     advances by the matching entry. This lets one collection carry daily,
     weekly, and monthly obligations together:
 
@@ -513,6 +513,7 @@ month's rent `paid`, and next month's pending record appears on its own.
     by `set`) so the successor keeps its frequency and the chain keeps
     recurring. Each `map` value is a literal `every` (same `unit` / `interval`
     / `dayOfMonth` rules as above).
+
 - **`carry`** — record fields copied verbatim onto the successor (must name
   real fields). Fields not in `carry` / `set` / the trigger+primary keys start
   blank.
@@ -537,6 +538,53 @@ How it behaves (worth understanding so it doesn't surprise you):
 This covers _periodic_ obligations. It does **not** do escalating, multi-stage
 reminders over a long prep window (info → warning → urgent) — that is
 intentionally out of scope for collections.
+
+### Scheduled agent refresh (`ingest.kind: "agent"`)
+
+When a collection's records need to be **refreshed on a schedule by judgment**
+— fetch today's stock quotes for every ticker, re-check each watched URL, pull
+fresh figures that a static feed URL can't express — add an `ingest` block with
+`kind: "agent"`. On schedule (and on the **Refresh** button, which appears on
+any collection with an `ingest` block), the host launches a **hidden background
+worker** in `role`, seeded with your `template` plus the same compact
+all-records summary a collection-level action gets. The worker edits the records
+itself via its collection tools, then finishes silently — nothing shows in the
+chat list. Host stays generic: all the domain logic lives in the template prose.
+
+```json
+"ingest": {
+  "kind": "agent",
+  "schedule": "daily",
+  "atHour": 22,
+  "role": "investor",
+  "template": "templates/refresh.md"
+}
+```
+
+- **`schedule`**: `hourly` | `daily` | `weekly` | `on-demand`. `on-demand` never
+  auto-runs (Refresh button only). Cadence is elapsed-based ("≥24 h since the
+  last run, checked hourly") unless you anchor it (below).
+- **`atHour`** (optional, `daily` only): the hour (0–23) to run around. The host
+  ticks hourly, so the run lands within that hour.
+  **⚠ `atHour` is UTC — NOT the user's local time.** A bare `"atHour": 9` fires
+  at 09:00 UTC (= 18:00 JST, = 04:00 ET), which is almost never what "9am" means
+  to the user. So when the user says a local time, **always convert to UTC
+  first**: 07:00 JST → `"atHour": 22`; 9am ET ≈ `"atHour": 13`; 9am PT ≈
+  `"atHour": 17`. (UTC is used for an unambiguous, DST-free comparison, matching
+  the rest of the scheduler.)
+- **`role`**: the role the worker runs in — it must own the tools the refresh
+  needs (e.g. `investor` for the Yahoo Finance endpoints).
+- **`template`**: a path-safe `templates/…md` file (same rule as action
+  templates) whose prose tells the worker exactly what to do. End it with "edit
+  the records and stop — do not present anything" (no one is watching its
+  canvas).
+- No `url`/`map` — the agent owns retrieval and record shape; its writes are
+  still schema-validated. A failed run raises a single bell ("Collection refresh
+  failed: `<slug>`") that clears on the next success.
+
+Reach for `ingest.kind: "agent"` (not a `manageAutomations` task) whenever the
+schedule belongs to one collection: it travels with the schema, dies with the
+collection, and needs no separate setup.
 
 ### Calendar view
 
@@ -713,7 +761,7 @@ single source of truth and the "done" checkbox is a `toggle` field projecting it
   separators, **no** leading/trailing dot, and **no** `..` substring. If your
   natural key contains anything else (a space, `/`, `:`, a leading dot), sanitise
   it first — e.g. replace each illegal run with `_`. Note `manageCollection`
-  enforces this on every targeted read/write, so an id that only *looks* fine in
+  enforces this on every targeted read/write, so an id that only _looks_ fine in
   a full `getItems` listing but violates the rule can't be updated or deleted by
   id — fix the id, don't work around it with raw file I/O.
 - **The file MUST be valid JSON.** A malformed record is **silently skipped** at

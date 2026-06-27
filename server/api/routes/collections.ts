@@ -279,6 +279,13 @@ interface RefreshResponse {
   refreshed: true;
   written: number;
   errors: string[];
+  /** True when an agent-ingest refresh dispatched a worker (fire-and-forget):
+   *  records update asynchronously, so the client shows a note rather than a
+   *  written count. */
+  dispatched?: boolean;
+  /** The visible worker's chat session id (manual Refresh only) so the client
+   *  can open it to watch the refresh run. */
+  chatId?: string;
 }
 
 // Re-run a feed collection's retrieval now. Generic over kind — the
@@ -296,9 +303,12 @@ router.post(API_ROUTES.collections.refresh, async (req: Request<{ slug: string }
     return;
   }
   try {
-    const result = await refreshOne(workspacePath, collection);
-    log.info("collections", "feed refreshed via collection route", { slug: collection.slug, written: result.written });
-    res.json({ refreshed: true, written: result.written, errors: result.errors });
+    // Manual Refresh button → run a VISIBLE worker (hidden:false) so the user
+    // can open the session and watch/debug it. Scheduled refreshes (the
+    // `refreshDue` loop) stay hidden. Declarative feeds ignore the flag.
+    const result = await refreshOne(workspacePath, collection, { hidden: false });
+    log.info("collections", "feed refreshed via collection route", { slug: collection.slug, written: result.written, dispatched: result.dispatched ?? false });
+    res.json({ refreshed: true, written: result.written, errors: result.errors, dispatched: result.dispatched, chatId: result.chatId });
   } catch (err) {
     log.warn("collections", "feed refresh failed", { slug: collection.slug, error: errorMessage(err) });
     serverError(res, errorMessage(err));

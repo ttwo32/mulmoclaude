@@ -40,11 +40,16 @@ export interface CollectionActionResult {
   role: string;
 }
 
-/** A feed refresh's result — counts + per-source errors. */
+/** A collection refresh's result — counts + per-source errors. `dispatched` is
+ *  true for agent ingest (a worker was launched; records update async).
+ *  `chatId` is the visible worker's session (manual Refresh) so the client can
+ *  open it to watch the run. */
 export interface CollectionRefreshResult {
   refreshed: boolean;
   written: number;
   errors: string[];
+  dispatched?: boolean;
+  chatId?: string;
 }
 
 /** Scoped capability token for a sandboxed custom view (mirrors the host's mint

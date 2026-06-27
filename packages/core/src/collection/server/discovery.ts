@@ -9,7 +9,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { log, getWorkspaceRoot, userSkillsDir, projectSkillsDir, feedsRoot } from "./host";
-import { INGEST_KINDS, FEED_SCHEDULES, isFieldDrivenEvery } from "../core/schema";
+import { INGEST_KINDS, AGENT_INGEST_KIND, FEED_SCHEDULES, isFieldDrivenEvery } from "../core/schema";
 import { SCHEMA_FILE, resolveDataDir, safeRecordId, safeSlugName } from "./paths";
 import type { LoadedCollection } from "./discoveredCollection";
 import { isSafeActionTemplatePath, isSafeCustomViewPath } from "./templatePath";
@@ -395,14 +395,14 @@ function fieldDrivenFromFieldCarried(schema: FieldDrivenSchemaView): boolean {
 }
 
 // Declarative retrieval config for a Feed (a collection that refills
-// itself from the internet). Optional on every schema — skill-backed
-// collections omit it; only feeds discovered from `<workspace>/feeds/`
-// carry it. `http-json` needs a path to the items array; rss/atom
-// yield items natively and ignore `itemsAt`.
-const IngestSchemaZ = z.object({
+// itself from the internet). `http-json` needs a path to the items array;
+// rss/atom yield items natively and ignore `itemsAt`.
+const DeclarativeIngestZ = z.object({
   kind: z.enum(INGEST_KINDS),
   url: z.string().url(),
   schedule: z.enum(FEED_SCHEDULES),
+  // Optional UTC hour (0–23) to anchor a `daily` schedule; ignored otherwise.
+  atHour: z.number().int().min(0).max(23).optional(),
   itemsAt: z.string().trim().min(1).optional(),
   map: z.record(z.string().trim().min(1), z.string().trim().min(1)),
   idFrom: z.string().trim().min(1).optional(),
@@ -411,6 +411,31 @@ const IngestSchemaZ = z.object({
 // `itemsAt` is always optional: http-json omits it when the response body
 // is itself the items array (the engine falls back to the top-level array);
 // rss/atom ignore it. So no kind-specific requirement here.
+
+// Agent-performed retrieval. Valid on any collection (the primary consumer is
+// skill-backed collections — feeds keep their declarative kinds). No `url`/`map`:
+// the worker owns retrieval and record shape, seeded by `template` + a summary
+// of every record, run in `role`. `template` is validated the SAME way an
+// action's template is (safe path under `templates/`), so the skill-bridge
+// mirrors it identically.
+const AgentIngestZ = z.object({
+  kind: z.literal(AGENT_INGEST_KIND),
+  schedule: z.enum(FEED_SCHEDULES),
+  // Optional UTC hour (0–23) to anchor a `daily` schedule; ignored otherwise.
+  atHour: z.number().int().min(0).max(23).optional(),
+  role: z.string().trim().min(1),
+  template: z
+    .string()
+    .trim()
+    .min(1)
+    .refine(isSafeActionTemplatePath, "must be a safe path under `templates/` (e.g. `templates/refresh.md`; no `..`, no leading `/`, no backslash)"),
+});
+
+// `ingest` is a discriminated union on `kind`: the three declarative
+// retrievers fetch-and-map; `agent` dispatches a hidden worker. Optional on
+// every schema — skill-backed collections usually omit it; only feeds
+// discovered from `<workspace>/feeds/` are REQUIRED to carry it (gate below).
+const IngestSchemaZ = z.discriminatedUnion("kind", [DeclarativeIngestZ, AgentIngestZ]);
 
 export const CollectionSchemaZ = z
   .object({

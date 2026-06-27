@@ -1,22 +1,46 @@
-// Per-feed retrieval state — when we last fetched, the retriever's
-// cursor (for incremental fetches), and a consecutive-failure counter.
-// NOT committed to git; lives at `<workspace>/feeds/<slug>/_state.json`.
+// Per-collection retrieval state — when we last fetched/dispatched, the
+// retriever's cursor (for incremental fetches), and a consecutive-failure
+// counter. NOT committed to git. Location depends on the collection's source:
+// feeds keep it alongside the schema at `<workspace>/feeds/<slug>/_state.json`;
+// skill-backed collections with `ingest.kind: "agent"` store it at
+// `<workspace>/data/ingest-state/<slug>.json` (a schema-less `feeds/<slug>/`
+// dir would confuse feed discovery, and `_state.json` must never live in a
+// collection's dataDir where `listItems` would read it as a record).
 // Deliberately minimal: the legacy `sources` tree carries richer backoff
-// state, but the Feeds engine starts simple and grows on real need.
+// state, but the engine starts simple and grows on real need.
 
 import { mkdir, readFile } from "node:fs/promises";
+import path from "node:path";
+import type { CollectionSource } from "@mulmoclaude/core/collection";
 import { writeFileAtomic } from "../../utils/files/atomic.js";
 import { log } from "../../system/logger/index.js";
-import { feedDir, feedStatePath } from "./paths.js";
+import { feedStatePath, ingestStatePath } from "./paths.js";
+
+/** Minimal shape needed to locate a collection's state file. `LoadedCollection`
+ *  satisfies it. */
+export interface StateTarget {
+  slug: string;
+  source: CollectionSource;
+}
+
+/** Resolve the on-disk state file for a collection, branching on source. */
+function stateFilePath(target: StateTarget, workspaceRoot: string): string {
+  return target.source === "feed" ? feedStatePath(target.slug, workspaceRoot) : ingestStatePath(target.slug, workspaceRoot);
+}
 
 export interface FeedState {
   slug: string;
-  /** ISO timestamp of the last successful fetch, or null if never. */
+  /** ISO timestamp of the last successful fetch (declarative) or dispatch
+   *  (agent ingest), or null if never. */
   lastFetchedAt: string | null;
   /** Free-form retriever cursor (e.g. last-seen id / etag). */
   cursor: Record<string, string>;
-  /** Consecutive failed fetches; reset to 0 on success. */
+  /** Consecutive failed fetches/runs; reset to 0 on success. */
   consecutiveFailures: number;
+  /** Agent ingest only: the notifier entry id of the active "refresh failed"
+   *  bell, so a later success can clear exactly that entry. Absent when no
+   *  failure bell is showing. */
+  failureBellId?: string;
 }
 
 export function defaultFeedState(slug: string): FeedState {
@@ -31,13 +55,16 @@ function normalizeState(slug: string, parsed: Partial<FeedState>): FeedState {
     lastFetchedAt: typeof parsed.lastFetchedAt === "string" ? parsed.lastFetchedAt : base.lastFetchedAt,
     cursor,
     consecutiveFailures: typeof parsed.consecutiveFailures === "number" ? parsed.consecutiveFailures : base.consecutiveFailures,
+    ...(typeof parsed.failureBellId === "string" ? { failureBellId: parsed.failureBellId } : {}),
   };
 }
 
-/** Read a feed's state, tolerating a missing file (first run → default). */
-export async function readFeedState(workspaceRoot: string, slug: string): Promise<FeedState> {
+/** Read a collection's retrieval state, tolerating a missing file (first run →
+ *  default). The state path branches on `target.source`. */
+export async function readFeedState(workspaceRoot: string, target: StateTarget): Promise<FeedState> {
+  const { slug } = target;
   try {
-    const raw = await readFile(feedStatePath(slug, workspaceRoot), "utf-8");
+    const raw = await readFile(stateFilePath(target, workspaceRoot), "utf-8");
     return normalizeState(slug, JSON.parse(raw) as Partial<FeedState>);
   } catch (err) {
     const error = err as { code?: string };
@@ -48,8 +75,10 @@ export async function readFeedState(workspaceRoot: string, slug: string): Promis
   }
 }
 
-/** Persist a feed's state atomically (creating the feed dir if needed). */
-export async function writeFeedState(workspaceRoot: string, slug: string, state: FeedState): Promise<void> {
-  await mkdir(feedDir(slug, workspaceRoot), { recursive: true });
-  await writeFileAtomic(feedStatePath(slug, workspaceRoot), `${JSON.stringify(state, null, 2)}\n`);
+/** Persist a collection's retrieval state atomically (creating the parent dir
+ *  if needed). The state path branches on `target.source`. */
+export async function writeFeedState(workspaceRoot: string, target: StateTarget, state: FeedState): Promise<void> {
+  const file = stateFilePath(target, workspaceRoot);
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFileAtomic(file, `${JSON.stringify(state, null, 2)}\n`);
 }

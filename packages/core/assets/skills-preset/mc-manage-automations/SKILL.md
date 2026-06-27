@@ -1,6 +1,6 @@
 ---
 name: mc-manage-automations
-description: Schedule, list, edit, or remove a recurring agent task (cron / interval). Use when the user wants the agent to run a prompt on a schedule ("毎朝7時に天気", "every weekday 8am check email", "schedule a weekly cleanup"), list active automations, or stop one. Edits `config/scheduler/tasks.json` (cwd-relative — the agent already runs with cwd = workspace); the auto-refresh hook re-registers tasks on save.
+description: Schedule, list, edit, or remove a recurring agent task (cron / interval) in `config/scheduler/tasks.json`. Use for cross-collection digests, notifications, or any standalone recurring prompt ("毎朝7時に天気", "every weekday 8am check email", "schedule a weekly cleanup"), or to list/stop automations. EXCEPTION — do NOT create a task here to keep ONE collection's records fresh (e.g. "update the stock-quotes daily", "refresh these quotes every morning", "re-poll these URLs"): instead add an `ingest` block with `kind: "agent"` to THAT collection's own `schema.json` (it self-refreshes on schedule and from its Refresh button; syntax in `config/helps/collection-skills.md` → "Scheduled agent refresh"). Read this skill body in full before writing `tasks.json` — the entry format is structured, not free-form.
 ---
 
 # Automations manager
@@ -18,6 +18,40 @@ take effect immediately.
 End with a one-line confirmation ("Scheduled weather-morning, daily 07:00
 UTC." / "Stopped weekly-cleanup.") so the user can verify without scrolling.
 
+## First: is this just refreshing ONE collection?
+
+Before writing a `tasks.json` automation, check what the recurring work
+actually is. If it's **"keep one collection's records up to date"** — refresh
+stock quotes, re-poll a set of watched URLs, pull fresh figures for every row —
+do **NOT** create an automation here. Add an `ingest` block to _that
+collection's own_ `schema.json` instead:
+
+```json
+"ingest": {
+  "kind": "agent",
+  "schedule": "daily",
+  "atHour": 21,
+  "role": "<a role that owns the tools the refresh needs>",
+  "template": "templates/refresh.md"
+}
+```
+
+and write `templates/refresh.md` telling the worker how to refresh the records.
+The full contract is in `config/helps/collection-skills.md` → "Scheduled agent
+refresh". On schedule (and on the collection's **Refresh** button) the host runs
+a hidden background worker that edits the records.
+
+Prefer this over a `tasks.json` automation whenever the work is one collection's
+refresh: the schedule lives **with** the collection — it travels when the skill
+is copied and is deleted when the collection is, instead of leaving an orphan
+task here whose prompt points at records that may no longer exist. (Editing
+`data/stock-quotes/items/*.json` daily? That's `ingest.kind: "agent"` on the
+stock-quotes schema, not an automation.)
+
+Use the `tasks.json` automation below only for work that **isn't** one
+collection's refresh: cross-collection digests, notifications, or an arbitrary
+recurring prompt.
+
 ## Workflow 1: schedule a new automation
 
 **Triggers**: "毎朝 7 時に天気を", "every weekday 8am check email",
@@ -26,7 +60,7 @@ UTC." / "Stopped weekly-cleanup.") so the user can verify without scrolling.
 **Step 1 — convert local time to UTC.** Schedules are stored / compared in
 UTC (the task-manager calls `Date.getUTCHours/Minutes`). When the user gives
 a local time, convert before writing. E.g. "07:00 JST" → `"16:00"` of the
-*previous* UTC day? No — `07:00 JST` is `22:00 UTC` of the *previous* day.
+_previous_ UTC day? No — `07:00 JST` is `22:00 UTC` of the _previous_ day.
 JST is UTC+9, so `07:00 JST = 22:00 UTC (yesterday)`. (Run the math, don't
 trust your reflex — UTC offsets are a classic typo source.)
 

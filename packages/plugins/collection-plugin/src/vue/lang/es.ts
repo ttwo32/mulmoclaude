@@ -45,6 +45,7 @@ const esMessages: CollectionMessages = {
     chat: "Chat",
     refreshFeed: "Actualizar",
     refreshFailed: "Error al actualizar: {error}",
+    refreshDispatched: "Actualización iniciada en segundo plano.",
     feedChatSeed:
       "El feed «{slug}» está definido por el esquema `feeds/{slug}/schema.json` y sus registros se guardan en `{dataPath}/` (un archivo `<id>.json` por registro). Usa ese esquema y esos datos para responder a esta solicitud: {message}",
     feedsTitle: "Fuentes de datos",

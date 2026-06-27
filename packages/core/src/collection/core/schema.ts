@@ -20,16 +20,41 @@
  *  these three + the presence check. */
 export interface CollectionIngest {
   kind: string;
-  url: string;
   schedule: string;
+  /** Optional time-of-day anchor for `schedule: "daily"` — the hour (0–23) to
+   *  refresh around (the host ticks hourly, so the run lands within that hour).
+   *  Ignored for non-daily schedules. Absent ⇒ elapsed-based daily ("≥24 h since
+   *  the last run"). NOTE: **UTC**, not local — compared via `getUTCHours()` for
+   *  an unambiguous, DST-free check (matching the rest of the scheduler), so
+   *  convert local times before writing (e.g. 07:00 JST → `atHour: 22`). */
+  atHour?: number;
+  /** Declarative retrievers (`rss`/`atom`/`http-json`) only — the host fetches
+   *  this URL on the schedule. Absent for `kind: "agent"`, where the agent owns
+   *  retrieval. */
+  url?: string;
+  /** `kind: "agent"` only: role id the scheduled hidden worker runs in. */
+  role?: string;
+  /** `kind: "agent"` only: skill-relative template path (under `templates/`)
+   *  whose prose tells the worker how to refresh the records. */
+  template?: string;
 }
 
-/** Retriever kinds a Feed's `ingest.kind` may declare. The host's feeds engine
- *  dispatches on these; they live here (with the schema contract) so the schema
- *  validator can enforce them. The host re-exports these from
+/** Declarative retriever kinds a Feed's `ingest.kind` may declare. The host's
+ *  feeds engine dispatches on these; they live here (with the schema contract)
+ *  so the schema validator can enforce them. The host re-exports these from
  *  `server/workspace/feeds/ingestTypes.ts`. */
 export const INGEST_KINDS = ["rss", "atom", "http-json"] as const;
 export type IngestKind = (typeof INGEST_KINDS)[number];
+
+/** The agent-performed ingest kind. Instead of a declarative fetch, the host
+ *  dispatches a hidden background chat (origin `system`) in `ingest.role`,
+ *  seeded with `ingest.template` + a summary of every record, on the
+ *  `ingest.schedule` cadence; the worker edits records via the collections io
+ *  layer. Kept separate from {@link INGEST_KINDS} (which the declarative
+ *  retriever registry keys on) so the schema validator can model `ingest` as a
+ *  discriminated union without the feeds engine gaining an "agent" retriever. */
+export const AGENT_INGEST_KIND = "agent" as const;
+export type AgentIngestKind = typeof AGENT_INGEST_KIND;
 
 /** Refresh cadences a Feed's `ingest.schedule` may declare. */
 export const FEED_SCHEDULES = ["hourly", "daily", "weekly", "on-demand"] as const;
@@ -402,12 +427,15 @@ export interface CollectionSchema {
    *  notify for every open record (the prior behaviour). `notifyWhen.field`
    *  must name a real top-level field. */
   notifyWhen?: CollectionWhen;
-  /** Optional declarative retrieval config. When present, this collection
-   *  is a "Feed": the host periodically fetches `ingest.url`, maps the
-   *  response into records, and upserts them by `primaryKey`. Only feeds
-   *  discovered from the `<workspace>/feeds/` registry carry this; skill
-   *  collections omit it. The host's feeds subsystem narrows this to its
-   *  richer `IngestSpec` (which `extends CollectionIngest`). */
+  /** Optional scheduled-retrieval config. When present, the host refreshes
+   *  this collection on `ingest.schedule`. Two flavours: a declarative Feed
+   *  (`kind: rss/atom/http-json`) periodically fetches `ingest.url`, maps the
+   *  response into records, and upserts them by `primaryKey` — only feeds
+   *  discovered from the `<workspace>/feeds/` registry carry this. Or
+   *  `kind: "agent"`, valid on any (incl. skill-backed) collection: the host
+   *  dispatches a hidden background worker in `ingest.role` seeded with
+   *  `ingest.template`, and the worker edits the records itself. The host's
+   *  feeds subsystem narrows this to its richer `IngestSpec`. */
   ingest?: CollectionIngest;
 }
 

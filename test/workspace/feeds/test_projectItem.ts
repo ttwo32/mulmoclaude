@@ -2,12 +2,12 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { projectRecord } from "../../../server/workspace/feeds/projectItem.js";
 import type { CollectionSchema } from "../../../server/workspace/collections/index.js";
-import type { IngestSpec } from "../../../server/workspace/feeds/ingestTypes.js";
+import type { DeclarativeIngestSpec } from "../../../server/workspace/feeds/ingestTypes.js";
 
 // projectRecord only reads schema.primaryKey, so a minimal cast suffices.
 const schema = { primaryKey: "id" } as unknown as CollectionSchema;
 
-function rssIngest(extra: Partial<IngestSpec> = {}): IngestSpec {
+function rssIngest(extra: Partial<DeclarativeIngestSpec> = {}): DeclarativeIngestSpec {
   return {
     kind: "rss",
     url: "https://example.com/feed",

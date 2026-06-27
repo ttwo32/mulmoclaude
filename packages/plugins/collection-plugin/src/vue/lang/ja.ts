@@ -45,6 +45,7 @@ const jaMessages: CollectionMessages = {
     chat: "チャット",
     refreshFeed: "更新",
     refreshFailed: "更新に失敗しました: {error}",
+    refreshDispatched: "バックグラウンドで更新を開始しました。",
     feedChatSeed:
       "フィード「{slug}」はスキーマ `feeds/{slug}/schema.json` で定義され、レコードは `{dataPath}/`（1 レコードにつき `<id>.json` 1 ファイル）に保存されています。このスキーマとデータを使って、次のリクエストに応えてください: {message}",
     feedsTitle: "データソースフィード",

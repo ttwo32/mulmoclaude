@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Router, Request, Response } from "express";
 import { getSessionQuery } from "../../utils/request.js";
 import {
@@ -33,7 +34,14 @@ import { createArgsCache, recordToolEvent } from "../../workspace/tool-trace/ind
 import { API_ROUTES } from "../../../src/config/apiRoutes.js";
 import { EVENT_TYPES } from "../../../src/types/events.js";
 import { isSessionOrigin, SESSION_ORIGINS, type SessionOrigin } from "../../../src/types/session.js";
-import { releaseBackgroundSession } from "../../agent/backgroundSessions.js";
+import {
+  tryReserveBackgroundSession,
+  releaseBackgroundSession,
+  registerCompletionHook,
+  takeCompletionHook,
+  MAX_BACKGROUND_SESSIONS,
+  type CompletionHook,
+} from "../../agent/backgroundSessions.js";
 // Imports kept commented (instead of deleted) alongside the
 // publishNotification call in `runPostTurnSideEffects` — see the
 // duplicate-notification comment there for context. (`SESSION_ORIGINS`
@@ -132,6 +140,46 @@ export interface StartChatParams {
 }
 
 export type StartChatResult = { kind: "started"; chatSessionId: string } | { kind: "error"; error: string; status?: number };
+
+/** Outcome of launching a worker session. */
+export type SpawnSystemWorkerResult = { ok: true; chatId: string } | { ok: false; error: string };
+
+// Launch a host-side worker session. `hidden` decides visibility:
+//   - true  → origin `system`: never appears in the session list, runaway-cap
+//             reserved, `finalizeRun` invokes the completion hook + cleans up.
+//             Used for SCHEDULED agent-ingest refreshes (no one is watching).
+//   - false → origin `skill`: a normal visible chat the user can open from
+//             history, no cap, NO completion hook (the user watches it run
+//             directly). Used for a MANUAL Refresh-button refresh so it's
+//             debuggable.
+// Exported so non-MCP host callers (the agent-ingest engine, wired in via
+// `setAgentWorkerRunner`) can spawn one without going through the tool layer.
+export async function spawnSystemWorker(args: {
+  message: string;
+  roleId: string;
+  hidden: boolean;
+  onComplete?: CompletionHook;
+}): Promise<SpawnSystemWorkerResult> {
+  const chatId = randomUUID();
+  const origin: SessionOrigin = args.hidden ? SESSION_ORIGINS.system : SESSION_ORIGINS.skill;
+  // The runaway cap guards hidden workers only — a visible run is user-initiated
+  // and self-limiting. Reserve ATOMICALLY before launching; rolled back below if
+  // the launch fails (otherwise released in `runAgentInBackground`'s finally).
+  if (args.hidden && !tryReserveBackgroundSession(chatId)) {
+    return { ok: false, error: `too many background sessions already in flight (max ${MAX_BACKGROUND_SESSIONS})` };
+  }
+  const result = await startChat({ message: args.message, roleId: args.roleId, chatSessionId: chatId, origin });
+  if (result.kind === "error") {
+    if (args.hidden) releaseBackgroundSession(chatId); // roll back the reservation
+    return { ok: false, error: result.error };
+  }
+  // Register the completion hook AFTER a successful launch (the subprocess can't
+  // finish before this synchronous code returns, so `finalizeRun` won't miss
+  // it). Only hidden (system) sessions run it — `finalizeRun` skips the hook for
+  // visible origins, which take the normal post-turn path instead.
+  if (args.hidden && args.onComplete) registerCompletionHook(chatId, args.onComplete);
+  return { ok: true, chatId };
+}
 
 export async function startChat(params: StartChatParams): Promise<StartChatResult> {
   const { message, roleId, chatSessionId, selectedImageData, attachments, userTimezone } = params;
@@ -978,6 +1026,11 @@ async function finalizeRun(chatSessionId: string, origin: SessionOrigin | undefi
     // plumbing and pollute wiki backlinks), and clean up its files on
     // success — keep them on error so a failed worker stays inspectable.
     releaseBackgroundSession(chatSessionId);
+    // Fire any one-shot completion hook (e.g. agent-ingest failure tracking)
+    // AFTER the slot is freed, BEFORE files are cleaned up. Best-effort —
+    // a throwing hook is logged, never propagated.
+    const hook = takeCompletionHook(chatSessionId);
+    if (hook) await Promise.resolve(hook({ didError })).catch(logBackgroundError("background-session-completion-hook"));
     if (!didError) {
       await deleteSessionFiles(chatSessionId).catch(logBackgroundError("background-session-cleanup"));
     }

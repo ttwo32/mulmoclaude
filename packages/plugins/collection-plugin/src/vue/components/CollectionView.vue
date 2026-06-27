@@ -111,6 +111,18 @@
       </button>
     </header>
 
+    <!-- Transient note for an agent-ingest Refresh: the worker runs in the
+         background, so records don't update synchronously — tell the user the
+         refresh started rather than leaving the click feeling like a no-op. -->
+    <div
+      v-if="refreshNote"
+      class="mx-6 mt-2 rounded-lg border border-indigo-200 bg-indigo-50/60 px-4 py-2 text-sm text-indigo-800 flex items-center gap-2"
+      data-testid="collections-refresh-note"
+    >
+      <span class="material-icons text-base text-indigo-600">hourglass_top</span>
+      <span class="flex-1">{{ refreshNote }}</span>
+    </div>
+
     <!-- Search Toolbar. Shown when there are items to search OR when a view
          toggle is available — the toggle must reach an empty date-bearing
          collection (empty-day create) and a collection whose only views are
@@ -872,6 +884,11 @@ const notifiedSeverities = computed<Map<string, CollectionNotifySeverity>>(() =>
 });
 /** True while a feed collection's manual refresh is in flight. */
 const refreshing = ref(false);
+/** Transient note shown after an agent-ingest Refresh dispatches a background
+ *  worker (records update asynchronously, so there's nothing to show inline).
+ *  Auto-clears; `refreshNoteTimer` cancels a pending clear on re-trigger. */
+const refreshNote = ref<string | null>(null);
+let refreshNoteTimer: ReturnType<typeof setTimeout> | undefined;
 /** Slug already auto-refreshed on first open — prevents a reload loop
  *  (the auto-refresh reloads the view, which would re-trigger otherwise). */
 const autoRefreshedSlug = ref<string | null>(null);
@@ -1126,7 +1143,25 @@ async function refreshFeed(): Promise<void> {
   // surface them — otherwise a failed refresh looks like success.
   if (result.data.errors.length > 0) {
     inlineError.value = t("collectionsView.refreshFailed", { error: result.data.errors.join("; ") });
+    return;
   }
+  // Agent ingest dispatched a worker — records update later. A manual refresh
+  // runs a VISIBLE session: open it so the user can watch/debug the run. Fall
+  // back to a transient note if the host can't navigate (router-less embed).
+  if (result.data.dispatched) {
+    if (result.data.chatId && cui.navigate) cui.navigate(`/chat/${result.data.chatId}`);
+    else showRefreshNote(t("collectionsView.refreshDispatched"));
+  }
+}
+
+/** Show a transient refresh note, replacing any pending auto-clear. */
+function showRefreshNote(message: string): void {
+  refreshNote.value = message;
+  if (refreshNoteTimer !== undefined) clearTimeout(refreshNoteTimer);
+  refreshNoteTimer = setTimeout(() => {
+    refreshNote.value = null;
+    refreshNoteTimer = undefined;
+  }, 6000);
 }
 
 /** Collection-level header actions. No `when` predicate (no record). */
@@ -1231,12 +1266,14 @@ function closeChat(): void {
  *  (`feeds/<slug>/schema.json` and `<dataPath>/`) and let it act on the
  *  request directly. */
 function buildChatSeed(slug: string, message: string, itemId?: string): string {
-  const schema = collection.value?.schema;
-  // A feed carries an `ingest` block; a plain collection does not. Checked
-  // here (rather than via the `isFeed` computed, defined further down) to
-  // keep this helper self-contained and avoid a use-before-define.
-  if (!schema?.ingest) return itemId ? `/${slug} id=${itemId} ${message}` : `/${slug} ${message}`;
-  const dataPath = schema.dataPath ?? `data/feeds/${slug}`;
+  const current = collection.value;
+  // Only an actual Feed (source `feed`) is skill-less + data-only. A
+  // skill-backed collection — even one carrying an agent-ingest block — DOES
+  // have a `/<slug>` skill command, so seed that. (Checked via `source`
+  // directly, not the `isFeed` computed defined further down, to keep this
+  // helper self-contained and avoid a use-before-define.)
+  if (current?.source !== "feed") return itemId ? `/${slug} id=${itemId} ${message}` : `/${slug} ${message}`;
+  const dataPath = current.schema.dataPath ?? `data/feeds/${slug}`;
   // A feed has no skill command — point the agent at a specific record by id
   // inside the same schema-driven seed.
   const scoped = itemId ? `(for record \`${itemId}\`) ${message}` : message;
@@ -1409,10 +1446,13 @@ const canDeleteCollection = computed<boolean>(() => {
   return current.source === "project" && !current.slug.startsWith("mc-");
 });
 
-// True when this view was opened as a feed (`/feeds/:slug`): the schema
-// carries an `ingest` block. Feeds are deleted via DELETE /api/feeds/:slug,
-// not the project-scope collection delete above.
-const isFeed = computed<boolean>(() => Boolean(collection.value?.schema.ingest));
+// True only for an actual Feed (discovered from `feeds/<slug>/`, source
+// `feed`) — NOT merely any collection carrying an `ingest` block. A
+// skill-backed collection can now declare `ingest.kind: "agent"` (scheduled
+// agent refresh) yet still be a project-scope collection, deleted the normal
+// way; keying off `schema.ingest` here used to surface a SECOND delete button
+// on those. Feeds are deleted via DELETE /api/feeds/:slug.
+const isFeed = computed<boolean>(() => collection.value?.source === "feed");
 const canDeleteFeed = computed<boolean>(() => isFeed.value && !embedded.value);
 
 // Which list to return to from the back arrow: feeds opened via /feeds
@@ -1517,7 +1557,7 @@ const canAddCustomView = computed<boolean>(() => Boolean(collection.value) && !e
 function addCustomView(): void {
   const current = collection.value;
   if (!current) return;
-  const base = current.schema.ingest ? `feeds/${current.slug}` : `data/skills/${current.slug}`;
+  const base = current.source === "feed" ? `feeds/${current.slug}` : `data/skills/${current.slug}`;
   const prompt = t("collectionsView.addViewPrompt", { title: current.title, base });
   if (props.sendTextMessage) {
     props.sendTextMessage(prompt);
@@ -2198,6 +2238,7 @@ onUnmounted(() => {
   changeUnsub?.();
   changeUnsub = null;
   clearLiveRefreshTimer();
+  if (refreshNoteTimer !== undefined) clearTimeout(refreshNoteTimer);
 });
 
 // Embedded mode: report view/anchor changes so the chat card persists them

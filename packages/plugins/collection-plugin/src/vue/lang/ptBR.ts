@@ -45,6 +45,7 @@ const ptBRMessages: CollectionMessages = {
     chat: "Chat",
     refreshFeed: "Atualizar",
     refreshFailed: "Falha ao atualizar: {error}",
+    refreshDispatched: "Atualização iniciada em segundo plano.",
     feedChatSeed:
       'O feed "{slug}" é definido pelo esquema `feeds/{slug}/schema.json` e seus registros ficam em `{dataPath}/` (um arquivo `<id>.json` por registro). Use esse esquema e esses dados para responder a esta solicitação: {message}',
     feedsTitle: "Feeds de dados",

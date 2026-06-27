@@ -52,6 +52,7 @@ describe("WORKSPACE_DIRS expected keys", () => {
     "html",
     "htmls",
     "images",
+    "ingestState",
     "locations",
     "markdowns",
     "marpThemes",

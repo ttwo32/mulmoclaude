@@ -16,8 +16,8 @@ engine does that automatically: the first time the feed's view is opened, on an
 hourly schedule thereafter, and when the user clicks **Refresh feed**. Records
 render in the standard collection view at `/feeds/<slug>`.
 
-This is the project philosophy: *the workspace is the database; you are the
-intelligent interface.* Adding a feed = **fetch the URL, look at its real
+This is the project philosophy: _the workspace is the database; you are the
+intelligent interface._ Adding a feed = **fetch the URL, look at its real
 fields, and write one `schema.json`.**
 
 ## Workflow to add a feed
@@ -45,11 +45,11 @@ lists all registered feeds, and its delete button does the same.
   "primaryKey": "id",
   "displayField": "headline",
   "fields": {
-    "id":        { "type": "string",   "label": "ID", "primary": true },
-    "headline":  { "type": "string",   "label": "Headline" },
-    "url":       { "type": "string",   "label": "URL" },
-    "published": { "type": "date",     "label": "Published" },
-    "summary":   { "type": "markdown", "label": "Summary" }
+    "id": { "type": "string", "label": "ID", "primary": true },
+    "headline": { "type": "string", "label": "Headline" },
+    "url": { "type": "string", "label": "URL" },
+    "published": { "type": "date", "label": "Published" },
+    "summary": { "type": "markdown", "label": "Summary" }
   },
   "ingest": {
     "kind": "rss",
@@ -87,6 +87,10 @@ lists all registered feeds, and its delete button does the same.
 - `url`: the feed / API endpoint (must be public http/https; the host refuses
   private/loopback addresses).
 - `schedule`: `hourly` | `daily` | `weekly` | `on-demand`.
+- `atHour` (optional, `daily` only): the hour (0–23) to anchor a daily feed to
+  (the host ticks hourly, so the run lands within that hour). **⚠ UTC, NOT local
+  time** — `"atHour": 9` is 09:00 UTC (= 18:00 JST). Always convert the user's
+  local time to UTC before writing.
 - `map`: `{ <yourFieldName>: <sourcePath> }` — a dot/bracket path into each
   fetched item. **Map the fields you actually saw when you inspected the feed.**
   - rss/atom: each item is the parsed XML element. Tags are keys (`title`,
@@ -106,6 +110,11 @@ lists all registered feeds, and its delete button does the same.
 - http-json needs an array of objects. Columnar/parallel-array APIs (e.g.
   Open-Meteo weather: `hourly.time[]` + `hourly.temperature_2m[]`) are not
   supported yet.
+- When a refresh needs **judgment** the declarative `map` can't express — auth
+  headers, per-record requests, picking which symbols to fetch, computing a
+  value — use `ingest.kind: "agent"` instead (a scheduled hidden worker; see
+  `config/helps/collection-skills.md` → "Scheduled agent refresh"). It works on
+  any collection, not just feeds.
 - A malformed `schema.json` is skipped at load time (with a diagnostic on the
   notification bell), so double-check the shape above before writing.
 - A feed can carry **custom views** just like any collection — author the HTML at

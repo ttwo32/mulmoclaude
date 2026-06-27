@@ -861,6 +861,100 @@ describe("discoverCollections — actions", () => {
   });
 });
 
+describe('discoverCollections — agent ingest (`ingest.kind: "agent"`)', () => {
+  const fields = { id: { type: "string", label: "ID", primary: true, required: true } };
+
+  it("accepts a valid agent ingest block", async () => {
+    writeSkill("test-agent-ingest", {
+      title: "Quotes",
+      icon: "trending_up",
+      dataPath: "data/quotes/items",
+      primaryKey: "id",
+      fields,
+      ingest: { kind: "agent", schedule: "daily", role: "investor", template: "templates/refresh.md" },
+    });
+    const collections = await listCollections();
+    assert.equal(collections.length, 1);
+    assert.equal(collections[0]?.schema.ingest?.kind, "agent");
+    assert.equal(collections[0]?.schema.ingest?.role, "investor");
+    assert.equal(collections[0]?.schema.ingest?.template, "templates/refresh.md");
+  });
+
+  it("accepts an agent ingest with a UTC atHour anchor", async () => {
+    writeSkill("test-agent-athour", {
+      title: "Quotes",
+      icon: "trending_up",
+      dataPath: "data/athour/items",
+      primaryKey: "id",
+      fields,
+      ingest: { kind: "agent", schedule: "daily", atHour: 13, role: "investor", template: "templates/refresh.md" },
+    });
+    const collections = await listCollections();
+    assert.equal(collections.length, 1);
+    assert.equal(collections[0]?.schema.ingest?.atHour, 13);
+  });
+
+  it("rejects an agent ingest missing role", async () => {
+    writeSkill("test-agent-no-role", {
+      title: "X",
+      icon: "warning",
+      dataPath: "data/agnorole/items",
+      primaryKey: "id",
+      fields,
+      ingest: { kind: "agent", schedule: "daily", template: "templates/refresh.md" },
+    });
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects an agent ingest template with path traversal", async () => {
+    writeSkill("test-agent-traversal", {
+      title: "X",
+      icon: "warning",
+      dataPath: "data/agtrav/items",
+      primaryKey: "id",
+      fields,
+      ingest: { kind: "agent", schedule: "daily", role: "investor", template: "../../etc/passwd" },
+    });
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects an agent ingest template not under templates/", async () => {
+    writeSkill("test-agent-bare-template", {
+      title: "X",
+      icon: "warning",
+      dataPath: "data/agbare/items",
+      primaryKey: "id",
+      fields,
+      ingest: { kind: "agent", schedule: "daily", role: "investor", template: "refresh.md" },
+    });
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects an atHour outside 0–23", async () => {
+    writeSkill("test-agent-bad-athour", {
+      title: "X",
+      icon: "warning",
+      dataPath: "data/agbadhour/items",
+      primaryKey: "id",
+      fields,
+      ingest: { kind: "agent", schedule: "daily", atHour: 24, role: "investor", template: "templates/refresh.md" },
+    });
+    assert.equal((await listCollections()).length, 0);
+  });
+
+  it("rejects an unknown ingest kind", async () => {
+    writeSkill("test-ingest-bad-kind", {
+      title: "X",
+      icon: "warning",
+      dataPath: "data/badkind/items",
+      primaryKey: "id",
+      fields,
+      ingest: { kind: "telepathy", schedule: "daily", role: "investor", template: "templates/refresh.md" },
+    });
+    assert.equal((await listCollections()).length, 0);
+  });
+});
+
 describe("discoverCollections — field visibility (`when`)", () => {
   it("accepts a field with a valid `when` predicate naming a sibling field", async () => {
     writeSkill("test-field-when", {
