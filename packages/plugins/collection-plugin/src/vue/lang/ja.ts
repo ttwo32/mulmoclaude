@@ -23,7 +23,7 @@ const jaMessages: CollectionMessages = {
     contributeConfirm:
       "「{title}」コレクションをシェアしますか？スキルが起動してコレクションを export し、コレクションレジストリ（receptron/mulmoclaude-collections）に GitHub PR を作成します。",
     contributePrompt:
-      "自作の「{title}」コレクション（slug: {slug}）を MulmoClaude のコレクションレジストリ（receptron/mulmoclaude-collections）に寄稿したいです。まず `config/helps/collection-skills.md` を読んで寄稿バンドルの構成を確認してください。私の GitHub ユーザー名（meta.author と一致する必要があり、レジストリ上の名前空間になります）と、自分のレコードをサンプル seed データとして含めるか（秘密情報を含むものは除外）を質問してください。そのうえで寄稿バンドル（SKILL.md, schema.json, meta.json, 任意の seed/items）を作り、`github/` 配下に clone したレジストリにコピーし、`node scripts/build-index.mjs` と `node scripts/validate.mjs` を実行し、私の確認後に PR を作成してください。",
+      "自作の「{title}」コレクション（slug: {slug}）を MulmoClaude のコレクションレジストリ（receptron/mulmoclaude-collections）に寄稿したいです。まず `config/helps/collection-skills.md` を読んで寄稿バンドルの構成を確認してください。私の GitHub ユーザー名（meta.author と一致する必要があり、レジストリ上の名前空間になります）を質問してください。seed データは、私の実レコードをコピーする代わりに、コレクションの `schema.json` に基づいて 3〜5 件の合成ダミーレコードを生成してください — プライバシー安全で、インポートする人に綺麗な例を示せます。そのうえで寄稿バンドル（SKILL.md, schema.json, meta.json, seed/items）を作り、`github/` 配下に clone したレジストリにコピーし、`node scripts/build-index.mjs` と `node scripts/validate.mjs` を実行し、私の確認後に PR を作成してください。",
     addCollectionLabel: "コレクション",
     addCollectionPrompt:
       "新しいコレクションを作成したいです。まず `config/helps/collection-skills.md` を読んでスキーマ駆動コレクションの規約を確認してください。次に `presentForm` ツールを使って（AskUserQuestion は使わないで）どんなデータを管理したいか質問し、その回答をもとに schema.json と SKILL.md を作成してください。",
