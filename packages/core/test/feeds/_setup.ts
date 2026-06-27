@@ -19,16 +19,20 @@ import { configureFeedsHost, type AgentWorkerRunner } from "../../src/feeds/serv
 const noopLog = { error: () => {}, warn: () => {}, info: () => {}, debug: () => {} };
 const PLACEHOLDER_ROOT = "/feeds-test-placeholder";
 
-let currentRunner: AgentWorkerRunner = async () => ({ ok: false, error: "no test worker set" });
+const DEFAULT_RUNNER: AgentWorkerRunner = async () => ({ ok: false, error: "no test worker set" });
+let currentRunner: AgentWorkerRunner = DEFAULT_RUNNER;
 
 /** Swap the agent-ingest worker launcher the engine will call. */
 export function setTestWorker(runner: AgentWorkerRunner): void {
   currentRunner = runner;
 }
 
-/** Point the notifier at a fresh temp store with a no-op pub-sub, so the
- *  agent-ingest failure-bell path can publish/clear without throwing. */
+/** Per-test reset hook: point the notifier at a fresh temp store with a no-op
+ *  pub-sub (so the agent-ingest failure-bell path can publish/clear without
+ *  throwing) AND restore the worker runner to its default, so a test that omits
+ *  `setTestWorker()` can't silently reuse the previous test's runner. */
 export function resetNotifierForTest(): void {
+  currentRunner = DEFAULT_RUNNER;
   const dir = mkdtempSync(path.join(tmpdir(), "feeds-notifier-"));
   configureNotifier({
     writeJson: async (filePath, data) => {

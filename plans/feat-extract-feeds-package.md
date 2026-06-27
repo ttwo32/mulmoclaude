@@ -61,13 +61,14 @@ export interface FeedsLogger { error; warn; info; debug } // (prefix, msg, data?
 export interface FeedsHost {
   workspaceRoot: string;                  // default root for refreshDue() / state paths
   log: FeedsLogger;
-  writeFileAtomic: (filePath: string, content: string, opts: { uniqueTmp: boolean }) => Promise<void>;
+  writeFileAtomic: (filePath: string, content: string) => Promise<void>; // feeds never passes opts
   spawnWorker: AgentWorkerRunner;         // hidden/visible agent-ingest worker (was setAgentWorkerRunner)
 }
 let current: FeedsHost | null = null;
 export function configureFeedsHost(host: FeedsHost): void { /* set once; throw on re-config w/ different host */ }
-function requireHost(): FeedsHost { /* throw if null */ }
-export const log: FeedsLogger = { error: (...a) => current?.log.error(...a), /* … */ };
+export function requireFeedsHost(): FeedsHost { /* throw if null */ }
+// log forwards to the configured host and THROWS if unconfigured (no silent drop):
+export const log: FeedsLogger = { error: (prefix, msg, data) => requireFeedsHost().log.error(prefix, msg, data), /* … */ };
 ```
 
 `AgentWorkerRunner`/`AgentWorkerResult` types move with `agentIngest.ts`. (Keeping a
