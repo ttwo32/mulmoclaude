@@ -93,7 +93,7 @@ const renderedHtml = computed(() => sanitizeMarkdownHtml(marked(body.value, { br
   background-color: #f5f5f5;
   padding: 0.2em 0.4em;
   border-radius: 3px;
-  font-family: monospace;
+  font-family: Consolas, "MS Gothic", "BIZ UDGothic", monospace;
   font-size: 0.9em;
 }
 .markdown-content :deep(pre) {

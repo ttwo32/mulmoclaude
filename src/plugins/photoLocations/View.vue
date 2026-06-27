@@ -193,7 +193,7 @@ h2 {
   align-items: baseline;
 }
 .path {
-  font-family: monospace;
+  font-family: Consolas, "MS Gothic", "BIZ UDGothic", monospace;
   font-size: 0.75rem;
   color: #374151;
   overflow: hidden;
@@ -216,7 +216,7 @@ h2 {
   color: #4b5563;
 }
 .coords {
-  font-family: monospace;
+  font-family: Consolas, "MS Gothic", "BIZ UDGothic", monospace;
 }
 .altitude {
   color: #9ca3af;

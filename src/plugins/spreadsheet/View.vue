@@ -797,7 +797,7 @@ onUnmounted(() => {
   padding: 0.5rem;
   background: #f5f5f5;
   border-top: 1px solid #e0e0e0;
-  font-family: monospace;
+  font-family: Consolas, "MS Gothic", "BIZ UDGothic", monospace;
   font-size: 0.85rem;
   flex-shrink: 0;
 }
@@ -828,7 +828,7 @@ onUnmounted(() => {
   border: 1px solid #ccc;
   border-radius: 4px;
   color: #333;
-  font-family: "Courier New", monospace;
+  font-family: "Courier New", "MS Gothic", "BIZ UDGothic", monospace;
   font-size: 0.9rem;
   resize: vertical;
   margin-bottom: 0.5rem;
@@ -887,7 +887,7 @@ onUnmounted(() => {
 }
 
 .cell-ref {
-  font-family: monospace;
+  font-family: Consolas, "MS Gothic", "BIZ UDGothic", monospace;
   font-weight: 600;
   color: #217346;
   font-size: 0.85rem;

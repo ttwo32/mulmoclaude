@@ -61,7 +61,7 @@ function onInput(event: Event): void {
   border: none;
   border-radius: 0;
   color: #333;
-  font-family: "Courier New", monospace;
+  font-family: "Courier New", "MS Gothic", "BIZ UDGothic", monospace;
   font-size: 0.9rem;
   resize: none;
   line-height: 1.5;

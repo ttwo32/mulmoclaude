@@ -104,7 +104,7 @@ function createState(doc: string): EditorState {
       labelCompartment.of(EditorView.contentAttributes.of({ "aria-label": props.editorLabel })),
       EditorView.theme({
         "&": { fontSize: "12px" },
-        ".cm-content": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" },
+        ".cm-content": { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "MS Gothic", "BIZ UDGothic", monospace' },
         "&.cm-focused": { outline: "2px solid rgb(96 165 250)" },
         ".cm-scroller": { overflow: "auto" },
       }),

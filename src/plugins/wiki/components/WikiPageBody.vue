@@ -143,7 +143,7 @@ function onClick(event: MouseEvent) {
   padding: 0.1rem 0.3rem;
   border-radius: 0.25rem;
   font-size: 0.85em;
-  font-family: monospace;
+  font-family: Consolas, "MS Gothic", "BIZ UDGothic", monospace;
 }
 .wiki-content :deep(pre) {
   background: #f3f4f6;
