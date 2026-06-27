@@ -338,7 +338,7 @@ export default [
     // to just those categories so no-shadow / cognitive-complexity /
     // no-unused-vars / no-floating-promises etc. stay at `error`
     // across the whole repo — those *do* catch real bugs in tests.
-    files: ["test/**/*.{ts,js}", "e2e/**/*.{ts,js}"],
+    files: ["test/**/*.{ts,js}", "e2e/**/*.{ts,js}", "packages/**/test/**/*.{ts,js}"],
     languageOptions: {
       globals: {
         ...globals.browser,

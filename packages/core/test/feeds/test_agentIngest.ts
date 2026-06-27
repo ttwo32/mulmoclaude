@@ -1,4 +1,5 @@
-import "./_setup.ts"; // configure @mulmoclaude/core collection + feeds hosts for tests
+// Importing for these named bindings also runs _setup's host-configuration side
+// effects (collection + feeds hosts), so no separate side-effect import is needed.
 import { setTestWorker, resetNotifierForTest } from "./_setup.ts";
 import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
