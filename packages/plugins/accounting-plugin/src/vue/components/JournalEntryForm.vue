@@ -175,14 +175,14 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
+import { useAccountingI18n } from "../lang";
 import { addEntries, voidEntry, type Account, type JournalEntry, type JournalLine } from "../api";
 import { formatAmount, inputStepFor, localDateString, countryHasFeature, type SupportedCountryCode } from "../../shared";
 import { isTaxAccountCode } from "./accountNumbering";
 import AccountsModal from "./AccountsModal.vue";
 import { errorMessage } from "../../shared/errors";
 
-const { t } = useI18n();
+const { t } = useAccountingI18n();
 
 const props = defineProps<{ bookId: string; accounts: Account[]; currency: string; country?: SupportedCountryCode; entryToEdit?: JournalEntry | null }>();
 const emit = defineEmits<{ submitted: []; cancel: [] }>();

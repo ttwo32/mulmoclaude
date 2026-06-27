@@ -20,11 +20,11 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { useI18n } from "vue-i18n";
+import { useAccountingI18n } from "../lang";
 import NewBookForm from "./NewBookForm.vue";
 import type { BookSummary } from "../api";
 
-const { t } = useI18n();
+const { t } = useAccountingI18n();
 
 const props = defineProps<{ modelValue: string; books: BookSummary[] }>();
 const emit = defineEmits<{

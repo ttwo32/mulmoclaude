@@ -30,9 +30,15 @@ export type AccountingApiCall = <T = unknown>(
 /** Pub/sub seam — structurally compatible with `usePubSub().subscribe`. */
 export type AccountingSubscribe = (channel: string, handler: (payload: unknown) => void) => () => void;
 
+/** Locale seam — the host's active i18n locale tag (e.g. "en", "ja"), read
+ *  reactively. The plugin owns a self-contained vue-i18n instance and mirrors
+ *  this tag onto it, so it shares NO i18n resources with the host. */
+export type AccountingLocaleTag = () => string;
+
 export interface AccountingHostContext {
   apiCall: AccountingApiCall;
   subscribe: AccountingSubscribe;
+  localeTag: AccountingLocaleTag;
 }
 
 let ctx: AccountingHostContext | null = null;
@@ -55,4 +61,10 @@ export function hostApiCall<T = unknown>(path: string, opts: { method: "GET" | "
 
 export function hostSubscribe(channel: string, handler: (payload: unknown) => void): () => void {
   return requireCtx().subscribe(channel, handler);
+}
+
+/** The host's active i18n locale tag, read reactively by the plugin's own
+ *  vue-i18n instance (see `./lang`). */
+export function hostLocaleTag(): string {
+  return requireCtx().localeTag();
 }

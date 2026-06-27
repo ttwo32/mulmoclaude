@@ -11,10 +11,10 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useI18n } from "vue-i18n";
+import { useAccountingI18n } from "./lang";
 import { formatAmountNumeric } from "../shared";
 
-const { t } = useI18n();
+const { t } = useAccountingI18n();
 
 const props = defineProps<{ data?: unknown; jsonData?: Record<string, unknown> }>();
 
