@@ -9,7 +9,9 @@ import { API_ROUTES } from "../../../src/config/apiRoutes.js";
 import { badRequest } from "../../utils/httpError.js";
 import { fetchRegistryIndex } from "../../workspace/collectionsRegistry/client.js";
 import { previewCollection } from "../../workspace/collectionsRegistry/collectionFiles.js";
+import { performImport } from "../../workspace/collectionsRegistry/importWriter.js";
 import type { RegistryCollectionEntry } from "../../workspace/collectionsRegistry/registryIndex.js";
+import { workspacePath } from "../../workspace/workspace.js";
 
 const router = Router();
 
@@ -54,6 +56,33 @@ router.get(API_ROUTES.collectionsRegistry.preview, async (req: Request, res: Res
     return;
   }
   res.json({ entry: result.entry, schema: result.schema, meta: result.meta });
+});
+
+interface ImportBody {
+  author?: unknown;
+  slug?: unknown;
+}
+
+interface ImportResponse {
+  localSlug: string;
+  updated: boolean;
+  seedWritten: number;
+  seedSkipped: boolean;
+}
+
+router.post(API_ROUTES.collectionsRegistry.import, async (req: Request<object, unknown, ImportBody>, res: Response<ImportResponse | ErrorResponse>) => {
+  const author = typeof req.body.author === "string" ? req.body.author : "";
+  const slug = typeof req.body.slug === "string" ? req.body.slug : "";
+  if (!author || !slug) {
+    badRequest(res, "author and slug are required");
+    return;
+  }
+  const result = await performImport(author, slug, workspacePath);
+  if (!result.ok) {
+    res.status(result.status).json({ error: result.error });
+    return;
+  }
+  res.json({ localSlug: result.localSlug, updated: result.updated, seedWritten: result.seedWritten, seedSkipped: result.seedSkipped });
 });
 
 export default router;

@@ -292,6 +292,9 @@ const HOST_API_ROUTES = {
     list: "/api/collections-registry",
     /** GET ?author=&slug= → { entry, schema, meta } for one in-index collection. */
     preview: "/api/collections-registry/preview",
+    /** POST { author, slug } → fetch + re-validate + install into .claude/skills/,
+     *  normalize dataPath, materialize seed, record provenance. */
+    import: "/api/collections-registry/import",
   },
 
   // `scheduler` group migrated to META — see `src/plugins/scheduler/automationsMeta.ts`.
