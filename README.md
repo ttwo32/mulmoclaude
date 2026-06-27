@@ -593,6 +593,18 @@ status enum (`Backlog / Todo / In Progress / Done`) with a `done`
 toggle, optional priority / due-date fields, and a kanban / table /
 calendar view picked automatically from the schema.
 
+### Sharing collections — Discover and Contribute
+
+The `/collections` page has a **Discover** tab that lists collections curated
+in public **registries**. Click **Import** on any card to install a collection
+into your workspace; click the small **Contribute** icon on an installed
+collection to publish it back as a PR to the registry. By default only the
+official [`receptron/mulmoclaude-collections`](https://github.com/receptron/mulmoclaude-collections)
+registry is shown — you can add your own org / community / private registries
+by dropping a `config/collections-registries.json` file in your workspace. See
+[`docs/collection-registries.md`](docs/collection-registries.md) for the file
+format, how multi-registry merging works, and how to author your own registry.
+
 ### Scheduler and skill scheduling
 
 The scheduler (`Cmd/Ctrl+5` or `?view=scheduler`) manages recurring tasks stored in `data/scheduler/items.json`. The scheduler core (`@receptron/task-scheduler`) handles catch-up logic for missed runs and supports `interval`, `daily`, and `cron` schedules.
