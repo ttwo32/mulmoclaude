@@ -15,6 +15,7 @@ const jaMessages: CollectionMessages = {
       import: "取り込む",
       importing: "取り込み中…",
       imported: "取り込み済み",
+      importedAs: "{slug} として取り込み",
       updated: "更新済み",
       open: "開く",
     },

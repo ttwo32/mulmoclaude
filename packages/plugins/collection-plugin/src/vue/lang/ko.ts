@@ -15,6 +15,7 @@ const koMessages: CollectionMessages = {
       import: "가져오기",
       importing: "가져오는 중…",
       imported: "가져옴",
+      importedAs: "{slug}(으)로 가져옴",
       updated: "업데이트됨",
       open: "열기",
     },

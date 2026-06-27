@@ -58,10 +58,7 @@
               @click="openImported(entry)"
             >
               <span class="material-icons text-sm">north_east</span>
-              <span
-                >{{ stateOf(entry).updated ? t("collectionsView.discover.updated") : t("collectionsView.discover.imported") }} ·
-                {{ t("collectionsView.discover.open") }}</span
-              >
+              <span>{{ doneLabel(entry) }} · {{ t("collectionsView.discover.open") }}</span>
             </button>
             <button
               v-else
@@ -111,6 +108,14 @@ function stateOf(entry: RegistryEntry): ImportState {
 
 function setState(entry: RegistryEntry, state: ImportState): void {
   importStates.value = { ...importStates.value, [entry.id]: state };
+}
+
+// "Imported as movies-2" when the install was renamed to avoid clobbering an
+// existing same-named collection; otherwise "Imported" / "Updated".
+function doneLabel(entry: RegistryEntry): string {
+  const state = stateOf(entry);
+  if (state.localSlug && state.localSlug !== entry.slug) return t("collectionsView.discover.importedAs", { slug: state.localSlug });
+  return state.updated ? t("collectionsView.discover.updated") : t("collectionsView.discover.imported");
 }
 
 async function load(): Promise<void> {

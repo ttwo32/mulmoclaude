@@ -98,12 +98,22 @@ describe("writeImportedCollection", () => {
     assert.equal(again.seedSkipped, true, "existing dataPath → seed skipped");
   });
 
-  it("rejects with 409 when a different collection occupies the slug", async () => {
+  it("renames to <slug>-2 when a different collection occupies the slug (and re-imports as an update)", async () => {
     mkdirSync(skillDir(wsRoot), { recursive: true });
     writeFileSync(path.join(skillDir(wsRoot), "SKILL.md"), "someone else's collection");
     const result = await writeImportedCollection({ registry: REGISTRY, entry, bundle: makeBundle(), workspaceRoot: wsRoot, nowIso: "t" });
-    assert.equal(result.ok, false);
-    if (!result.ok) assert.equal(result.status, 409);
+    assert.ok(result.ok);
+    if (result.ok) assert.equal(result.localSlug, "movies-2");
+    // the user's own collection is untouched
+    assert.equal(readFileSync(path.join(skillDir(wsRoot), "SKILL.md"), "utf-8"), "someone else's collection");
+    assert.ok(existsSync(path.join(wsRoot, ".claude", "skills", "movies-2", "SKILL.md")));
+    // a second import reuses movies-2 (matching origin) as an update, not movies-3
+    const again = await writeImportedCollection({ registry: REGISTRY, entry, bundle: makeBundle(), workspaceRoot: wsRoot, nowIso: "t2" });
+    assert.ok(again.ok);
+    if (again.ok) {
+      assert.equal(again.localSlug, "movies-2");
+      assert.equal(again.updated, true);
+    }
   });
 
   it("rejects an invalid schema with 422", async () => {
@@ -121,12 +131,12 @@ describe("writeImportedCollection", () => {
     assert.ok(existsSync(path.join(skillDir(wsRoot), "SKILL.md")), "current bundle still installed");
   });
 
-  it("returns 409 when the slug path exists as a non-directory file", async () => {
+  it("renames past a slug path that exists as a non-directory file", async () => {
     mkdirSync(path.dirname(skillDir(wsRoot)), { recursive: true });
     writeFileSync(skillDir(wsRoot), "i am a file, not a directory");
     const result = await writeImportedCollection({ registry: REGISTRY, entry, bundle: makeBundle(), workspaceRoot: wsRoot, nowIso: "t" });
-    assert.equal(result.ok, false);
-    if (!result.ok) assert.equal(result.status, 409);
+    assert.ok(result.ok);
+    if (result.ok) assert.equal(result.localSlug, "movies-2");
   });
 
   it("returns 409 when the data path exists as a non-directory file", async () => {

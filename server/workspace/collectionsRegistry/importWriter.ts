@@ -75,15 +75,26 @@ async function readOrigin(targetDir: string): Promise<unknown> {
   }
 }
 
-type TargetResolution = { targetDir: string; updated: boolean } | { conflict: string };
+type TargetResolution = { targetDir: string; localSlug: string; updated: boolean } | { conflict: string };
 
+const MAX_SLUG_ATTEMPTS = 50;
+
+// Pick the local install slug (rename-on-collision, R8): the registry slug, else
+// `<slug>-2`, `<slug>-3`, … An existing dir whose `.origin.json` matches this
+// registry collection is a re-import (update); a foreign dir or a non-directory at
+// the path is skipped to the next candidate, so a user's own same-named collection
+// is never clobbered and the import still succeeds under a free slug.
 async function resolveTarget(workspaceRoot: string, registry: string, entry: RegistryCollectionEntry): Promise<TargetResolution> {
-  const targetDir = projectSkillDir(workspaceRoot, entry.slug);
-  const kind = await statType(targetDir);
-  if (kind === "absent") return { targetDir, updated: false };
-  if (kind === "other") return { conflict: `path for slug '${entry.slug}' exists and is not a directory` };
-  if (originMatches(await readOrigin(targetDir), registry, entry.author, entry.slug)) return { targetDir, updated: true };
-  return { conflict: `a different collection already occupies slug '${entry.slug}'` };
+  for (let attempt = 0; attempt < MAX_SLUG_ATTEMPTS; attempt += 1) {
+    const localSlug = attempt === 0 ? entry.slug : `${entry.slug}-${attempt + 1}`;
+    const targetDir = projectSkillDir(workspaceRoot, localSlug);
+    const kind = await statType(targetDir);
+    if (kind === "absent") return { targetDir, localSlug, updated: false };
+    if (kind === "dir" && originMatches(await readOrigin(targetDir), registry, entry.author, entry.slug)) {
+      return { targetDir, localSlug, updated: true };
+    }
+  }
+  return { conflict: `couldn't find an available slug for '${entry.slug}'` };
 }
 
 type SchemaResolution = { schema: CollectionSchema } | { error: string };
@@ -144,23 +155,25 @@ export async function writeImportedCollection(params: {
   const target = await resolveTarget(workspaceRoot, registry, entry);
   if ("conflict" in target) return { ok: false, status: STATUS_CONFLICT, error: target.conflict };
 
+  const { localSlug } = target;
+
   // Pre-flight the data dir before schema validation: a non-directory at the dataPath
   // (or an ancestor that's a file → ENOTDIR) would otherwise surface as a generic 500
   // on mkdir. statType maps ENOTDIR/other to a deterministic 409 path-shape conflict.
-  const dataDir = path.join(workspaceRoot, ...normalizedDataPath(entry.slug).split("/"));
+  const dataDir = path.join(workspaceRoot, ...normalizedDataPath(localSlug).split("/"));
   if ((await statType(dataDir)) === "other") {
-    return { ok: false, status: STATUS_CONFLICT, error: `data path for slug '${entry.slug}' exists and is not a directory` };
+    return { ok: false, status: STATUS_CONFLICT, error: `data path for slug '${localSlug}' exists and is not a directory` };
   }
 
-  const validated = validateAndNormalize(bundle, entry.slug, workspaceRoot);
+  const validated = validateAndNormalize(bundle, localSlug, workspaceRoot);
   if ("error" in validated) return { ok: false, status: STATUS_UNPROCESSABLE, error: validated.error };
 
   // Build the replacement fully in a hidden sibling staging dir (bundle + origin),
   // so the prior install is untouched until everything is durably written. Leftover
   // staging/backup dirs from a crashed import are cleaned first, keeping retries possible.
   const skillsParent = path.dirname(target.targetDir);
-  const staging = path.join(skillsParent, `.importing-${entry.slug}`);
-  const backup = path.join(skillsParent, `.backup-${entry.slug}`);
+  const staging = path.join(skillsParent, `.importing-${localSlug}`);
+  const backup = path.join(skillsParent, `.backup-${localSlug}`);
   await rm(staging, { recursive: true, force: true });
   await rm(backup, { recursive: true, force: true });
   await mkdir(staging, { recursive: true });
@@ -181,7 +194,7 @@ export async function writeImportedCollection(params: {
   await rm(backup, { recursive: true, force: true });
 
   const seed = await materializeSeed(dataDir, bundle);
-  return { ok: true, localSlug: entry.slug, updated: target.updated, seedWritten: seed.written, seedSkipped: seed.skipped };
+  return { ok: true, localSlug, updated: target.updated, seedWritten: seed.written, seedSkipped: seed.skipped };
 }
 
 export async function performImport(author: string, slug: string, workspaceRoot: string): Promise<ImportResult> {

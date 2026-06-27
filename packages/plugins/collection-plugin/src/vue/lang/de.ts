@@ -15,6 +15,7 @@ const deMessages: CollectionMessages = {
       import: "Importieren",
       importing: "Wird importiert…",
       imported: "Importiert",
+      importedAs: "Importiert als {slug}",
       updated: "Aktualisiert",
       open: "Öffnen",
     },

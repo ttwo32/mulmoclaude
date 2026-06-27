@@ -15,6 +15,7 @@ const esMessages: CollectionMessages = {
       import: "Importar",
       importing: "Importando…",
       imported: "Importada",
+      importedAs: "Importada como {slug}",
       updated: "Actualizada",
       open: "Abrir",
     },

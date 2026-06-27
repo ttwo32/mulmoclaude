@@ -15,6 +15,7 @@ const zhMessages: CollectionMessages = {
       import: "导入",
       importing: "导入中…",
       imported: "已导入",
+      importedAs: "已导入为 {slug}",
       updated: "已更新",
       open: "打开",
     },

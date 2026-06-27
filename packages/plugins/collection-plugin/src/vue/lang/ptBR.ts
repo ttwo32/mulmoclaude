@@ -15,6 +15,7 @@ const ptBRMessages: CollectionMessages = {
       import: "Importar",
       importing: "Importando…",
       imported: "Importada",
+      importedAs: "Importada como {slug}",
       updated: "Atualizada",
       open: "Abrir",
     },

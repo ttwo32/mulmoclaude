@@ -13,6 +13,7 @@ const enMessages = {
       import: "Import",
       importing: "Importing…",
       imported: "Imported",
+      importedAs: "Imported as {slug}",
       updated: "Updated",
       open: "Open",
     },

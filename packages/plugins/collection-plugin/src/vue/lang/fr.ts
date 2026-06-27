@@ -15,6 +15,7 @@ const frMessages: CollectionMessages = {
       import: "Importer",
       importing: "Importation…",
       imported: "Importée",
+      importedAs: "Importée comme {slug}",
       updated: "Mise à jour",
       open: "Ouvrir",
     },
