@@ -93,7 +93,7 @@ import { cpus, loadavg } from "os";
 import { isDockerAvailable, ensureSandboxImage } from "./system/docker.js";
 import { maybeRunJournal } from "./workspace/journal/index.js";
 import { backfillAllSessions } from "./workspace/chat-index/index.js";
-import { refreshDue as refreshDueFeeds } from "@mulmoclaude/core/feeds/server";
+import { feedRefreshTaskDef } from "@mulmoclaude/core/feeds/server";
 import { configureFeeds } from "./workspace/feeds/configure.js";
 import { createPubSub } from "./events/pub-sub/index.js";
 import { PUBSUB_CHANNELS } from "../src/config/pubsubChannels.js";
@@ -1141,18 +1141,12 @@ async function startRuntimeServices(httpServer: ReturnType<typeof app.listen>, p
       missedRunPolicy: MISSED_RUN_POLICIES.runOnce,
       run: () => backfillAllSessions().then(() => {}),
     },
-    {
-      id: "system:feed-refresh",
-      name: "Scheduled collection refresh",
-      // Drives ALL scheduled ingest now: declarative feeds (RSS / JSON) AND
-      // skill-backed collections with `ingest.kind: "agent"` (which dispatch a
-      // hidden worker rather than fetching). Id kept as `system:feed-refresh`
-      // so its scheduler-state row isn't orphaned by a rename.
-      description: "Refresh due collections — fetch declarative feeds + dispatch agent-ingest workers",
-      schedule: { type: SCHEDULE_TYPES.interval, intervalMs: ONE_HOUR_MS },
-      missedRunPolicy: MISSED_RUN_POLICIES.runOnce,
-      run: () => refreshDueFeeds().then(() => {}),
-    },
+    // Drives ALL scheduled ingest: declarative feeds (RSS / JSON) AND
+    // skill-backed `ingest.kind: "agent"` collections (dispatch a hidden
+    // worker). Shared with standalone MulmoTerminal/MulmoBooks via the core
+    // factory so the id/schedule/run can't drift across hosts. The override
+    // loop below still mutates `task.schedule` host-side.
+    feedRefreshTaskDef(),
   ];
 
   // Apply user-configurable schedule overrides from
