@@ -591,16 +591,19 @@ const detailRecord = computed<CollectionItem>(() => (editing.value ? (props.live
 // whenever the open / draft record changes.
 const embedViews = computed(() => props.render.embedViewsFor(detailRecord.value));
 
-// Fields that an embed owns via `idField`: the embed hosts the picker (a
-// dropdown in edit mode) and the read-only block, so the raw storage field
-// gets no standalone cell of its own — same spirit as a `toggle` fronting
-// its enum.
-const embedOwnedKeys = computed<Set<string>>(() => {
-  const keys = new Set<string>();
+// Map each embed's storage field (`idField`) → the embed that owns it. The
+// embed hosts the picker (a dropdown in edit mode) and the read-only block, so
+// the raw storage field gets no standalone cell of its own — same spirit as a
+// `toggle` fronting its enum. But only while that embed is itself visible: if
+// the embed is hidden by its own `when`, the storage field must fall back to
+// its normal control, or a required value would have no editable home and
+// block submit.
+const embedOwnerByKey = computed<Map<string, FieldSpec>>(() => {
+  const map = new Map<string, FieldSpec>();
   for (const field of Object.values(props.collection.schema.fields)) {
-    if (field.type === "embed" && field.idField) keys.add(field.idField);
+    if (field.type === "embed" && field.idField) map.set(field.idField, field);
   }
-  return keys;
+  return map;
 });
 
 /** Title for the header: the create label, the edited record's id, or the
@@ -636,9 +639,13 @@ function colSpanClass(field: FieldSpec): "col-span-full" | "col-span-1" {
  *  creating. */
 function cellVisible(field: FieldSpec, key: string): boolean {
   if (field.primary && editing.value?.mode !== "create") return false;
-  // An embed owns its `idField`'s editing + display, so the raw storage
-  // field shows no standalone cell (the embed's picker / block stands in).
-  if (embedOwnedKeys.value.has(key)) return false;
+  // An embed owns its `idField`'s editing + display, so the raw storage field
+  // shows no standalone cell — but only while the owning embed is itself
+  // visible (its picker / block stands in). If the embed is hidden by `when`,
+  // fall through so the storage field renders its own control; otherwise a
+  // required value would have no editable home and silently block submit.
+  const owner = embedOwnerByKey.value.get(key);
+  if (owner && fieldVisible(owner, detailRecord.value)) return false;
   return fieldVisible(field, detailRecord.value);
 }
 
