@@ -109,7 +109,7 @@
                records whose selection is stored in the embed's `idField`. The
                read-only block renders below (in view mode) from that value. -->
           <select
-            v-if="editing && field.type === 'embed' && field.idField"
+            v-if="editing && field.type === 'embed' && field.idField && render.embedOptions(field.to ?? '').length > 0"
             :id="`collections-field-${key}`"
             v-model="editing.text[field.idField]"
             :required="embedPickerRequired(field)"
@@ -119,6 +119,20 @@
             <option value="">{{ t("collectionsView.selectPlaceholder") }}</option>
             <option v-for="opt in render.embedOptions(field.to ?? '')" :key="opt.slug" :value="opt.slug">{{ opt.display }}</option>
           </select>
+
+          <!-- Fallback when the target collection has no records yet (or hasn't
+               loaded): a plain id input, so a required embed can still be filled
+               and submitted — mirrors the ref field's empty-options behavior. -->
+          <input
+            v-else-if="editing && field.type === 'embed' && field.idField"
+            :id="`collections-field-${key}`"
+            v-model="editing.text[field.idField]"
+            type="text"
+            :required="embedPickerRequired(field)"
+            :placeholder="t('collectionsView.selectPlaceholder')"
+            class="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 focus:outline-none font-medium text-slate-700 transition-all"
+            :data-testid="`collections-input-${key}`"
+          />
 
           <!-- ===== EDIT CONTROLS (editable field types only) ===== -->
           <template v-else-if="editing && isEditableType(field.type)">

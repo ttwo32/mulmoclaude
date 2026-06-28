@@ -9,7 +9,7 @@
 
 import { ref, type Ref } from "vue";
 import { collectionUi } from "./uiContext";
-import { deriveAll } from "@mulmoclaude/core/collection";
+import { deriveAll, embedTargetId } from "@mulmoclaude/core/collection";
 import type {
   CollectionDetail,
   CollectionItem,
@@ -190,14 +190,6 @@ export function useCollectionRendering(collection: Ref<CollectionDetail | null>,
       })
       .filter((opt) => opt.slug.length > 0)
       .sort((left, right) => left.display.localeCompare(right.display));
-  }
-
-  /** The target record id an embed points at: its fixed `id`, or the
-   *  value of the sibling `idField` on the open record (per-record). */
-  function embedTargetId(field: FieldSpec, record: CollectionItem | null): string {
-    if (field.id) return field.id;
-    if (field.idField && record) return String(record[field.idField] ?? "");
-    return "";
   }
 
   function resolveEmbed(field: FieldSpec, record: CollectionItem | null): { schema: CollectionSchema | null; item: CollectionItem | null } {

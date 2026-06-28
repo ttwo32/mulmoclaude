@@ -10,6 +10,7 @@ import { deriveAll, type DeriveRefRecords } from "../core/deriveAll";
 import { loadCollection, type DiscoveryOptions } from "./discovery";
 import type { LoadedCollection } from "./discoveredCollection";
 import { listItems } from "./io";
+import { embedTargetId } from "../core/schema";
 import type { CollectionFieldSpec, CollectionItem, CollectionSchema } from "../core/schema";
 
 /** Slugs of every collection referenced by a `ref` field — top-level
@@ -72,14 +73,6 @@ async function loadLinkedTargets(schema: CollectionSchema, opts: DiscoveryOption
 
 function toRefRecords(linked: Record<string, LinkedTarget>): DeriveRefRecords {
   return Object.fromEntries(Object.entries(linked).map(([slug, target]) => [slug, target.byId]));
-}
-
-/** Resolve an `embed` field's target record id: the fixed `id`, or the
- *  value of the sibling `idField` on this record (empty when absent). */
-function embedTargetId(field: CollectionFieldSpec, record: CollectionItem): string {
-  if (field.id) return field.id;
-  if (field.idField) return String(record[field.idField] ?? "");
-  return "";
 }
 
 /** Project the computed (never-stored) field kinds onto one derived

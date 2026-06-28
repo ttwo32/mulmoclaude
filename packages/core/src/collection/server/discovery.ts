@@ -586,14 +586,27 @@ export const CollectionSchemaZ = z
     message: "a field's `when.field` must name a top-level field declared in `fields`",
     path: ["fields"],
   })
-  // An `embed`'s `idField` resolves the target record id from a
-  // sibling's value, so it must name a real top-level field — a typo
-  // would silently embed nothing. Checked at the schema level because a
-  // field can't see its siblings.
-  .refine((schema) => Object.values(schema.fields).every((field) => field.idField === undefined || schema.fields[field.idField] !== undefined), {
-    message: "an embed field's `idField` must name a top-level field declared in `fields`",
-    path: ["fields"],
-  })
+  // An `embed`'s `idField` resolves the target record id from a sibling's
+  // value, so it must name a real top-level field — and one whose stored
+  // value is a plain id string. Only `ref` / `string` qualify: the editor
+  // writes the picked id into that field, so a non-persisted or composite
+  // type (`embed` / `derived` / `toggle` / `table` / `number` / …) would
+  // either not round-trip on save or hold no usable id. Restricting it
+  // makes the misconfiguration fail at schema load, not silently at
+  // render. `idField` is ignored on non-`embed` fields, so only check
+  // there. Schema-level because a field can't see its siblings.
+  .refine(
+    (schema) =>
+      Object.values(schema.fields).every((field) => {
+        if (field.type !== "embed" || field.idField === undefined) return true;
+        const target = schema.fields[field.idField];
+        return target !== undefined && (target.type === "ref" || target.type === "string");
+      }),
+    {
+      message: "an embed field's `idField` must name a top-level `ref` or `string` field declared in `fields`",
+      path: ["fields"],
+    },
+  )
   // `triggerField` requires the completion pair: the time gate only
   // suppresses the *completion* bell until the date, and the bell still
   // clears via `completionDoneValues`. Without completion there is no

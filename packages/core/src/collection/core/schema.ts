@@ -483,3 +483,14 @@ export interface CollectionDetail extends CollectionSummary {
 }
 
 export type CollectionItem = Record<string, unknown>;
+
+/** Resolve an `embed` field's target record id: the fixed `id`, or the value
+ *  of the sibling `idField` on this record (empty string when neither applies
+ *  — the caller renders that as "no record"). Pure + isomorphic so the server
+ *  projection (`derive.ts`) and the client preview (`useCollectionRendering`)
+ *  resolve embeds identically. */
+export function embedTargetId(field: CollectionFieldSpec, record: CollectionItem | null): string {
+  if (field.id) return field.id;
+  if (field.idField && record) return String(record[field.idField] ?? "");
+  return "";
+}

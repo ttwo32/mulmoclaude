@@ -639,6 +639,25 @@ describe("discoverCollections — field-type support", () => {
     const collections = await listCollections();
     assert.equal(collections.length, 0, "embed whose `idField` names no field must be skipped");
   });
+
+  it("rejects `embed` whose `idField` names a non-`ref`/`string` field", async () => {
+    // The editor writes the picked id into `idField`, so it must be a field
+    // that holds a plain id — a `number` (or table/derived/embed) can't
+    // round-trip, so the schema is rejected at load.
+    writeSkill("test-embed-idfield-badtype", {
+      title: "Bad Embed",
+      icon: "warning",
+      dataPath: "data/embedidfieldbadtype/items",
+      primaryKey: "id",
+      fields: {
+        id: { type: "string", label: "ID", primary: true, required: true },
+        issuerNum: { type: "number", label: "Issuer #" },
+        issuer: { type: "embed", to: "mc-profile", idField: "issuerNum", label: "Issuer" },
+      },
+    });
+    const collections = await listCollections();
+    assert.equal(collections.length, 0, "embed whose `idField` is not a ref/string must be skipped");
+  });
 });
 
 describe("discoverCollections — structural validation", () => {
