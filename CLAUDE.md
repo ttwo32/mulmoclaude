@@ -59,6 +59,10 @@ NEVER use raw `fs.readFile` / `fs.writeFile` in route handlers. Use `server/util
 
 NEVER escape backticks with `\`` in `gh` commands. Use single-quoted heredoc (`<<'EOF'`).
 
+### Error-recovery know-how — keep `error-recovery.md` in sync
+
+When you (or a PR you're reviewing) adds a new diagnostic / fix for a recurring failure mode — sandbox auth, build ordering, plugin install, anything the agent might hit at runtime — also add a section (or extend an existing one) in [`packages/core/assets/helps/error-recovery.md`](packages/core/assets/helps/error-recovery.md). The agent reads that file BEFORE asking the user a clarifying question on a tool failure (see the "When a tool call fails" section in `server/prompts/system/system.md`), so know-how that lives only in a PR description / commit message / `docs/` is invisible to it. Bump `@mulmoclaude/core` whenever `assets/helps/*` changes (it ships to npm via `files: ["dist", "assets"]`).
+
 ### Edit-time deeper rules (read when relevant)
 
 - **Lint warnings + `eslint-disable` etiquette** → [`docs/lint-policy.md`](docs/lint-policy.md)

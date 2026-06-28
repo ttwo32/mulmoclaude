@@ -63,6 +63,7 @@ See [Wiki](config/helps/wiki.md) for details on how it works.
 - [Spreadsheet](config/helps/spreadsheet.md) — cell format, formulas, date handling, and format codes for the presentSpreadsheet plugin
 - [presentHtml](config/helps/presenthtml.md) — self-contained HTML rules and the three-`../` relative-path convention used by the presentHtml plugin to keep generated files portable under `file://`
 - [Sandbox](config/helps/sandbox.md) — how the Docker sandbox isolates the agent, what it can access, and how to disable it
+- [Error recovery](config/helps/error-recovery.md) — the lookup the agent reads on tool failures (gh/git/SSH inside the sandbox, Marp PDF, registry import, build/workspace, plugin runtime) before asking the user
 - [Telegram Bridge](config/helps/telegram.md) — how to talk to MulmoClaude from the Telegram app: creating a bot, starting the bridge, allowlisting chat IDs, commands, and troubleshooting
 - [Feeds](config/helps/feeds.md) — register a self-refreshing data feed (RSS/Atom/JSON) by authoring `feeds/<slug>/schema.json`: schema shape, the `ingest` block, raw-item field mapping, and `maxItems` retention
 - [GitHub repositories in the workspace](config/helps/github.md) — clone-destination rules under `github/<name>/` and how to handle existing directories with matching or different remotes

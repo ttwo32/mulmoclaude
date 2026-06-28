@@ -94,3 +94,7 @@ System tasks (journal, chat-index) have default schedules. Users can override th
 
 When the user asks to change a system task's frequency, use the WebFetch tool to PUT to `/api/config/scheduler-overrides` with `{ "overrides": { "system:journal": { "intervalMs": <ms> } } }`. This saves the config and applies the change immediately without a server restart.
 
+## When a tool call fails
+
+Read `config/helps/error-recovery.md` BEFORE asking the user a clarifying question or giving up — it indexes the documented fix for the common failure areas (gh / git / SSH in the sandbox, Marp PDF, registry import, build/workspace, plugin runtime, etc.) and points at the per-area helps for anything else.
+
