@@ -85,21 +85,29 @@ function deleteTargets(collection: LoadedCollection, workspaceRoot: string): str
 }
 
 /** The records directory the delete recursively archives + removes
- *  (`collection.dataDir`) must live in this collection's OWN
- *  `data/<slug>/` subtree. `dataDir` is normally derived from
- *  `schema.dataPath`, but `deleteCollection` accepts a `LoadedCollection`
- *  whose fields could be inconsistent — so we validate the RESOLVED
- *  target the destructive ops actually touch, not the schema string.
- *  `resolveDataDir` only proves containment in the workspace; a shared
- *  root like `data` or `data/skills` would otherwise turn the recursive
- *  removal into a workspace-wide wipe whose archive captures only this
- *  collection. `path.resolve` collapses any `..` before the prefix test
- *  (symlink escapes are caught separately by the realpath containment
- *  check in `deleteTargets`). */
+ *  (`collection.dataDir`) must live in this collection's OWN per-slug
+ *  subtree. `dataDir` is normally derived from `schema.dataPath`, but
+ *  `deleteCollection` accepts a `LoadedCollection` whose fields could be
+ *  inconsistent — so we validate the RESOLVED target the destructive ops
+ *  actually touch, not the schema string. A shared root like `data` or
+ *  `data/skills` would otherwise turn the recursive removal into a
+ *  workspace-wide wipe whose archive captures only this collection.
+ *  `path.resolve` collapses any `..` before the prefix test (symlink
+ *  escapes are caught separately by the realpath containment check in
+ *  `deleteTargets`).
+ *
+ *  TWO acceptable per-slug subtrees:
+ *    - `data/<slug>/...` — the convention authored collections default to.
+ *    - `data/collections/<slug>/...` — what `normalizedDataPath` in the
+ *      registry-import path stamps onto every imported schema (so imported
+ *      collections never collide with `data/<slug>/`-shaped authored ones).
+ *  Both are equally per-collection and equally safe; a delete that targets
+ *  anything else (e.g. raw `data/`, `data/wiki/`, a sibling slug) is
+ *  refused. */
 function isDataDirSafe(dataDir: string, slug: string, workspaceRoot: string): boolean {
-  const expectedRoot = path.resolve(workspaceRoot, "data", slug);
+  const acceptableRoots = [path.resolve(workspaceRoot, "data", slug), path.resolve(workspaceRoot, "data", "collections", slug)];
   const resolved = path.resolve(dataDir);
-  return resolved === expectedRoot || resolved.startsWith(expectedRoot + path.sep);
+  return acceptableRoots.some((root) => resolved === root || resolved.startsWith(root + path.sep));
 }
 
 function buildRestoreDoc(collection: LoadedCollection): string {
