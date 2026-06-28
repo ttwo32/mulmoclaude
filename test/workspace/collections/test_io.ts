@@ -300,6 +300,18 @@ describe("readCustomViewI18n — locale pick + source-aware fallback", () => {
     assert.deepEqual(result.dict, { greeting: "こんにちは" });
   });
 
+  it("returns empty (not locale='en') when the en fallback block filters down to {} (CodeRabbit #1842)", async () => {
+    // The en block exists but every entry is a non-string → after the flat-map
+    // filter it's `{}`. The earlier `primary` arm already guards "no usable
+    // strings"; the fallback arm must symmetrically refuse to report `"en"`
+    // when there's nothing to deliver. Reporting `{ locale: "en", dict: {} }`
+    // would mislead the iframe into thinking English is available.
+    writeI18nFile(path.join(workdir, "data", "skills", slug), { en: { count: 5, nested: { x: 1 } } });
+    const result = await readCustomViewI18n(authoredProjectCollection(), i18nFile, "ja", { workspaceRoot: workdir });
+    assert.equal(result.locale, "");
+    assert.deepEqual(result.dict, {});
+  });
+
   it("reads user-collection i18n from its discovered skillDir", async () => {
     writeI18nFile(path.join(workdir, ".claude", "skills", slug), dictDoc);
     const result = await readCustomViewI18n(userCollection(), i18nFile, "ja", { workspaceRoot: workdir });

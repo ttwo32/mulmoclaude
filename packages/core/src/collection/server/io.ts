@@ -326,7 +326,13 @@ export async function readCustomViewI18n(
   if (primary !== null && Object.keys(primary).length > 0) return { locale, dict: primary };
   if (locale !== I18N_FALLBACK_LOCALE) {
     const fallback = pickLocaleBlock(obj, I18N_FALLBACK_LOCALE);
-    if (fallback !== null) return { locale: I18N_FALLBACK_LOCALE, dict: fallback };
+    // Same "non-empty after filtering" guard as the primary block above. If
+    // the en block exists but every entry was dropped as non-string, the
+    // dict is `{}` and returning `{ locale: "en", dict: {} }` would mislead
+    // the iframe into thinking it has English strings — `locale: ""` is the
+    // documented empty contract for "no usable translations" (CodeRabbit
+    // review on #1842).
+    if (fallback !== null && Object.keys(fallback).length > 0) return { locale: I18N_FALLBACK_LOCALE, dict: fallback };
   }
   return EMPTY_I18N;
 }

@@ -514,7 +514,11 @@ router.get(API_ROUTES.collections.viewI18n, async (req: Request<{ slug: string }
     const result = await readCustomViewI18n(collection, view.i18n, locale);
     res.json(result);
   } catch (err) {
-    log.warn("collections", "view-i18n read failed", { slug: req.params.slug, error: errorMessage(err) });
+    // Strip CR/LF before logging — `loadCollection` already rejects malformed
+    // slugs above (so this path always has a safe slug in practice), but
+    // belt-and-suspenders for log-injection / forged-line resistance per
+    // CodeRabbit review on #1842.
+    log.warn("collections", "view-i18n read failed", { slug: req.params.slug.replace(/[\r\n]/g, " "), error: errorMessage(err) });
     serverError(res, errorMessage(err));
   }
 });
